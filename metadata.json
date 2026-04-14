@@ -1,0 +1,5 @@
+{
+  "name": "StitchSpeak",
+  "description": "An intelligent knitting pattern translator that accurately converts patterns into different languages using the correct, localized knitting terminology and abbreviations.",
+  "requestFramePermissions": []
+}
