@@ -83,8 +83,8 @@ export const TranslatedOutput: React.FC<TranslatedOutputProps> = ({ text, isLoad
     if (isLoading) {
       return (
           <div className="flex flex-col items-center justify-center h-full text-center px-4 min-h-[16rem]">
-            <YarnBallSpinner className="w-16 h-16 text-rose-500" />
-            <p className="mt-4 text-slate-500 font-medium text-sm">{currentLoadingMessage}</p>
+            <YarnBallSpinner className="w-16 h-16 text-brand-600" />
+            <p className="mt-4 text-brand-400 font-medium text-sm">{currentLoadingMessage}</p>
           </div>
       );
     }
@@ -103,12 +103,12 @@ export const TranslatedOutput: React.FC<TranslatedOutputProps> = ({ text, isLoad
     if (!text) {
         return (
             <div className="flex flex-col items-center justify-center h-full text-center min-h-[16rem]">
-                <div className="bg-slate-100 p-4 rounded-full mb-4">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div className="bg-brand-100 p-4 rounded-full mb-4">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-brand-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.583a9.992 9.992 0 01-4.735-3.513M9.14 3.5c.685 1.43 1.14 2.95 1.35 4.5m-3.9 11h2.25l1.5-1.5 2 2 1.5-1.5V17H12" />
                   </svg>
                 </div>
-                <p className="text-slate-400 text-sm">Your translated pattern will appear here.</p>
+                <p className="text-brand-400 text-sm">Your translated pattern will appear here.</p>
             </div>
         )
     }
@@ -124,18 +124,18 @@ export const TranslatedOutput: React.FC<TranslatedOutputProps> = ({ text, isLoad
   }
 
   return (
-    <div className="relative w-full h-[32rem] bg-white border border-slate-200 rounded-xl overflow-hidden shadow-inner flex flex-col">
+    <div className="relative w-full h-[32rem] bg-white border border-brand-200 rounded-xl overflow-hidden shadow-inner flex flex-col">
       <div className="absolute top-2 right-2 z-10 flex gap-2">
         <button
           onClick={handleCopy}
           disabled={!text || isLoading}
-          className="p-2 rounded-lg bg-white/80 backdrop-blur-sm border border-slate-200 hover:bg-white disabled:opacity-0 disabled:cursor-not-allowed transition-all text-slate-600 shadow-sm"
+          className="p-2 rounded-lg bg-white/80 backdrop-blur-sm border border-brand-200 hover:bg-white disabled:opacity-0 disabled:cursor-not-allowed transition-all text-brand-500 shadow-sm"
           title="Copy formatted pattern"
         >
           {isCopied ? <CheckIcon className="w-4 h-4 text-green-600" /> : <ClipboardIcon className="w-4 h-4" />}
         </button>
       </div>
-      <div className="flex-grow overflow-y-auto p-8 scroll-smooth bg-white font-sans text-slate-800 leading-relaxed">
+      <div className="flex-grow overflow-y-auto p-8 scroll-smooth bg-white font-sans text-brand-800 leading-relaxed">
         {renderContent()}
       </div>
     </div>

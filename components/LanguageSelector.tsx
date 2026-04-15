@@ -36,12 +36,12 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
 
   return (
     <div className="relative w-full sm:w-64" ref={wrapperRef}>
-      <label className="block text-sm font-medium text-slate-600 mb-1">Translate to:</label>
+      <label className="block text-sm font-medium text-brand-500 mb-1">Translate to:</label>
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         disabled={disabled}
-        className="w-full bg-white border border-slate-300 rounded-lg shadow-sm pl-3 pr-10 py-2 text-left focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-colors duration-200 disabled:bg-slate-100 disabled:text-slate-400"
+        className="w-full bg-white border border-brand-200 rounded-lg shadow-sm pl-3 pr-10 py-2 text-left focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors duration-200 disabled:bg-brand-100 disabled:text-brand-400"
       >
         <span className="block truncate">{selectedLanguage.name}</span>
         <span className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
@@ -56,13 +56,13 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
             <li
               key={language.code}
               onClick={() => handleSelect(language)}
-              className="text-gray-900 cursor-default select-none relative py-2 pl-3 pr-9 hover:bg-rose-50"
+              className="text-gray-900 cursor-default select-none relative py-2 pl-3 pr-9 hover:bg-brand-50"
             >
               <span className={`block truncate ${selectedLanguage.code === language.code ? 'font-semibold' : 'font-normal'}`}>
                 {language.name}
               </span>
               {selectedLanguage.code === language.code && (
-                <span className="text-rose-600 absolute inset-y-0 right-0 flex items-center pr-4">
+                <span className="text-brand-600 absolute inset-y-0 right-0 flex items-center pr-4">
                   <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                   </svg>

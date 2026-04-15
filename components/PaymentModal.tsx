@@ -85,8 +85,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
         {/* Header */}
         <div className="bg-slate-50 p-6 border-b border-slate-100 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-rose-100 rounded-full">
-               <LockIcon className="w-5 h-5 text-rose-600" />
+            <div className="p-2 bg-brand-100 rounded-full">
+               <LockIcon className="w-5 h-5 text-brand-600" />
             </div>
             <div>
                 <h3 className="text-lg font-bold text-slate-800">Unlock Translation</h3>
@@ -103,7 +103,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
             <div className="mb-6 text-center">
                 <p className="text-slate-500 mb-1">Total Amount</p>
                 <p className="text-4xl font-bold text-slate-800">${price.toFixed(2)}</p>
-                <p className="text-xs text-rose-500 mt-2 font-medium px-3 py-1 bg-rose-50 inline-block rounded-full">
+                <p className="text-xs text-brand-600 mt-2 font-medium px-3 py-1 bg-brand-50 inline-block rounded-full">
                     One-time translation fee
                 </p>
             </div>
@@ -115,7 +115,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                         <input 
                             type="text" 
                             placeholder="0000 0000 0000 0000"
-                            className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-colors"
+                            className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors"
                             value={cardNumber}
                             onChange={handleCardChange}
                             required
@@ -132,7 +132,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                         <input 
                             type="text" 
                             placeholder="MM / YY"
-                            className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-colors"
+                            className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors"
                             value={expiry}
                             onChange={(e) => setExpiry(e.target.value)}
                             maxLength={5}
@@ -145,7 +145,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                             <input 
                                 type="text" 
                                 placeholder="123"
-                                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-colors"
+                                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors"
                                 value={cvc}
                                 onChange={(e) => setCvc(e.target.value)}
                                 maxLength={4}
@@ -167,7 +167,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                 <button
                     type="submit"
                     disabled={isProcessing}
-                    className="w-full flex items-center justify-center py-3.5 px-4 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-lg shadow-md transition-all transform hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none mt-2"
+                    className="w-full flex items-center justify-center py-3.5 px-4 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-lg shadow-md transition-all transform hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none mt-2"
                 >
                     {isProcessing ? (
                         <span className="flex items-center">

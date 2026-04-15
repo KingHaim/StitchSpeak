@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback } from 'react';
-import { Header } from './components/Header';
+import { DashboardLayout } from './components/DashboardLayout';
 import { LanguageSelector } from './components/LanguageSelector';
 import { PatternUpload } from './components/PatternUpload';
 import { TranslatedOutput } from './components/TranslatedOutput';
@@ -134,11 +134,9 @@ const App: React.FC = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-rose-50/30 text-slate-800 pb-12">
-      <Header />
-      <main className="container mx-auto px-4 py-8 max-w-6xl">
-        {/* Controls Section */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-rose-100 mb-8">
+    <DashboardLayout>
+      <div className="max-w-6xl mx-auto">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-brand-200 mb-8">
           <div className="flex flex-col md:flex-row items-end justify-between gap-6">
             <div className="flex-grow w-full md:w-auto">
               <LanguageSelector
@@ -150,7 +148,7 @@ const App: React.FC = () => {
             <button
               onClick={handleTranslateClick}
               disabled={isLoading || !patternFile || isAnalyzing || !priceEstimate}
-              className="w-full md:w-64 flex items-center justify-center px-8 py-3 bg-rose-500 text-white font-bold rounded-xl shadow-lg hover:bg-rose-600 focus:outline-none focus:ring-4 focus:ring-rose-200 transition-all duration-300 disabled:bg-rose-200 disabled:shadow-none disabled:cursor-not-allowed h-[42px]"
+              className="w-full md:w-64 flex items-center justify-center px-8 py-3 bg-brand-600 text-white font-bold rounded-xl shadow-lg hover:bg-brand-700 focus:outline-none focus:ring-4 focus:ring-brand-200 transition-all duration-300 disabled:bg-brand-200 disabled:shadow-none disabled:cursor-not-allowed h-[42px]"
             >
               {isLoading ? (
                 <>
@@ -169,16 +167,14 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Price Preview */}
         {pdfMetrics && priceEstimate && !translatedPattern && (
           <PricePreview metrics={pdfMetrics} estimate={priceEstimate} />
         )}
 
-        {/* Workspace Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
           <div className="flex flex-col h-full">
             <div className="flex items-center justify-between mb-3 px-1">
-              <h2 className="text-lg font-bold text-slate-700">Original Pattern PDF</h2>
+              <h2 className="text-lg font-bold text-brand-800">Original Pattern PDF</h2>
               {patternFile && <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-medium">Ready</span>}
             </div>
             <div className="flex-grow">
@@ -192,8 +188,8 @@ const App: React.FC = () => {
           
           <div className="flex flex-col h-full">
             <div className="flex items-center justify-between mb-3 px-1">
-              <h2 className="text-lg font-bold text-slate-700">Translated Result</h2>
-              {translatedPattern && <span className="text-xs bg-rose-100 text-rose-700 px-2 py-1 rounded-full font-medium">Completed</span>}
+              <h2 className="text-lg font-bold text-brand-800">Translated Result</h2>
+              {translatedPattern && <span className="text-xs bg-brand-100 text-brand-700 px-2 py-1 rounded-full font-medium">Completed</span>}
             </div>
             <div className="flex-grow">
               <TranslatedOutput
@@ -205,7 +201,6 @@ const App: React.FC = () => {
           </div>
         </div>
         
-        {/* Assistant Section */}
         {chatSessionId && (
            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
              <Chatbot 
@@ -220,10 +215,10 @@ const App: React.FC = () => {
            </div>
         )}
 
-         <p className="text-center text-sm text-slate-400 mt-12">
-            Localized terminology for expert knitters.
+        <p className="text-center text-sm text-brand-400 mt-12">
+          Localized terminology for expert knitters.
         </p>
-      </main>
+      </div>
 
       <PaymentModal 
         isOpen={isPaymentModalOpen}
@@ -231,7 +226,7 @@ const App: React.FC = () => {
         onSuccess={handlePaymentSuccess}
         price={priceEstimate?.translationCost ?? 0}
       />
-    </div>
+    </DashboardLayout>
   );
 };
 

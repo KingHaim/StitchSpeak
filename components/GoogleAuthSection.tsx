@@ -31,7 +31,7 @@ export const GoogleAuthSection: React.FC = () => {
           <img
             src={user.picture}
             alt=""
-            className="h-9 w-9 rounded-full border border-rose-100 object-cover"
+            className="h-9 w-9 rounded-full border border-brand-200 object-cover"
             referrerPolicy="no-referrer"
           />
         ) : null}
@@ -46,7 +46,7 @@ export const GoogleAuthSection: React.FC = () => {
         <button
           type="button"
           onClick={signOut}
-          className="text-sm font-medium text-rose-600 hover:text-rose-700 px-2 py-1 rounded-lg hover:bg-rose-50 transition-colors"
+          className="text-sm font-medium text-brand-600 hover:text-brand-700 px-2 py-1 rounded-lg hover:bg-brand-50 transition-colors"
         >
           Sign out
         </button>

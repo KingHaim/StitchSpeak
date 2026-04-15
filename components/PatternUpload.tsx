@@ -64,8 +64,8 @@ export const PatternUpload: React.FC<PatternUploadProps> = ({ onFileSelect, sele
         <label
           htmlFor="file-upload"
           className={`flex flex-col items-center justify-center w-full h-full border-2 border-dashed rounded-lg cursor-pointer transition-colors duration-200
-            ${disabled ? 'bg-slate-100 cursor-not-allowed' : 'bg-rose-50/50 hover:bg-rose-100/50'}
-            ${isDragging ? 'border-rose-500 bg-rose-100' : 'border-slate-300'}`}
+            ${disabled ? 'bg-brand-100 cursor-not-allowed' : 'bg-brand-50 hover:bg-brand-100'}
+            ${isDragging ? 'border-brand-600 bg-brand-100' : 'border-brand-300'}`}
         >
           <div 
             className="flex flex-col items-center justify-center pt-5 pb-6 w-full h-full"
@@ -73,22 +73,22 @@ export const PatternUpload: React.FC<PatternUploadProps> = ({ onFileSelect, sele
             onDragLeave={onDragLeave}
             onDrop={onDrop}
           >
-            <UploadIcon className="w-10 h-10 mb-3 text-slate-400" />
-            <p className="mb-2 text-sm text-slate-500">
+            <UploadIcon className="w-10 h-10 mb-3 text-brand-400" />
+            <p className="mb-2 text-sm text-brand-500">
               <span className="font-semibold">Click to upload</span> or drag and drop
             </p>
-            <p className="text-xs text-slate-400">PDF only</p>
+            <p className="text-xs text-brand-400">PDF only</p>
           </div>
         </label>
       ) : (
-        <div className="w-full h-full border border-slate-300 rounded-lg bg-white flex flex-col items-center justify-center p-4">
-            <FileIcon className="w-16 h-16 text-rose-500"/>
-            <p className="mt-4 text-sm font-medium text-slate-700 break-all">{selectedFile.name}</p>
-            <p className="mt-1 text-xs text-slate-500">{(selectedFile.size / 1024).toFixed(2)} KB</p>
+        <div className="w-full h-full border border-brand-200 rounded-lg bg-white flex flex-col items-center justify-center p-4">
+            <FileIcon className="w-16 h-16 text-brand-600"/>
+            <p className="mt-4 text-sm font-medium text-brand-800 break-all">{selectedFile.name}</p>
+            <p className="mt-1 text-xs text-brand-400">{(selectedFile.size / 1024).toFixed(2)} KB</p>
             <button 
               onClick={handleRemoveFile}
               disabled={disabled}
-              className="mt-4 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-rose-500 hover:bg-rose-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 disabled:bg-rose-300"
+              className="mt-4 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 disabled:bg-brand-300"
               aria-label="Remove file"
             >
               <CloseIcon className="w-4 h-4 mr-1"/>

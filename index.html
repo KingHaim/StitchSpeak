@@ -7,6 +7,28 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>StitchSpeak</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                50:  '#FAF6F1',
+                100: '#F0E6DC',
+                200: '#E8DDD3',
+                300: '#D4C4B0',
+                400: '#9C8B7A',
+                500: '#8B6F5E',
+                600: '#6B4C3B',
+                700: '#5A3E30',
+                800: '#3D2B1F',
+                900: '#2A1D14',
+              },
+            },
+          },
+        },
+      }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&family=Source+Sans+3:ital,wght@0,200..900;1,200..900&display=swap" rel="stylesheet">
@@ -21,7 +43,7 @@
       .markdown-content p { margin-bottom: 1rem; }
       .markdown-content h1, .markdown-content h2, .markdown-content h3 { margin-top: 1.5rem; margin-bottom: 0.5rem; font-weight: bold; }
       .markdown-content ul, .markdown-content ol { margin-left: 1.5rem; margin-bottom: 1rem; list-style-type: disc; }
-      .markdown-content strong { font-weight: 800; color: #1e293b; }
+      .markdown-content strong { font-weight: 800; color: #3D2B1F; }
     </style>
   <script type="importmap">
 {
@@ -36,7 +58,7 @@
 }
 </script>
 </head>
-  <body class="bg-gray-50 text-gray-800">
+  <body class="bg-brand-50 text-brand-800">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>
