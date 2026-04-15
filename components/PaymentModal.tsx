@@ -57,11 +57,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
     setError(null);
     setIsProcessing(true);
 
-    // --- STRIPE LOGIC SIMULATION ---
-    // In a real environment with a backend, this would look like:
-    // 1. Create a PaymentIntent on the server.
-    // 2. const stripe = await loadStripe('pk_test_...');
-    // 3. const { error } = await stripe.confirmCardPayment(clientSecret, { ... });
+    // --- CREEM PAYMENT SIMULATION ---
+    // In production, this would redirect to Creem checkout or use their API.
+    // Creem handles tax collection and remittance automatically.
     
     // Simulating network request delay and validation
     setTimeout(() => {
@@ -90,7 +88,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
             </div>
             <div>
                 <h3 className="text-lg font-bold text-slate-800">Unlock Translation</h3>
-                <p className="text-xs text-slate-500">Secure Payment via Stripe</p>
+                <p className="text-xs text-slate-500">Secure Payment via Creem</p>
             </div>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition">
@@ -187,7 +185,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
         <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 text-center">
              <p className="text-xs text-slate-400 flex items-center justify-center gap-1">
                 <LockIcon className="w-3 h-3" />
-                Payments securely processed by Stripe
+                Payments securely processed by Creem
              </p>
         </div>
       </div>

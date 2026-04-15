@@ -2,7 +2,7 @@ import type { PdfMetrics, PriceEstimate } from '../types';
 import { PRICING } from '../constants';
 
 export function estimateTranslationCost(metrics: PdfMetrics): PriceEstimate {
-  const { inputCostPer1MTokens, outputCostPer1MTokens, margin, minimumPrice } =
+  const { inputCostPer1MTokens, outputCostPer1MTokens, fixedMargin } =
     PRICING.translation;
 
   const inputCost =
@@ -10,10 +10,8 @@ export function estimateTranslationCost(metrics: PdfMetrics): PriceEstimate {
   const outputCost =
     (metrics.estimatedOutputTokens / 1_000_000) * outputCostPer1MTokens;
   const rawCost = inputCost + outputCost;
-  const translationCost = Math.max(
-    minimumPrice,
-    Math.ceil(rawCost * margin * 100) / 100,
-  );
+  const translationCost =
+    Math.ceil((rawCost + fixedMargin) / 0.5) * 0.5;
 
   const chatPackageCost = PRICING.chat.packagePrice;
 
@@ -25,7 +23,7 @@ export function estimateTranslationCost(metrics: PdfMetrics): PriceEstimate {
       inputTokens: metrics.estimatedInputTokens,
       outputTokens: metrics.estimatedOutputTokens,
       rawCost: Math.round(rawCost * 10000) / 10000,
-      margin,
+      margin: fixedMargin,
     },
   };
 }

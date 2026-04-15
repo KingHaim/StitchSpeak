@@ -79,6 +79,28 @@ export const TranslatedOutput: React.FC<TranslatedOutputProps> = ({ text, isLoad
     }
   };
   
+  const handleDownload = () => {
+    if (!text) return;
+    const cleanHtml = text.replace(/^```html\n?/, '').replace(/\n?```$/, '');
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Translated Pattern — StitchSpeak</title>
+<style>body{font-family:system-ui,sans-serif;max-width:800px;margin:2rem auto;padding:0 1rem;color:#3D2B1F;line-height:1.7}h1,h2,h3{margin-top:1.5rem}p{margin-bottom:1rem}</style>
+</head>
+<body>${cleanHtml}</body>
+</html>`;
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'translated-pattern.html';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const renderContent = () => {
     if (isLoading) {
       return (
@@ -126,6 +148,16 @@ export const TranslatedOutput: React.FC<TranslatedOutputProps> = ({ text, isLoad
   return (
     <div className="relative w-full h-[32rem] bg-white border border-brand-200 rounded-xl overflow-hidden shadow-inner flex flex-col">
       <div className="absolute top-2 right-2 z-10 flex gap-2">
+        <button
+          onClick={handleDownload}
+          disabled={!text || isLoading}
+          className="p-2 rounded-lg bg-white/80 backdrop-blur-sm border border-brand-200 hover:bg-white disabled:opacity-0 disabled:cursor-not-allowed transition-all text-brand-500 shadow-sm"
+          title="Download as HTML"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+          </svg>
+        </button>
         <button
           onClick={handleCopy}
           disabled={!text || isLoading}

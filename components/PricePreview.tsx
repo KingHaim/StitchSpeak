@@ -2,6 +2,7 @@ import React from 'react';
 import type { PdfMetrics, PriceEstimate } from '../types';
 import { PRICING } from '../constants';
 import { formatPrice } from '../services/pricingService';
+import { useAuth } from '../contexts/AuthContext';
 
 interface PricePreviewProps {
   metrics: PdfMetrics;
@@ -9,6 +10,11 @@ interface PricePreviewProps {
 }
 
 export const PricePreview: React.FC<PricePreviewProps> = ({ metrics, estimate }) => {
+  const { isAuthenticated } = useAuth();
+  const costDisplay = isAuthenticated
+    ? `${estimate.translationCost.toFixed(1)} credits`
+    : formatPrice(estimate.translationCost);
+
   return (
     <div className="bg-white p-5 rounded-2xl shadow-sm border border-amber-100 mb-8 animate-in fade-in slide-in-from-top-2 duration-300">
       <div className="flex items-center gap-2 mb-4">
@@ -37,7 +43,7 @@ export const PricePreview: React.FC<PricePreviewProps> = ({ metrics, estimate })
         </div>
         <div className="bg-amber-50 rounded-xl p-3 text-center border border-amber-200">
           <p className="text-xs text-amber-600 mb-1 font-medium">Translation</p>
-          <p className="text-lg font-bold text-amber-700">{formatPrice(estimate.translationCost)}</p>
+          <p className="text-lg font-bold text-amber-700">{costDisplay}</p>
         </div>
       </div>
 

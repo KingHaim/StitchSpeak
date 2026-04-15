@@ -18,6 +18,26 @@ export const HistoryPage: React.FC = () => {
     if (expandedId === id) setExpandedId(null);
   };
 
+  const handleDownload = (record: TranslationRecord) => {
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${record.fileName} — ${record.targetLanguage}</title>
+<style>body{font-family:system-ui,sans-serif;max-width:800px;margin:2rem auto;padding:0 1rem;color:#3D2B1F;line-height:1.7}h1,h2,h3{margin-top:1.5rem}p{margin-bottom:1rem}</style>
+</head>
+<body>${record.translatedHtml}</body>
+</html>`;
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${record.fileName.replace(/\.[^.]+$/, '')}-${record.targetLanguage.toLowerCase()}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleClear = () => {
     if (!confirmClear) {
       setConfirmClear(true);
@@ -42,8 +62,8 @@ export const HistoryPage: React.FC = () => {
     <div className="max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h2 className="text-2xl font-bold text-brand-800 mb-1">Translation History</h2>
-          <p className="text-brand-400">{records.length} past translation{records.length !== 1 ? 's' : ''}</p>
+          <h2 className="text-2xl font-bold text-brand-800 mb-1">My Patterns</h2>
+          <p className="text-brand-400">{records.length} translated pattern{records.length !== 1 ? 's' : ''}</p>
         </div>
         {records.length > 0 && (
           <button
@@ -67,9 +87,9 @@ export const HistoryPage: React.FC = () => {
               <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
             </svg>
           </div>
-          <h3 className="text-lg font-bold text-brand-800 mb-1">No translations yet</h3>
+          <h3 className="text-lg font-bold text-brand-800 mb-1">No patterns yet</h3>
           <p className="text-brand-400 text-sm">
-            Your translated patterns will appear here after you complete a translation.
+            Your translated patterns will show up here after you complete a translation.
           </p>
         </div>
       ) : (
@@ -97,6 +117,15 @@ export const HistoryPage: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={e => { e.stopPropagation(); handleDownload(record); }}
+                    className="p-1.5 text-brand-400 hover:text-brand-700 hover:bg-brand-100 rounded-lg transition-colors"
+                    title="Download"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                    </svg>
+                  </button>
                   <button
                     onClick={e => { e.stopPropagation(); handleDelete(record.id); }}
                     className="p-1.5 text-brand-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"

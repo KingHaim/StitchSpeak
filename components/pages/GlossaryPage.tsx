@@ -3,22 +3,11 @@ import { GLOSSARY_TERMS, GLOSSARY_LANGUAGES } from '../../data/glossary';
 import { lookupTermWithAI, type AiTermResult } from '../../services/glossaryService';
 import { SearchIcon } from '../icons/NavIcons';
 
-const CATEGORIES = [
-  { value: '', label: 'All categories' },
-  { value: 'basic', label: 'Basic' },
-  { value: 'stitch', label: 'Stitches' },
-  { value: 'technique', label: 'Techniques' },
-  { value: 'tool', label: 'Tools' },
-  { value: 'measurement', label: 'Measurements' },
-  { value: 'construction', label: 'Construction' },
-  { value: 'crochet', label: 'Crochet' },
-];
-
 export const GlossaryPage: React.FC = () => {
   const [sourceLang, setSourceLang] = useState('en');
   const [targetLang, setTargetLang] = useState('es');
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('');
+  const [activeTab, setActiveTab] = useState<'knitting' | 'crochet'>('knitting');
 
   const [aiQuery, setAiQuery] = useState('');
   const [aiResult, setAiResult] = useState<AiTermResult | null>(null);
@@ -30,9 +19,13 @@ export const GlossaryPage: React.FC = () => {
 
   const filtered = useMemo(() => {
     let terms = GLOSSARY_TERMS;
-    if (category) {
-      terms = terms.filter(t => t.category === category);
+
+    if (activeTab === 'crochet') {
+      terms = terms.filter(t => t.category === 'crochet');
+    } else {
+      terms = terms.filter(t => t.category !== 'crochet');
     }
+
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       terms = terms.filter(t => {
@@ -48,7 +41,7 @@ export const GlossaryPage: React.FC = () => {
       });
     }
     return terms;
-  }, [search, category, sourceLang, targetLang]);
+  }, [search, sourceLang, targetLang, activeTab]);
 
   const handleAiLookup = async () => {
     const q = aiQuery.trim() || search.trim();
@@ -71,6 +64,30 @@ export const GlossaryPage: React.FC = () => {
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-brand-800 mb-1">Knitting & Crochet Glossary</h2>
         <p className="text-brand-400">Search {GLOSSARY_TERMS.length}+ terms across {GLOSSARY_LANGUAGES.length} languages</p>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 mb-6 bg-brand-100 p-1 rounded-xl w-fit">
+        <button
+          onClick={() => setActiveTab('knitting')}
+          className={`px-5 py-2 text-sm font-semibold rounded-lg transition-colors ${
+            activeTab === 'knitting'
+              ? 'bg-white text-brand-800 shadow-sm'
+              : 'text-brand-500 hover:text-brand-700'
+          }`}
+        >
+          Knitting
+        </button>
+        <button
+          onClick={() => setActiveTab('crochet')}
+          className={`px-5 py-2 text-sm font-semibold rounded-lg transition-colors ${
+            activeTab === 'crochet'
+              ? 'bg-white text-brand-800 shadow-sm'
+              : 'text-brand-500 hover:text-brand-700'
+          }`}
+        >
+          Crochet
+        </button>
       </div>
 
       {/* Filters */}
@@ -111,18 +128,6 @@ export const GlossaryPage: React.FC = () => {
               ))}
             </select>
           </div>
-          <div className="flex-1">
-            <label className="block text-xs font-semibold text-brand-500 uppercase tracking-wider mb-1.5">Category</label>
-            <select
-              value={category}
-              onChange={e => setCategory(e.target.value)}
-              className="w-full bg-white border border-brand-200 rounded-lg px-3 py-2 text-sm text-brand-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
-            >
-              {CATEGORIES.map(c => (
-                <option key={c.value} value={c.value}>{c.label}</option>
-              ))}
-            </select>
-          </div>
         </div>
 
         <div className="mt-4 relative">
@@ -143,7 +148,6 @@ export const GlossaryPage: React.FC = () => {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-brand-50 border-b border-brand-200">
-                <th className="text-left px-4 py-3 font-semibold text-brand-600 w-16">Cat.</th>
                 <th className="text-left px-4 py-3 font-semibold text-brand-600">Abbr ({sourceName})</th>
                 <th className="text-left px-4 py-3 font-semibold text-brand-600">Full term ({sourceName})</th>
                 <th className="text-left px-4 py-3 font-semibold text-brand-600">Abbr ({targetName})</th>
@@ -153,7 +157,7 @@ export const GlossaryPage: React.FC = () => {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center text-brand-400">
+                  <td colSpan={4} className="px-4 py-12 text-center text-brand-400">
                     No terms found. Try the AI lookup below.
                   </td>
                 </tr>
@@ -163,11 +167,6 @@ export const GlossaryPage: React.FC = () => {
                   const tgt = term.terms[targetLang];
                   return (
                     <tr key={term.id} className="border-b border-brand-100 hover:bg-brand-50/50 transition-colors">
-                      <td className="px-4 py-2.5">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-brand-400 bg-brand-100 px-1.5 py-0.5 rounded">
-                          {term.category}
-                        </span>
-                      </td>
                       <td className="px-4 py-2.5 font-mono text-brand-700 font-semibold">{src?.abbreviation || '—'}</td>
                       <td className="px-4 py-2.5 text-brand-800">{src?.full || '—'}</td>
                       <td className="px-4 py-2.5 font-mono text-brand-700 font-semibold">{tgt?.abbreviation || '—'}</td>

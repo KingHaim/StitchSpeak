@@ -40,18 +40,7 @@ export interface TranslationResult {
   } | null;
 }
 
-export type PageId =
-  | 'dashboard'
-  | 'glossary'
-  | 'history'
-  | 'portfolio'
-  | 'projects'
-  | 'community'
-  | 'messages'
-  | 'notifications'
-  | 'saved'
-  | 'profile'
-  | 'settings';
+export type PageId = 'dashboard' | 'glossary' | 'history' | 'settings';
 
 export interface GlossaryTerm {
   id: string;
@@ -71,4 +60,10 @@ export interface TranslationRecord {
   translatedHtml: string;
   pdfMetrics: PdfMetrics | null;
   cost: number;
+}
+
+export interface CreditPackage {
+  credits: number;
+  price: number;
+  label: string;
 }

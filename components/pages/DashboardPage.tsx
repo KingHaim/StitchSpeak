@@ -4,21 +4,27 @@ import { PatternUpload } from '../PatternUpload';
 import { TranslatedOutput } from '../TranslatedOutput';
 import { Chatbot } from '../Chatbot';
 import { PaymentModal } from '../PaymentModal';
+import { BuyCreditsModal } from '../BuyCreditsModal';
 import { PricePreview } from '../PricePreview';
 import { translatePattern, startChatSession, sendChatMessage } from '../../services/translationService';
 import { analyzeFile } from '../../services/fileAnalyzer';
 import { estimateTranslationCost } from '../../services/pricingService';
 import { saveTranslation } from '../../services/historyService';
+import { getBalance, deductCredits, addCredits } from '../../services/creditService';
+import { useAuth } from '../../contexts/AuthContext';
 import { LANGUAGES, PRICING } from '../../constants';
-import type { Language, ChatMessage, PdfMetrics, PriceEstimate } from '../../types';
+import type { Language, ChatMessage, PdfMetrics, PriceEstimate, CreditPackage } from '../../types';
 
 export const DashboardPage: React.FC = () => {
+  const { user, isAuthenticated } = useAuth();
+
   const [patternFile, setPatternFile] = useState<File | null>(null);
   const [targetLanguage, setTargetLanguage] = useState<Language>(LANGUAGES[0]);
   const [translatedPattern, setTranslatedPattern] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isBuyCreditsOpen, setIsBuyCreditsOpen] = useState(false);
 
   const [pdfMetrics, setPdfMetrics] = useState<PdfMetrics | null>(null);
   const [priceEstimate, setPriceEstimate] = useState<PriceEstimate | null>(null);
@@ -104,13 +110,39 @@ export const DashboardPage: React.FC = () => {
       setError('Please wait for the file analysis to complete.');
       return;
     }
-    setIsPaymentModalOpen(true);
-  }, [patternFile, priceEstimate]);
+
+    if (isAuthenticated && user?.email) {
+      const cost = priceEstimate.translationCost;
+      const balance = getBalance(user.email);
+      if (balance >= cost - 0.001) {
+        deductCredits(user.email, cost);
+        executeTranslation();
+      } else {
+        setIsBuyCreditsOpen(true);
+      }
+    } else {
+      setIsPaymentModalOpen(true);
+    }
+  }, [patternFile, priceEstimate, isAuthenticated, user, executeTranslation]);
 
   const handlePaymentSuccess = useCallback(() => {
     setIsPaymentModalOpen(false);
     executeTranslation();
   }, [executeTranslation]);
+
+  const handleCreditPurchase = useCallback((pack: CreditPackage) => {
+    if (!user?.email) return;
+    addCredits(user.email, pack.credits);
+    setIsBuyCreditsOpen(false);
+    // After buying credits, try the translation again
+    if (priceEstimate) {
+      const newBalance = getBalance(user.email);
+      if (newBalance >= priceEstimate.translationCost - 0.001) {
+        deductCredits(user.email, priceEstimate.translationCost);
+        executeTranslation();
+      }
+    }
+  }, [user, priceEstimate, executeTranslation]);
 
   const handleSendMessage = useCallback(async (message: string) => {
     if (!chatSessionId) return;
@@ -138,6 +170,11 @@ export const DashboardPage: React.FC = () => {
     setChatMessagesAllowed(prev => prev + PRICING.chat.packageSize);
   }, []);
 
+  const creditCost = priceEstimate?.translationCost ?? 0;
+  const translateLabel = isAuthenticated
+    ? `Translate (${creditCost.toFixed(1)} credits)`
+    : 'Translate Now';
+
   return (
     <>
       <div className="max-w-6xl mx-auto">
@@ -153,7 +190,7 @@ export const DashboardPage: React.FC = () => {
             <button
               onClick={handleTranslateClick}
               disabled={isLoading || !patternFile || isAnalyzing || !priceEstimate}
-              className="w-full md:w-64 flex items-center justify-center px-8 py-3 bg-brand-600 text-white font-bold rounded-xl shadow-lg hover:bg-brand-700 focus:outline-none focus:ring-4 focus:ring-brand-200 transition-all duration-300 disabled:bg-brand-200 disabled:shadow-none disabled:cursor-not-allowed h-[42px]"
+              className="w-full md:w-auto flex items-center justify-center px-8 py-3 bg-brand-600 text-white font-bold rounded-xl shadow-lg hover:bg-brand-700 focus:outline-none focus:ring-4 focus:ring-brand-200 transition-all duration-300 disabled:bg-brand-200 disabled:shadow-none disabled:cursor-not-allowed h-[42px]"
             >
               {isLoading ? (
                 <>
@@ -166,7 +203,7 @@ export const DashboardPage: React.FC = () => {
               ) : isAnalyzing ? (
                 'Analyzing file...'
               ) : (
-                'Translate Now'
+                translateLabel
               )}
             </button>
           </div>
@@ -230,6 +267,12 @@ export const DashboardPage: React.FC = () => {
         onClose={() => setIsPaymentModalOpen(false)}
         onSuccess={handlePaymentSuccess}
         price={priceEstimate?.translationCost ?? 0}
+      />
+
+      <BuyCreditsModal
+        isOpen={isBuyCreditsOpen}
+        onClose={() => setIsBuyCreditsOpen(false)}
+        onPurchase={handleCreditPurchase}
       />
     </>
   );
