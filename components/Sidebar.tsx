@@ -11,25 +11,28 @@ import {
   SettingsIcon,
 } from './icons/NavIcons';
 import { CloseIcon } from './icons/CloseIcon';
+import type { PageId } from '../types';
 
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
+  activePage: PageId;
+  onNavigate: (page: PageId) => void;
 }
 
-const navItems = [
-  { label: 'Dashboard', icon: HomeIcon, active: true },
-  { label: 'Projects', icon: FolderIcon },
-  { label: 'Community', icon: UsersIcon },
-  { label: 'Patterns', icon: GridIcon },
-  { label: 'Messages', icon: MailIcon },
-  { label: 'Notifications', icon: BellIcon },
-  { label: 'Saved', icon: BookmarkIcon },
-  { label: 'Profile', icon: UserIcon },
-  { label: 'Settings', icon: SettingsIcon },
+const navItems: { label: string; icon: React.FC<React.SVGProps<SVGSVGElement>>; pageId: PageId }[] = [
+  { label: 'Dashboard', icon: HomeIcon, pageId: 'dashboard' },
+  { label: 'Portfolio', icon: FolderIcon, pageId: 'portfolio' },
+  { label: 'Community', icon: UsersIcon, pageId: 'community' },
+  { label: 'Glossary', icon: GridIcon, pageId: 'glossary' },
+  { label: 'Messages', icon: MailIcon, pageId: 'messages' },
+  { label: 'Notifications', icon: BellIcon, pageId: 'notifications' },
+  { label: 'History', icon: BookmarkIcon, pageId: 'history' },
+  { label: 'Profile', icon: UserIcon, pageId: 'profile' },
+  { label: 'Settings', icon: SettingsIcon, pageId: 'settings' },
 ];
 
-export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activePage, onNavigate }) => {
   return (
     <>
       {isOpen && (
@@ -62,12 +65,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         </div>
 
         <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
-          {navItems.map(({ label, icon: Icon, active }) => (
+          {navItems.map(({ label, icon: Icon, pageId }) => (
             <button
-              key={label}
+              key={pageId}
+              onClick={() => { onNavigate(pageId); onClose(); }}
               className={`
                 w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors
-                ${active
+                ${activePage === pageId
                   ? 'bg-brand-100 text-brand-700'
                   : 'text-brand-500 hover:bg-brand-50 hover:text-brand-700'
                 }

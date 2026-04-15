@@ -17,6 +17,8 @@ export interface PdfMetrics {
   fileSizeKB: number;
 }
 
+export type FileMetrics = PdfMetrics;
+
 export interface PriceEstimate {
   translationCost: number;
   chatPackageCost: number;
@@ -36,4 +38,37 @@ export interface TranslationResult {
     candidateTokens: number;
     totalTokens: number;
   } | null;
+}
+
+export type PageId =
+  | 'dashboard'
+  | 'glossary'
+  | 'history'
+  | 'portfolio'
+  | 'projects'
+  | 'community'
+  | 'messages'
+  | 'notifications'
+  | 'saved'
+  | 'profile'
+  | 'settings';
+
+export interface GlossaryTerm {
+  id: string;
+  category: 'basic' | 'stitch' | 'technique' | 'tool' | 'measurement' | 'construction' | 'crochet';
+  terms: Record<string, {
+    abbreviation: string;
+    full: string;
+  }>;
+}
+
+export interface TranslationRecord {
+  id: string;
+  timestamp: number;
+  fileName: string;
+  fileType: string;
+  targetLanguage: string;
+  translatedHtml: string;
+  pdfMetrics: PdfMetrics | null;
+  cost: number;
 }
