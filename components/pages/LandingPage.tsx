@@ -3,10 +3,9 @@ import { GoogleLogin, type CredentialResponse } from '@react-oauth/google';
 import { useAuth } from '../../contexts/AuthContext';
 import { getGoogleOAuthClientId } from '../../auth/googleConfig';
 import { CREDIT_PACKAGES, LANGUAGES } from '../../constants';
-import { GlossaryPage } from './GlossaryPage';
 import { DashboardPage } from './DashboardPage';
 
-type LandingView = 'home' | 'glossary' | 'translate';
+type LandingView = 'home' | 'translate';
 
 export const LandingPage: React.FC = () => {
   const { signInWithGoogleCredential } = useAuth();
@@ -19,7 +18,7 @@ export const LandingPage: React.FC = () => {
     }
   };
 
-  if (view === 'glossary' || view === 'translate') {
+  if (view === 'translate') {
     return (
       <div className="min-h-screen bg-brand-50">
         <header className="bg-white border-b border-brand-200 px-6 py-4 flex items-center justify-between">
@@ -30,15 +29,9 @@ export const LandingPage: React.FC = () => {
           <div className="flex items-center gap-4">
             <button
               onClick={() => setView('translate')}
-              className={`text-sm font-medium transition-colors ${view === 'translate' ? 'text-brand-700' : 'text-brand-500 hover:text-brand-700'}`}
+              className="text-sm font-medium text-brand-700"
             >
               Translate
-            </button>
-            <button
-              onClick={() => setView('glossary')}
-              className={`text-sm font-medium transition-colors ${view === 'glossary' ? 'text-brand-700' : 'text-brand-500 hover:text-brand-700'}`}
-            >
-              Glossary
             </button>
             {clientId && (
               <div className="[&_iframe]:!shadow-none">
@@ -48,7 +41,7 @@ export const LandingPage: React.FC = () => {
           </div>
         </header>
         <div className="px-6 py-8">
-          {view === 'glossary' ? <GlossaryPage /> : <DashboardPage />}
+          <DashboardPage />
         </div>
       </div>
     );
@@ -67,9 +60,6 @@ export const LandingPage: React.FC = () => {
             <button onClick={() => setView('translate')} className="text-sm font-medium text-brand-500 hover:text-brand-700 transition-colors">
               Translate
             </button>
-            <button onClick={() => setView('glossary')} className="text-sm font-medium text-brand-500 hover:text-brand-700 transition-colors">
-              Glossary
-            </button>
             {clientId && (
               <div className="[&_iframe]:!shadow-none">
                 <GoogleLogin onSuccess={handleGoogleSuccess} onError={() => {}} theme="outline" size="medium" text="signin_with" shape="pill" />
@@ -82,7 +72,7 @@ export const LandingPage: React.FC = () => {
       {/* Hero */}
       <section className="max-w-6xl mx-auto px-6 pt-16 pb-20 text-center">
         <div className="mb-8">
-          <img src="/logo.png" alt="" className="h-24 w-24 object-contain mx-auto mb-6" />
+          <img src="/logo.png" alt="" className="h-40 w-40 object-contain mx-auto mb-6" />
         </div>
         <h1 className="text-4xl sm:text-5xl font-bold text-brand-800 mb-4 leading-tight">
           Translate your knitting<br />patterns instantly
@@ -95,26 +85,19 @@ export const LandingPage: React.FC = () => {
           <button onClick={() => setView('translate')} className="px-8 py-3 bg-brand-600 text-white font-bold rounded-xl shadow-lg hover:bg-brand-700 transition-all">
             Translate a Pattern
           </button>
-          {clientId ? (
+          {clientId && (
             <div className="[&_iframe]:!shadow-none [&_div]:!rounded-xl">
               <GoogleLogin
                 onSuccess={handleGoogleSuccess}
                 onError={() => {}}
-                theme="filled_black"
+                theme="outline"
                 size="large"
-                text="continue_with"
+                text="signin_with"
                 shape="pill"
-                width="280"
+                width="220"
               />
             </div>
-          ) : (
-            <p className="text-sm text-brand-400">
-              Add <code className="text-xs bg-brand-100 px-1.5 py-0.5 rounded">VITE_GOOGLE_CLIENT_ID</code> in <code className="text-xs bg-brand-100 px-1.5 py-0.5 rounded">.env</code> to enable sign-in.
-            </p>
           )}
-          <button onClick={() => setView('glossary')} className="px-6 py-3 border-2 border-brand-200 text-brand-700 font-semibold rounded-xl hover:bg-brand-100 transition-colors">
-            Browse Glossary
-          </button>
         </div>
       </section>
 
