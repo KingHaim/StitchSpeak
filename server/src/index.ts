@@ -9,16 +9,22 @@ const PORT = parseInt(process.env.PORT || '3001', 10);
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:4173',
-  process.env.FRONTEND_URL,
-].filter(Boolean) as string[];
+];
+
+if (process.env.FRONTEND_URL) {
+  process.env.FRONTEND_URL.split(',').forEach((u) => {
+    allowedOrigins.push(u.trim());
+  });
+}
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.some((o) => origin.startsWith(o))) {
+      if (!origin || allowedOrigins.some((o) => origin === o)) {
         callback(null, true);
       } else {
-        callback(new Error(`CORS blocked: ${origin}`));
+        console.log(`[CORS] Blocked origin: ${origin}. Allowed: ${allowedOrigins.join(', ')}`);
+        callback(null, false);
       }
     },
   }),
