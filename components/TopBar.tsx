@@ -11,8 +11,9 @@ interface TopBarProps {
 }
 
 export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle }) => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, signOut } = useAuth();
   const [showBuyCredits, setShowBuyCredits] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const [balance, setBalance] = useState(() =>
     isAuthenticated && user?.email ? getBalance(user.email) : 0
   );
@@ -75,12 +76,39 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle }) => {
             </button>
 
             {isAuthenticated && user?.picture ? (
-              <img
-                src={user.picture}
-                alt=""
-                className="h-9 w-9 rounded-full border-2 border-brand-200 object-cover"
-                referrerPolicy="no-referrer"
-              />
+              <div className="relative">
+                <button
+                  onClick={() => setShowUserMenu(prev => !prev)}
+                  className="h-9 w-9 rounded-full border-2 border-brand-200 overflow-hidden hover:border-brand-400 transition-colors"
+                >
+                  <img
+                    src={user.picture}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                </button>
+                {showUserMenu && (
+                  <>
+                    <div className="fixed inset-0 z-20" onClick={() => setShowUserMenu(false)} />
+                    <div className="absolute right-0 top-12 z-30 w-56 bg-white rounded-xl shadow-lg border border-brand-200 py-2">
+                      <div className="px-4 py-2 border-b border-brand-100">
+                        <p className="text-sm font-semibold text-brand-800 truncate">{user.name ?? 'User'}</p>
+                        {user.email && <p className="text-xs text-brand-400 truncate">{user.email}</p>}
+                      </div>
+                      <button
+                        onClick={() => { setShowUserMenu(false); signOut(); }}
+                        className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+                        </svg>
+                        Sign out
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             ) : (
               <div className="h-9 w-9 rounded-full bg-brand-200 flex items-center justify-center">
                 <span className="text-sm font-semibold text-brand-600">
