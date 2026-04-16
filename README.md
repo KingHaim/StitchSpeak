@@ -5,14 +5,18 @@ StitchSpeak translates knitting pattern PDFs using localized terminology and inc
 
 ## Setup
 
+### Frontend
 1. `npm install`
-2. Copy `.env.example` to `.env` and set **`VITE_GEMINI_API_KEY`** (or `GEMINI_API_KEY` / `API_KEY`) and optionally **`VITE_GOOGLE_CLIENT_ID`** for sign-in.
+2. Copy `.env.example` to `.env` and set `VITE_GOOGLE_CLIENT_ID` for Google sign-in.
 3. `npm run dev`
 
-Translation runs **in the browser** via `@google/genai` (the key is bundled; use a restricted key and do not commit `.env`).
+### Server
+1. `cd server && npm install`
+2. Set environment variables: `GEMINI_API_KEY` and `GOOGLE_CLIENT_ID` (same value as `VITE_GOOGLE_CLIENT_ID`).
+3. `npm run dev`
 
-`services/api.ts` mirrors the BeatingHeart `replicate.js` client pattern (`apiCall`, auth helpers) for a **future** backend; it is not required for the current app.
+All AI features (translation, chat, glossary lookup) run through the Express server. No API keys are exposed to the browser.
 
 ## Stack
 
-React 19, TypeScript, Vite, Tailwind (CDN), Google Gemini, Google Sign-In.
+React 19, TypeScript, Vite, Tailwind CSS v4, Express, Google Gemini, Google Sign-In.

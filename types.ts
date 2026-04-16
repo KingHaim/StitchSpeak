@@ -40,7 +40,7 @@ export interface TranslationResult {
   } | null;
 }
 
-export type PageId = 'dashboard' | 'glossary' | 'history' | 'settings';
+export type PageId = 'dashboard' | 'glossary' | 'history';
 
 export interface GlossaryTerm {
   id: string;
@@ -56,8 +56,9 @@ export interface TranslationRecord {
   timestamp: number;
   fileName: string;
   fileType: string;
+  sourceLanguage?: string;
   targetLanguage: string;
-  translatedHtml: string;
+  translatedHtml?: string;
   pdfMetrics: PdfMetrics | null;
   cost: number;
 }

@@ -1,7 +1,10 @@
 import { Router, type Request, type Response } from 'express';
+import { requireAuth } from '../middleware/auth.js';
 import { createChatSession, sendChatMessage } from '../services/gemini.js';
 
 const router = Router();
+
+router.use(requireAuth);
 
 router.post('/start', async (req: Request, res: Response) => {
   try {

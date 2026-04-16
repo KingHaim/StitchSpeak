@@ -6,14 +6,19 @@ import { LANGUAGES } from '../constants';
 interface LanguageSelectorProps {
   selectedLanguage: Language;
   onSelectLanguage: (language: Language) => void;
+  label?: string;
+  languages?: Language[];
   disabled?: boolean;
 }
 
 export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
   selectedLanguage,
   onSelectLanguage,
+  label = 'Translate to:',
+  languages,
   disabled = false
 }) => {
+  const items = languages ?? LANGUAGES;
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -36,7 +41,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
 
   return (
     <div className="relative w-full sm:w-64" ref={wrapperRef}>
-      <label className="block text-sm font-medium text-brand-500 mb-1">Translate to:</label>
+      <label className="block text-sm font-medium text-brand-500 mb-1">{label}</label>
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
@@ -52,7 +57,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
       </button>
       {isOpen && (
         <ul className="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none sm:text-sm">
-          {LANGUAGES.map((language) => (
+          {items.map((language) => (
             <li
               key={language.code}
               onClick={() => handleSelect(language)}

@@ -4,7 +4,9 @@ import ReactDOM from 'react-dom/client';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import App from './App';
 import { AuthProvider } from './contexts/AuthContext';
+import { CreditProvider } from './contexts/CreditContext';
 import { getGoogleOAuthClientId } from './auth/googleConfig';
+import './src/index.css';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -15,7 +17,9 @@ const googleClientId = getGoogleOAuthClientId();
 
 const appTree = (
   <AuthProvider>
-    <App />
+    <CreditProvider>
+      <App />
+    </CreditProvider>
   </AuthProvider>
 );
 

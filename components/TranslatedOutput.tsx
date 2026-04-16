@@ -3,11 +3,13 @@ import React, { useState, useEffect } from 'react';
 import { ClipboardIcon } from './icons/ClipboardIcon';
 import { CheckIcon } from './icons/CheckIcon';
 import { YarnBallSpinner } from './icons/YarnBallSpinner';
+import { PatternViewer } from './PatternViewer';
 
 interface TranslatedOutputProps {
   text: string;
   isLoading: boolean;
   error: string | null;
+  languageCode?: string;
 }
 
 const loadingMessages = [
@@ -19,7 +21,7 @@ const loadingMessages = [
     "Stitching the final text...",
 ];
 
-export const TranslatedOutput: React.FC<TranslatedOutputProps> = ({ text, isLoading, error }) => {
+export const TranslatedOutput: React.FC<TranslatedOutputProps> = ({ text, isLoading, error, languageCode = 'en' }) => {
   const [isCopied, setIsCopied] = useState(false);
   const [currentLoadingMessage, setCurrentLoadingMessage] = useState(loadingMessages[0]);
 
@@ -46,49 +48,43 @@ export const TranslatedOutput: React.FC<TranslatedOutputProps> = ({ text, isLoad
     };
   }, [isLoading]);
   
+  const cleanHtml = text ? text.replace(/^```html\n?/, '').replace(/\n?```$/, '') : '';
+
   const handleCopy = async () => {
-    if (text) {
-      // Clean potential markdown wrappers if the model fails to follow instructions
-      const cleanHtml = text.replace(/^```html\n?/, '').replace(/\n?```$/, '');
+    if (!cleanHtml) return;
+    const tempDiv = document.createElement("div");
+    tempDiv.innerHTML = cleanHtml;
+    const plainText = tempDiv.innerText || tempDiv.textContent || "";
+    
+    try {
+      const htmlBlob = new Blob([cleanHtml], { type: 'text/html' });
+      const textBlob = new Blob([plainText], { type: 'text/plain' });
       
-      const tempDiv = document.createElement("div");
-      tempDiv.innerHTML = cleanHtml;
-      const plainText = tempDiv.innerText || tempDiv.textContent || "";
+      const data = [new ClipboardItem({
+        'text/html': htmlBlob,
+        'text/plain': textBlob,
+      })];
       
-      try {
-        // Attempt to copy both HTML and Plain Text to the clipboard
-        // This ensures formatting is preserved in apps like Word, Google Docs, or Email
-        const htmlBlob = new Blob([cleanHtml], { type: 'text/html' });
-        const textBlob = new Blob([plainText], { type: 'text/plain' });
-        
-        const data = [new ClipboardItem({
-          'text/html': htmlBlob,
-          'text/plain': textBlob,
-        })];
-        
-        await navigator.clipboard.write(data);
-        setIsCopied(true);
-        setTimeout(() => setIsCopied(false), 2000);
-      } catch (err) {
-        console.warn("Rich text copy failed, falling back to plain text:", err);
-        // Fallback for browsers that might not support ClipboardItem for HTML or have issues
-        await navigator.clipboard.writeText(plainText);
-        setIsCopied(true);
-        setTimeout(() => setIsCopied(false), 2000);
-      }
+      await navigator.clipboard.write(data);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (err) {
+      console.warn("Rich text copy failed, falling back to plain text:", err);
+      await navigator.clipboard.writeText(plainText);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
     }
   };
   
   const handleDownload = () => {
-    if (!text) return;
-    const cleanHtml = text.replace(/^```html\n?/, '').replace(/\n?```$/, '');
+    if (!cleanHtml) return;
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Translated Pattern — StitchSpeak</title>
-<style>body{font-family:system-ui,sans-serif;max-width:800px;margin:2rem auto;padding:0 1rem;color:#3D2B1F;line-height:1.7}h1,h2,h3{margin-top:1.5rem}p{margin-bottom:1rem}</style>
+<style>body{font-family:system-ui,sans-serif;max-width:800px;margin:2rem auto;padding:0 1rem;color:#3D2B1F;line-height:1.7}h1,h2,h3{margin-top:1.5rem}p{margin-bottom:1rem}table{width:100%;border-collapse:collapse;margin:1em 0}th,td{border:1px solid #E8DDD3;padding:.5em .75em;text-align:left}th{background:#FAF6F1;font-weight:600}</style>
 </head>
 <body>${cleanHtml}</body>
 </html>`;
@@ -135,18 +131,11 @@ export const TranslatedOutput: React.FC<TranslatedOutputProps> = ({ text, isLoad
         )
     }
 
-    const cleanHtml = text.replace(/^```html\n?/, '').replace(/\n?```$/, '');
-
-    return (
-        <div 
-          className="translated-pattern-html h-full"
-          dangerouslySetInnerHTML={{ __html: cleanHtml }}
-        />
-    )
+    return <PatternViewer html={cleanHtml} languageCode={languageCode} />;
   }
 
   return (
-    <div className="relative w-full h-[32rem] bg-white border border-brand-200 rounded-xl overflow-hidden shadow-inner flex flex-col">
+    <div className="relative w-full h-full min-h-[20rem] lg:min-h-[32rem] bg-white border border-brand-200 rounded-xl overflow-hidden shadow-inner flex flex-col">
       <div className="absolute top-2 right-2 z-10 flex gap-2">
         <button
           onClick={handleDownload}
@@ -167,7 +156,7 @@ export const TranslatedOutput: React.FC<TranslatedOutputProps> = ({ text, isLoad
           {isCopied ? <CheckIcon className="w-4 h-4 text-green-600" /> : <ClipboardIcon className="w-4 h-4" />}
         </button>
       </div>
-      <div className="flex-grow overflow-y-auto p-8 scroll-smooth bg-white font-sans text-brand-800 leading-relaxed">
+      <div className="flex-grow overflow-y-auto p-4 sm:p-8 scroll-smooth">
         {renderContent()}
       </div>
     </div>

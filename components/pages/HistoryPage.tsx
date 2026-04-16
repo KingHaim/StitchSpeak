@@ -1,24 +1,40 @@
 import React, { useState, useEffect } from 'react';
-import { getHistory, deleteTranslation, clearHistory } from '../../services/historyService';
+import { getHistory, getTranslationHtml, deleteTranslation, clearHistory } from '../../services/historyService';
 import type { TranslationRecord } from '../../types';
 import { CloseIcon } from '../icons/CloseIcon';
 
 export const HistoryPage: React.FC = () => {
   const [records, setRecords] = useState<TranslationRecord[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedHtml, setExpandedHtml] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
 
   useEffect(() => {
     setRecords(getHistory());
   }, []);
 
+  const handleToggleExpand = (id: string) => {
+    if (expandedId === id) {
+      setExpandedId(null);
+      setExpandedHtml(null);
+    } else {
+      setExpandedId(id);
+      setExpandedHtml(getTranslationHtml(id));
+    }
+  };
+
   const handleDelete = (id: string) => {
     deleteTranslation(id);
     setRecords(prev => prev.filter(r => r.id !== id));
-    if (expandedId === id) setExpandedId(null);
+    if (expandedId === id) {
+      setExpandedId(null);
+      setExpandedHtml(null);
+    }
   };
 
   const handleDownload = (record: TranslationRecord) => {
+    const htmlContent = getTranslationHtml(record.id);
+    if (!htmlContent) return;
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -27,7 +43,7 @@ export const HistoryPage: React.FC = () => {
 <title>${record.fileName} — ${record.targetLanguage}</title>
 <style>body{font-family:system-ui,sans-serif;max-width:800px;margin:2rem auto;padding:0 1rem;color:#3D2B1F;line-height:1.7}h1,h2,h3{margin-top:1.5rem}p{margin-bottom:1rem}</style>
 </head>
-<body>${record.translatedHtml}</body>
+<body>${htmlContent}</body>
 </html>`;
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
@@ -96,9 +112,11 @@ export const HistoryPage: React.FC = () => {
         <div className="space-y-4">
           {records.map(record => (
             <div key={record.id} className="bg-white rounded-2xl shadow-sm border border-brand-200 overflow-hidden">
-              <div
-                className="flex items-center justify-between p-5 cursor-pointer hover:bg-brand-50/50 transition-colors"
-                onClick={() => setExpandedId(expandedId === record.id ? null : record.id)}
+              <button
+                type="button"
+                className="flex items-center justify-between p-5 w-full text-left cursor-pointer hover:bg-brand-50/50 transition-colors"
+                onClick={() => handleToggleExpand(record.id)}
+                aria-expanded={expandedId === record.id}
               >
                 <div className="flex items-center gap-4 min-w-0">
                   <div className="bg-brand-100 p-2.5 rounded-xl shrink-0">
@@ -110,44 +128,61 @@ export const HistoryPage: React.FC = () => {
                     <p className="font-semibold text-brand-800 truncate">{record.fileName}</p>
                     <div className="flex items-center gap-3 text-xs text-brand-400 mt-0.5">
                       <span>{formatDate(record.timestamp)}</span>
-                      <span className="bg-brand-100 text-brand-600 px-2 py-0.5 rounded font-medium">{record.targetLanguage}</span>
+                      <span className="bg-brand-100 text-brand-600 px-2 py-0.5 rounded font-medium">
+                        {record.sourceLanguage && record.sourceLanguage !== 'Auto-Detect'
+                          ? `${record.sourceLanguage} → ${record.targetLanguage}`
+                          : record.targetLanguage}
+                      </span>
                       {record.pdfMetrics && <span>{record.pdfMetrics.pages} page{record.pdfMetrics.pages !== 1 ? 's' : ''}</span>}
                       {record.cost > 0 && <span>${record.cost.toFixed(2)}</span>}
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <button
+                  <span
+                    role="button"
+                    tabIndex={0}
                     onClick={e => { e.stopPropagation(); handleDownload(record); }}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); handleDownload(record); } }}
                     className="p-1.5 text-brand-400 hover:text-brand-700 hover:bg-brand-100 rounded-lg transition-colors"
-                    title="Download"
+                    aria-label={`Download ${record.fileName}`}
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                     </svg>
-                  </button>
-                  <button
+                  </span>
+                  <span
+                    role="button"
+                    tabIndex={0}
                     onClick={e => { e.stopPropagation(); handleDelete(record.id); }}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); handleDelete(record.id); } }}
                     className="p-1.5 text-brand-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Delete"
+                    aria-label={`Delete ${record.fileName}`}
                   >
                     <CloseIcon className="w-4 h-4" />
-                  </button>
+                  </span>
                   <svg
                     className={`w-5 h-5 text-brand-400 transition-transform ${expandedId === record.id ? 'rotate-180' : ''}`}
                     fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}
+                    aria-hidden="true"
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                   </svg>
                 </div>
-              </div>
+              </button>
 
               {expandedId === record.id && (
                 <div className="border-t border-brand-200 p-5 bg-brand-50/30">
-                  <div
-                    className="bg-white rounded-xl border border-brand-200 p-6 max-h-96 overflow-y-auto text-sm text-brand-800 leading-relaxed"
-                    dangerouslySetInnerHTML={{ __html: record.translatedHtml }}
-                  />
+                  {expandedHtml ? (
+                    <div
+                      className="bg-white rounded-xl border border-brand-200 p-6 max-h-96 overflow-y-auto text-sm text-brand-800 leading-relaxed"
+                      dangerouslySetInnerHTML={{ __html: expandedHtml }}
+                    />
+                  ) : (
+                    <p className="text-sm text-brand-400 italic">
+                      Preview not available. Use the download button if you saved the file separately.
+                    </p>
+                  )}
                 </div>
               )}
             </div>

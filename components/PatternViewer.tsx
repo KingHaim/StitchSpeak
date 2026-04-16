@@ -1,0 +1,132 @@
+import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import { getAbbreviationMap, buildAbbreviationRegex } from '../services/abbreviationService';
+import type { AbbreviationMatch } from '../services/abbreviationService';
+
+interface PatternViewerProps {
+  html: string;
+  languageCode: string;
+}
+
+export const PatternViewer: React.FC<PatternViewerProps> = ({ html, languageCode }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
+
+  const processedHtml = useMemo(() => {
+    const clean = html.replace(/^```html\n?/, '').replace(/\n?```$/, '');
+    const regex = buildAbbreviationRegex(languageCode);
+    if (!regex) return clean;
+
+    const map = getAbbreviationMap(languageCode);
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`<div>${clean}</div>`, 'text/html');
+    const root = doc.body.firstElementChild;
+    if (!root) return clean;
+
+    highlightTextNodes(root, regex, map);
+    return root.innerHTML;
+  }, [html, languageCode]);
+
+  const handleMouseOver = useCallback((e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.classList.contains('abbr-highlight')) {
+      const full = target.getAttribute('data-full');
+      if (!full) return;
+      const rect = target.getBoundingClientRect();
+      const containerRect = containerRef.current?.getBoundingClientRect();
+      if (!containerRect) return;
+      setTooltip({
+        text: full,
+        x: rect.left - containerRect.left + rect.width / 2,
+        y: rect.top - containerRect.top - 4,
+      });
+    }
+  }, []);
+
+  const handleMouseOut = useCallback((e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.classList.contains('abbr-highlight')) {
+      setTooltip(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    setTooltip(null);
+  }, [html]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative h-full"
+      onMouseOver={handleMouseOver}
+      onMouseOut={handleMouseOut}
+    >
+      {tooltip && (
+        <div
+          className="absolute z-20 px-2.5 py-1.5 text-xs font-medium bg-brand-800 text-white rounded-lg shadow-lg pointer-events-none whitespace-nowrap -translate-x-1/2 -translate-y-full"
+          style={{ left: tooltip.x, top: tooltip.y }}
+        >
+          {tooltip.text}
+          <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-brand-800" />
+        </div>
+      )}
+      <div
+        className="pattern-rendered"
+        dangerouslySetInnerHTML={{ __html: processedHtml }}
+      />
+    </div>
+  );
+};
+
+function highlightTextNodes(
+  el: Element,
+  regex: RegExp,
+  map: Map<string, AbbreviationMatch>,
+): void {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  let node: Text | null;
+  while ((node = walker.nextNode() as Text | null)) {
+    textNodes.push(node);
+  }
+
+  for (const textNode of textNodes) {
+    const parent = textNode.parentNode;
+    if (!parent) continue;
+    if ((parent as HTMLElement).classList?.contains('abbr-highlight')) continue;
+
+    const text = textNode.textContent ?? '';
+    regex.lastIndex = 0;
+    const parts: (string | { abbr: string; full: string })[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(text.slice(lastIndex, match.index));
+      }
+      const key = match[0].toLowerCase();
+      const entry = map.get(key);
+      parts.push({ abbr: match[0], full: entry?.full ?? '' });
+      lastIndex = regex.lastIndex;
+    }
+
+    if (parts.length === 0) continue;
+    if (lastIndex < text.length) {
+      parts.push(text.slice(lastIndex));
+    }
+
+    const frag = document.createDocumentFragment();
+    for (const part of parts) {
+      if (typeof part === 'string') {
+        frag.appendChild(document.createTextNode(part));
+      } else {
+        const span = document.createElement('span');
+        span.className = 'abbr-highlight';
+        span.setAttribute('data-full', part.full);
+        span.textContent = part.abbr;
+        frag.appendChild(span);
+      }
+    }
+    parent.replaceChild(frag, textNode);
+  }
+}

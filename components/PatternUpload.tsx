@@ -19,7 +19,7 @@ export const PatternUpload: React.FC<PatternUploadProps> = ({ onFileSelect, sele
       if (isAcceptedFile(files[0])) {
         onFileSelect(files[0]);
       } else {
-        alert('Please select a PDF, DOCX, or TXT file.');
+        alert('Please select a PDF, DOCX, TXT, or RTF file.');
       }
     }
   };
@@ -51,7 +51,7 @@ export const PatternUpload: React.FC<PatternUploadProps> = ({ onFileSelect, sele
   };
 
   return (
-    <div className="w-full h-[32rem]">
+    <div className="w-full h-48 lg:h-[32rem]">
       <input
         type="file"
         id="file-upload"
@@ -78,7 +78,7 @@ export const PatternUpload: React.FC<PatternUploadProps> = ({ onFileSelect, sele
             <p className="mb-2 text-sm text-brand-500">
               <span className="font-semibold">Click to upload</span> or drag and drop
             </p>
-            <p className="text-xs text-brand-400">PDF, DOCX, or TXT</p>
+            <p className="text-xs text-brand-400">PDF, DOCX, TXT, or RTF</p>
           </div>
         </label>
       ) : (

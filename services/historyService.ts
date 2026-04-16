@@ -1,63 +1,109 @@
 import type { TranslationRecord, PdfMetrics } from '../types';
 
-const STORAGE_KEY = 'ss_translation_history';
+const INDEX_KEY = 'ss_translation_history';
+const HTML_PREFIX = 'ss_pattern_html_';
+const MAX_RECORDS = 50;
+const MAX_HTML_BYTES = 512 * 1024; // 512 KB per pattern
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-export function getHistory(): TranslationRecord[] {
+function readIndex(): TranslationRecord[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(INDEX_KEY);
     if (!raw) return [];
-    const records: TranslationRecord[] = JSON.parse(raw);
-    return records.sort((a, b) => b.timestamp - a.timestamp);
+    return (JSON.parse(raw) as TranslationRecord[]).sort((a, b) => b.timestamp - a.timestamp);
   } catch {
     return [];
+  }
+}
+
+function writeIndex(records: TranslationRecord[]): void {
+  const stripped = records.map(({ translatedHtml: _, ...rest }) => rest);
+  try {
+    localStorage.setItem(INDEX_KEY, JSON.stringify(stripped));
+  } catch { /* ignore — index is tiny, but be safe */ }
+}
+
+export function getHistory(): TranslationRecord[] {
+  return readIndex();
+}
+
+export function getTranslationHtml(id: string): string | null {
+  try {
+    return localStorage.getItem(HTML_PREFIX + id);
+  } catch {
+    return null;
   }
 }
 
 export function saveTranslation(params: {
   fileName: string;
   fileType: string;
+  sourceLanguage?: string;
   targetLanguage: string;
   translatedHtml: string;
   pdfMetrics: PdfMetrics | null;
   cost: number;
 }): TranslationRecord {
+  const { translatedHtml, ...metadata } = params;
+  const id = generateId();
+
   const record: TranslationRecord = {
-    id: generateId(),
+    id,
     timestamp: Date.now(),
-    ...params,
+    ...metadata,
   };
 
-  const history = getHistory();
+  const history = readIndex();
   history.unshift(record);
 
-  // Keep at most 50 records to avoid filling localStorage
-  const trimmed = history.slice(0, 50);
+  const evicted = history.splice(MAX_RECORDS);
+  for (const old of evicted) {
+    try { localStorage.removeItem(HTML_PREFIX + old.id); } catch { /* ignore */ }
+  }
+
+  writeIndex(history);
+
+  const html = translatedHtml.length > MAX_HTML_BYTES
+    ? translatedHtml.slice(0, MAX_HTML_BYTES)
+    : translatedHtml;
 
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+    localStorage.setItem(HTML_PREFIX + id, html);
   } catch {
-    // localStorage may be full -- drop oldest entries and retry
+    evictOldestHtml(history);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed.slice(0, 20)));
-    } catch { /* give up silently */ }
+      localStorage.setItem(HTML_PREFIX + id, html);
+    } catch { /* give up — metadata is still saved */ }
   }
 
   return record;
 }
 
+function evictOldestHtml(history: TranslationRecord[]): void {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const key = HTML_PREFIX + history[i].id;
+    try {
+      if (localStorage.getItem(key) !== null) {
+        localStorage.removeItem(key);
+        return;
+      }
+    } catch { /* ignore */ }
+  }
+}
+
 export function deleteTranslation(id: string): void {
-  const history = getHistory().filter(r => r.id !== id);
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
-  } catch { /* ignore */ }
+  const history = readIndex().filter(r => r.id !== id);
+  writeIndex(history);
+  try { localStorage.removeItem(HTML_PREFIX + id); } catch { /* ignore */ }
 }
 
 export function clearHistory(): void {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch { /* ignore */ }
+  const history = readIndex();
+  for (const record of history) {
+    try { localStorage.removeItem(HTML_PREFIX + record.id); } catch { /* ignore */ }
+  }
+  try { localStorage.removeItem(INDEX_KEY); } catch { /* ignore */ }
 }

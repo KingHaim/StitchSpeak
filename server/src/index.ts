@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import translateRouter from './routes/translate.js';
 import chatRouter from './routes/chat.js';
+import creditsRouter from './routes/credits.js';
+import glossaryRouter from './routes/glossary.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -38,6 +40,8 @@ app.get('/health', (_req, res) => {
 
 app.use('/api/translate', translateRouter);
 app.use('/api/chat', chatRouter);
+app.use('/api/credits', creditsRouter);
+app.use('/api/glossary', glossaryRouter);
 
 app.listen(PORT, () => {
   console.log(`[StitchSpeak Server] listening on port ${PORT}`);

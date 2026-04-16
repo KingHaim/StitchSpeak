@@ -1,34 +1,65 @@
-const STORAGE_PREFIX = 'ss_credits_';
-
-function storageKey(email: string): string {
-  return STORAGE_PREFIX + email.toLowerCase();
+function getApiUrl(): string {
+  return import.meta.env.VITE_API_URL || '';
 }
 
-export function getBalance(email: string): number {
-  try {
-    const raw = localStorage.getItem(storageKey(email));
-    if (!raw) return 0;
-    const val = parseFloat(raw);
-    return isNaN(val) ? 0 : Math.round(val * 100) / 100;
-  } catch {
-    return 0;
+async function apiFetch(
+  path: string,
+  idToken: string,
+  method = 'GET',
+  body?: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${idToken}`,
+  };
+  const init: RequestInit = { method, headers };
+
+  if (body) {
+    headers['Content-Type'] = 'application/json';
+    init.body = JSON.stringify(body);
   }
+
+  let res: Response;
+  try {
+    res = await fetch(`${getApiUrl()}/api/credits${path}`, init);
+  } catch {
+    throw new Error('Could not reach the server. Check your connection and try again.');
+  }
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const err = new Error(
+      typeof data.error === 'string' ? data.error : `Credits API error ${res.status}`,
+    ) as Error & { status?: number; balance?: number };
+    err.status = res.status;
+    if (typeof data.balance === 'number') err.balance = data.balance;
+    throw err;
+  }
+  return data;
 }
 
-export function addCredits(email: string, amount: number): void {
-  const current = getBalance(email);
-  const updated = Math.round((current + amount) * 100) / 100;
-  try {
-    localStorage.setItem(storageKey(email), String(updated));
-  } catch { /* ignore */ }
+export async function getBalance(idToken: string): Promise<number> {
+  const data = await apiFetch('/', idToken);
+  return typeof data.balance === 'number' ? data.balance : 0;
 }
 
-export function deductCredits(email: string, amount: number): boolean {
-  const current = getBalance(email);
-  if (current < amount - 0.001) return false;
-  const updated = Math.max(0, Math.round((current - amount) * 100) / 100);
+export async function addCredits(idToken: string, amount: number): Promise<number> {
+  const data = await apiFetch('/add', idToken, 'POST', { amount });
+  return typeof data.balance === 'number' ? data.balance : 0;
+}
+
+export async function deductCredits(
+  idToken: string,
+  amount: number,
+): Promise<{ ok: boolean; balance: number }> {
   try {
-    localStorage.setItem(storageKey(email), String(updated));
-  } catch { /* ignore */ }
-  return true;
+    const data = await apiFetch('/deduct', idToken, 'POST', { amount });
+    return { ok: true, balance: typeof data.balance === 'number' ? data.balance : 0 };
+  } catch (err: unknown) {
+    const apiErr = err as Error & { status?: number; balance?: number };
+    if (apiErr.status === 402) {
+      return { ok: false, balance: apiErr.balance ?? 0 };
+    }
+    throw err;
+  }
 }

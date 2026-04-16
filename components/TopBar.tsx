@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { getBalance } from '../services/creditService';
-import { SearchIcon, BellIcon, MenuIcon } from './icons/NavIcons';
+import { useCredits } from '../contexts/CreditContext';
+import { MenuIcon } from './icons/NavIcons';
 import { BuyCreditsModal } from './BuyCreditsModal';
-import { addCredits } from '../services/creditService';
 import type { CreditPackage } from '../types';
 
 interface TopBarProps {
@@ -12,20 +11,16 @@ interface TopBarProps {
 
 export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle }) => {
   const { user, isAuthenticated, signOut } = useAuth();
+  const { balance, addCredits } = useCredits();
   const [showBuyCredits, setShowBuyCredits] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [balance, setBalance] = useState(() =>
-    isAuthenticated && user?.email ? getBalance(user.email) : 0
-  );
 
   const displayName = isAuthenticated && user?.name
     ? user.name.split(' ')[0]
     : null;
 
-  const handlePurchase = (pack: CreditPackage) => {
-    if (!user?.email) return;
-    addCredits(user.email, pack.credits);
-    setBalance(getBalance(user.email));
+  const handlePurchase = async (pack: CreditPackage) => {
+    await addCredits(pack.credits);
     setShowBuyCredits(false);
   };
 
@@ -49,16 +44,6 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle }) => {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center bg-brand-50 border border-brand-200 rounded-xl px-3 py-2 w-64">
-              <SearchIcon className="w-4 h-4 text-brand-400 shrink-0" />
-              <input
-                type="text"
-                placeholder="Search patterns..."
-                className="ml-2 bg-transparent text-sm text-brand-800 placeholder-brand-400 outline-none w-full"
-                disabled
-              />
-            </div>
-
             {isAuthenticated && (
               <button
                 onClick={() => setShowBuyCredits(true)}
@@ -70,10 +55,6 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle }) => {
                 {balance.toFixed(1)}
               </button>
             )}
-
-            <button className="relative p-2 rounded-xl text-brand-400 hover:bg-brand-100 transition-colors">
-              <BellIcon className="w-5 h-5" />
-            </button>
 
             {isAuthenticated && user?.picture ? (
               <div className="relative">

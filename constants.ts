@@ -16,6 +16,13 @@ export const LANGUAGES: Language[] = [
   { code: 'ja', name: 'Japanese' },
 ];
 
+export const AUTO_DETECT_LANGUAGE: Language = { code: 'auto', name: 'Auto-Detect' };
+
+export const SOURCE_LANGUAGES: Language[] = [
+  AUTO_DETECT_LANGUAGE,
+  ...LANGUAGES,
+];
+
 export const CREDIT_PACKAGES: CreditPackage[] = [
   { credits: 5, price: 5.00, label: '5 credits' },
   { credits: 10, price: 8.50, label: '10 credits' },

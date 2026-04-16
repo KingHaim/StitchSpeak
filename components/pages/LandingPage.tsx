@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { GoogleLogin, type CredentialResponse } from '@react-oauth/google';
 import { useAuth } from '../../contexts/AuthContext';
 import { getGoogleOAuthClientId } from '../../auth/googleConfig';
-import { CREDIT_PACKAGES, LANGUAGES } from '../../constants';
+import { CREDIT_PACKAGES } from '../../constants';
 import { DashboardPage } from './DashboardPage';
 
 type LandingView = 'home' | 'translate';
@@ -78,8 +78,8 @@ export const LandingPage: React.FC = () => {
           Translate your knitting<br />patterns instantly
         </h1>
         <p className="text-lg text-brand-400 max-w-2xl mx-auto mb-8">
-          Upload any knitting or crochet pattern, choose your language, and get a professional
-          translation in seconds. Powered by AI with expert knitting terminology.
+          Upload a PDF pattern, pick your target language, and get a professional
+          translation in seconds — with auto-detected source language and expert knitting terminology.
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           <button onClick={() => setView('translate')} className="px-8 py-3 bg-brand-600 text-white font-bold rounded-xl shadow-lg hover:bg-brand-700 transition-all">
@@ -106,9 +106,9 @@ export const LandingPage: React.FC = () => {
         <h2 className="text-2xl font-bold text-brand-800 text-center mb-12">How it works</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {[
-            { step: '1', title: 'Upload your pattern', desc: 'PDF, DOCX, or TXT — drag and drop or click to upload' },
-            { step: '2', title: 'Choose your language', desc: `Pick from ${LANGUAGES.length} languages including English, Spanish, German, French, and more` },
-            { step: '3', title: 'Get your translation', desc: 'AI-powered translation with correct knitting terminology, delivered in seconds' },
+            { step: '1', title: 'Upload your pattern', desc: 'Drag and drop or click to upload a PDF knitting or crochet pattern' },
+            { step: '2', title: 'Choose your languages', desc: 'Pick a target language — the source is auto-detected, or set it manually from 12 supported languages' },
+            { step: '3', title: 'Get your translation', desc: 'AI-powered translation with correct localized knitting terminology, delivered in seconds' },
           ].map(({ step, title, desc }) => (
             <div key={step} className="bg-white p-6 rounded-2xl border border-brand-200 text-center">
               <div className="w-12 h-12 bg-brand-600 text-white rounded-xl flex items-center justify-center text-xl font-bold mx-auto mb-4">
@@ -124,7 +124,7 @@ export const LandingPage: React.FC = () => {
       {/* Pricing */}
       <section className="max-w-6xl mx-auto px-6 pb-20">
         <h2 className="text-2xl font-bold text-brand-800 text-center mb-3">Simple credit-based pricing</h2>
-        <p className="text-brand-400 text-center mb-10">1 credit = $1. Buy more, pay less per credit.</p>
+        <p className="text-brand-400 text-center mb-10">Sign in to purchase credits. Buy more, pay less per credit.</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto">
           {CREDIT_PACKAGES.map((pack, idx) => {
             const perCredit = pack.price / pack.credits;
@@ -150,11 +150,11 @@ export const LandingPage: React.FC = () => {
       <section className="max-w-6xl mx-auto px-6 pb-20">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {[
-            { title: 'Expert terminology', desc: 'Correct knitting abbreviations like K, P, YO, SSK across all languages' },
-            { title: 'Multi-format support', desc: 'Upload PDF, DOCX, or plain text patterns' },
+            { title: 'Expert terminology', desc: 'Correct knitting abbreviations like K, P, YO, SSK localized across 12 languages' },
+            { title: 'Auto-detect source', desc: 'Upload in any language — the AI identifies it automatically, or set it yourself' },
             { title: 'AI chat assistant', desc: 'Ask follow-up questions about your translated pattern' },
-            { title: 'Knitting glossary', desc: '85+ terms in 5 languages with AI lookup for unknown terms' },
-            { title: 'Pattern library', desc: 'All your translated patterns saved and downloadable' },
+            { title: 'Knitting glossary', desc: '100+ terms in 12 languages with AI lookup for unknown terms' },
+            { title: 'Pattern library', desc: 'All your translated patterns saved and downloadable as HTML' },
             { title: 'Instant delivery', desc: 'No waiting days — translations are ready in seconds' },
           ].map(({ title, desc }) => (
             <div key={title} className="flex gap-3 p-4">

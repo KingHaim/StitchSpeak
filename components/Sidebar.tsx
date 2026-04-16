@@ -3,11 +3,10 @@ import {
   HomeIcon,
   FolderIcon,
   GridIcon,
-  SettingsIcon,
 } from './icons/NavIcons';
 import { CloseIcon } from './icons/CloseIcon';
 import { useAuth } from '../contexts/AuthContext';
-import { getBalance } from '../services/creditService';
+import { useCredits } from '../contexts/CreditContext';
 import type { PageId } from '../types';
 
 interface SidebarProps {
@@ -21,12 +20,11 @@ const navItems: { label: string; icon: React.FC<React.SVGProps<SVGSVGElement>>; 
   { label: 'Translate', icon: HomeIcon, pageId: 'dashboard' },
   { label: 'My Patterns', icon: FolderIcon, pageId: 'history' },
   { label: 'Glossary', icon: GridIcon, pageId: 'glossary' },
-  { label: 'Settings', icon: SettingsIcon, pageId: 'settings' },
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activePage, onNavigate }) => {
-  const { user, isAuthenticated } = useAuth();
-  const balance = isAuthenticated && user?.email ? getBalance(user.email) : 0;
+  const { isAuthenticated } = useAuth();
+  const { balance } = useCredits();
 
   return (
     <>

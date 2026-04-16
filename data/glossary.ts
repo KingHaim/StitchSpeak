@@ -6,6 +6,13 @@ export const GLOSSARY_LANGUAGES = [
   { code: 'de', name: 'German' },
   { code: 'fr', name: 'French' },
   { code: 'pt', name: 'Portuguese' },
+  { code: 'it', name: 'Italian' },
+  { code: 'nl', name: 'Dutch' },
+  { code: 'sv', name: 'Swedish' },
+  { code: 'no', name: 'Norwegian' },
+  { code: 'da', name: 'Danish' },
+  { code: 'fi', name: 'Finnish' },
+  { code: 'ja', name: 'Japanese' },
 ];
 
 export const GLOSSARY_TERMS: GlossaryTerm[] = [

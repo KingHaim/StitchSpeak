@@ -1,0 +1,123 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-50:  #FAF6F1;
+  --color-brand-100: #F0E6DC;
+  --color-brand-200: #E8DDD3;
+  --color-brand-300: #D4C4B0;
+  --color-brand-400: #9C8B7A;
+  --color-brand-500: #8B6F5E;
+  --color-brand-600: #6B4C3B;
+  --color-brand-700: #5A3E30;
+  --color-brand-800: #3D2B1F;
+  --color-brand-900: #2A1D14;
+}
+
+/* ── Base typography ── */
+
+body {
+  font-family: 'Source Sans 3', sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Lora', serif;
+}
+
+/* ── Markdown content (chat responses) ── */
+
+.markdown-content p { margin-bottom: 1rem; }
+.markdown-content h1, .markdown-content h2, .markdown-content h3 { margin-top: 1.5rem; margin-bottom: 0.5rem; font-weight: bold; }
+.markdown-content ul, .markdown-content ol { margin-left: 1.5rem; margin-bottom: 1rem; list-style-type: disc; }
+.markdown-content strong { font-weight: 800; color: #3D2B1F; }
+
+/* ── Pattern viewer typography ── */
+
+.pattern-rendered {
+  font-family: 'Source Sans 3', system-ui, sans-serif;
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  color: #3D2B1F;
+}
+.pattern-rendered h1, .pattern-rendered h2, .pattern-rendered h3,
+.pattern-rendered h4, .pattern-rendered h5, .pattern-rendered h6 {
+  font-family: 'Lora', serif;
+  color: #3D2B1F;
+  margin: 1.5em 0 0.5em;
+  line-height: 1.3;
+}
+.pattern-rendered h1 { font-size: 1.5rem; }
+.pattern-rendered h2 { font-size: 1.25rem; }
+.pattern-rendered h3 { font-size: 1.1rem; }
+.pattern-rendered p { margin: 0 0 0.75em; }
+.pattern-rendered ul, .pattern-rendered ol {
+  margin: 0 0 0.75em 1.5rem;
+  padding: 0;
+}
+.pattern-rendered ul { list-style: disc; }
+.pattern-rendered ol { list-style: decimal; }
+.pattern-rendered li { margin-bottom: 0.25em; }
+.pattern-rendered strong { font-weight: 700; color: #5A3E30; }
+.pattern-rendered em { font-style: italic; color: #8B6F5E; }
+.pattern-rendered table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+  font-size: 0.875rem;
+}
+.pattern-rendered th, .pattern-rendered td {
+  border: 1px solid #E8DDD3;
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+.pattern-rendered th {
+  background: #FAF6F1;
+  font-weight: 600;
+  color: #5A3E30;
+}
+.pattern-rendered tr:nth-child(even) td { background: #FDFBF9; }
+.pattern-rendered hr {
+  border: none;
+  border-top: 1px solid #E8DDD3;
+  margin: 1.5em 0;
+}
+
+/* ── Abbreviation highlights ── */
+
+.abbr-highlight {
+  background: #F0E6DC;
+  color: #6B4C3B;
+  padding: 0.05em 0.3em;
+  border-radius: 0.25em;
+  font-weight: 600;
+  cursor: help;
+  transition: background 0.15s;
+}
+.abbr-highlight:hover {
+  background: #E8DDD3;
+}
+
+/* ── Enter animations (used by modals & slide-ins) ── */
+
+@keyframes enter {
+  from { opacity: var(--tw-enter-opacity, 0); transform: translate(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0)) scale(var(--tw-enter-scale, 1)); }
+}
+
+@utility animate-in {
+  animation: enter var(--tw-animate-duration, 150ms) ease-out;
+}
+
+@utility fade-in {
+  --tw-enter-opacity: 0;
+}
+
+@utility zoom-in {
+  --tw-enter-scale: 0.95;
+}
+
+@utility slide-in-from-bottom-4 {
+  --tw-enter-translate-y: 1rem;
+}
+
+@utility slide-in-from-top-2 {
+  --tw-enter-translate-y: -0.5rem;
+}

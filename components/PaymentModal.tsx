@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CloseIcon } from './icons/CloseIcon';
 import { CreditCardIcon } from './icons/CreditCardIcon';
 import { LockIcon } from './icons/LockIcon';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -11,6 +12,7 @@ interface PaymentModalProps {
 }
 
 export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onSuccess, price }) => {
+  const dialogRef = useModalA11y(isOpen, onClose);
   const [isProcessing, setIsProcessing] = useState(false);
   const [cardNumber, setCardNumber] = useState('');
   const [expiry, setExpiry] = useState('');
@@ -57,9 +59,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
     setError(null);
     setIsProcessing(true);
 
-    // --- CREEM PAYMENT SIMULATION ---
-    // In production, this would redirect to Creem checkout or use their API.
-    // Creem handles tax collection and remittance automatically.
+    // --- LEMON SQUEEZY PAYMENT SIMULATION ---
+    // In production, this would redirect to Lemon Squeezy checkout or use their API.
+    // Lemon Squeezy handles tax collection and remittance automatically.
     
     // Simulating network request delay and validation
     setTimeout(() => {
@@ -76,7 +78,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="payment-dialog-title">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}></div>
       
       <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden transform transition-all animate-in fade-in zoom-in duration-200">
@@ -87,11 +89,11 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                <LockIcon className="w-5 h-5 text-brand-600" />
             </div>
             <div>
-                <h3 className="text-lg font-bold text-slate-800">Unlock Translation</h3>
-                <p className="text-xs text-slate-500">Secure Payment via Creem</p>
+                <h3 id="payment-dialog-title" className="text-lg font-bold text-slate-800">Unlock Translation</h3>
+                <p className="text-xs text-slate-500">Simulated checkout — no real charge</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition">
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition" aria-label="Close">
             <CloseIcon className="w-6 h-6" />
           </button>
         </div>
@@ -185,7 +187,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
         <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 text-center">
              <p className="text-xs text-slate-400 flex items-center justify-center gap-1">
                 <LockIcon className="w-3 h-3" />
-                Payments securely processed by Creem
+                Demo mode — enter any card number to proceed
              </p>
         </div>
       </div>

@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { LanguageSelector } from '../LanguageSelector';
 import { PatternUpload } from '../PatternUpload';
 import { TranslatedOutput } from '../TranslatedOutput';
+import { OriginalPreview } from '../OriginalPreview';
 import { Chatbot } from '../Chatbot';
 import { PaymentModal } from '../PaymentModal';
 import { BuyCreditsModal } from '../BuyCreditsModal';
@@ -10,15 +11,17 @@ import { translatePattern, startChatSession, sendChatMessage } from '../../servi
 import { analyzeFile } from '../../services/fileAnalyzer';
 import { estimateTranslationCost } from '../../services/pricingService';
 import { saveTranslation } from '../../services/historyService';
-import { getBalance, deductCredits, addCredits } from '../../services/creditService';
 import { useAuth } from '../../contexts/AuthContext';
-import { LANGUAGES, PRICING } from '../../constants';
+import { useCredits } from '../../contexts/CreditContext';
+import { LANGUAGES, SOURCE_LANGUAGES, AUTO_DETECT_LANGUAGE, PRICING } from '../../constants';
 import type { Language, ChatMessage, PdfMetrics, PriceEstimate, CreditPackage } from '../../types';
 
 export const DashboardPage: React.FC = () => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, idToken, isAuthenticated } = useAuth();
+  const { balance, addCredits, deductCredits } = useCredits();
 
   const [patternFile, setPatternFile] = useState<File | null>(null);
+  const [sourceLanguage, setSourceLanguage] = useState<Language>(AUTO_DETECT_LANGUAGE);
   const [targetLanguage, setTargetLanguage] = useState<Language>(LANGUAGES[0]);
   const [translatedPattern, setTranslatedPattern] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -71,37 +74,32 @@ export const DashboardPage: React.FC = () => {
     setChatMessagesAllowed(PRICING.chat.freeMessages);
 
     try {
-      const result = await translatePattern(patternFile, targetLanguage.name);
+      const sourceLangParam = sourceLanguage.code === 'auto' ? undefined : sourceLanguage.name;
+      const result = await translatePattern(patternFile, targetLanguage.name, idToken!, sourceLangParam);
       setTranslatedPattern(result.html);
-
-      if (result.usage) {
-        try {
-          const stored = JSON.parse(localStorage.getItem('ss_usage_log') || '[]');
-          stored.push({ ...result.usage, timestamp: Date.now(), estimated: pdfMetrics });
-          localStorage.setItem('ss_usage_log', JSON.stringify(stored));
-        } catch { /* localStorage may be unavailable */ }
-      }
 
       saveTranslation({
         fileName: patternFile.name,
         fileType: patternFile.type || 'unknown',
+        sourceLanguage: sourceLanguage.name,
         targetLanguage: targetLanguage.name,
         translatedHtml: result.html,
         pdfMetrics,
         cost: priceEstimate?.translationCost ?? 0,
       });
 
-      const sessionId = await startChatSession(result.html);
+      const sessionId = await startChatSession(result.html, idToken!);
       setChatSessionId(sessionId);
     } catch (err) {
-      setError('An error occurred during translation. Please try again.');
+      const message = err instanceof Error ? err.message : 'An unexpected error occurred.';
+      setError(message);
       console.error(err);
     } finally {
       setIsLoading(false);
     }
-  }, [patternFile, targetLanguage, pdfMetrics, priceEstimate]);
+  }, [patternFile, sourceLanguage, targetLanguage, pdfMetrics, priceEstimate, idToken]);
 
-  const handleTranslateClick = useCallback(() => {
+  const handleTranslateClick = useCallback(async () => {
     if (!patternFile) {
       setError('Please upload a pattern file to translate.');
       return;
@@ -113,36 +111,37 @@ export const DashboardPage: React.FC = () => {
 
     if (isAuthenticated && user?.email) {
       const cost = priceEstimate.translationCost;
-      const balance = getBalance(user.email);
       if (balance >= cost - 0.001) {
-        deductCredits(user.email, cost);
-        executeTranslation();
+        const ok = await deductCredits(cost);
+        if (ok) {
+          executeTranslation();
+        } else {
+          setIsBuyCreditsOpen(true);
+        }
       } else {
         setIsBuyCreditsOpen(true);
       }
     } else {
       setIsPaymentModalOpen(true);
     }
-  }, [patternFile, priceEstimate, isAuthenticated, user, executeTranslation]);
+  }, [patternFile, priceEstimate, isAuthenticated, user, balance, deductCredits, executeTranslation]);
 
   const handlePaymentSuccess = useCallback(() => {
     setIsPaymentModalOpen(false);
     executeTranslation();
   }, [executeTranslation]);
 
-  const handleCreditPurchase = useCallback((pack: CreditPackage) => {
+  const handleCreditPurchase = useCallback(async (pack: CreditPackage) => {
     if (!user?.email) return;
-    addCredits(user.email, pack.credits);
+    await addCredits(pack.credits);
     setIsBuyCreditsOpen(false);
-    // After buying credits, try the translation again
     if (priceEstimate) {
-      const newBalance = getBalance(user.email);
-      if (newBalance >= priceEstimate.translationCost - 0.001) {
-        deductCredits(user.email, priceEstimate.translationCost);
+      const ok = await deductCredits(priceEstimate.translationCost);
+      if (ok) {
         executeTranslation();
       }
     }
-  }, [user, priceEstimate, executeTranslation]);
+  }, [user, priceEstimate, addCredits, deductCredits, executeTranslation]);
 
   const handleSendMessage = useCallback(async (message: string) => {
     if (!chatSessionId) return;
@@ -153,18 +152,19 @@ export const DashboardPage: React.FC = () => {
     setChatMessageCount(prev => prev + 1);
 
     try {
-      const text = await sendChatMessage(chatSessionId, message);
+      const text = await sendChatMessage(chatSessionId, message, idToken!);
       setChatHistory((prev) => [
         ...prev,
         { author: 'model', content: text },
       ]);
     } catch (err) {
-      setChatError('Sorry, something went wrong. Please try again.');
+      const message = err instanceof Error ? err.message : 'Sorry, something went wrong. Please try again.';
+      setChatError(message);
       console.error('Error sending chat message:', err);
     } finally {
       setIsChatLoading(false);
     }
-  }, [chatSessionId]);
+  }, [chatSessionId, idToken]);
 
   const handleUnlockChat = useCallback(() => {
     setChatMessagesAllowed(prev => prev + PRICING.chat.packageSize);
@@ -180,10 +180,18 @@ export const DashboardPage: React.FC = () => {
       <div className="max-w-6xl mx-auto">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-brand-200 mb-8">
           <div className="flex flex-col md:flex-row items-end justify-between gap-6">
-            <div className="flex-grow w-full md:w-auto">
+            <div className="flex flex-grow gap-4 w-full md:w-auto">
+              <LanguageSelector
+                selectedLanguage={sourceLanguage}
+                onSelectLanguage={setSourceLanguage}
+                label="Source:"
+                languages={SOURCE_LANGUAGES}
+                disabled={isLoading}
+              />
               <LanguageSelector
                 selectedLanguage={targetLanguage}
                 onSelectLanguage={setTargetLanguage}
+                label="Translate to:"
                 disabled={isLoading}
               />
             </div>
@@ -213,35 +221,64 @@ export const DashboardPage: React.FC = () => {
           <PricePreview metrics={pdfMetrics} estimate={priceEstimate} />
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          <div className="flex flex-col h-full">
+        {!translatedPattern && (
+          <div className="mb-8">
             <div className="flex items-center justify-between mb-3 px-1">
-              <h2 className="text-lg font-bold text-brand-800">Original Pattern</h2>
+              <h2 className="text-lg font-bold text-brand-800">Upload Pattern</h2>
               {patternFile && <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-medium">Ready</span>}
             </div>
-            <div className="flex-grow">
-              <PatternUpload
-                selectedFile={patternFile}
-                onFileSelect={handleFileSelect}
-                disabled={isLoading}
-              />
-            </div>
+            <PatternUpload
+              selectedFile={patternFile}
+              onFileSelect={handleFileSelect}
+              disabled={isLoading}
+            />
           </div>
+        )}
 
-          <div className="flex flex-col h-full">
-            <div className="flex items-center justify-between mb-3 px-1">
-              <h2 className="text-lg font-bold text-brand-800">Translated Result</h2>
-              {translatedPattern && <span className="text-xs bg-brand-100 text-brand-700 px-2 py-1 rounded-full font-medium">Completed</span>}
+        {(translatedPattern || isLoading || error) && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 mb-8">
+            <div className="flex flex-col">
+              <div className="flex items-center justify-between mb-3 px-1">
+                <h2 className="text-lg font-bold text-brand-800">Original</h2>
+                {patternFile && (
+                  <button
+                    onClick={() => handleFileSelect(null)}
+                    disabled={isLoading}
+                    className="text-xs text-brand-500 hover:text-brand-700 transition-colors disabled:opacity-50"
+                  >
+                    Change file
+                  </button>
+                )}
+              </div>
+              <div className="flex-grow">
+                {patternFile ? (
+                  <OriginalPreview file={patternFile} />
+                ) : (
+                  <PatternUpload
+                    selectedFile={patternFile}
+                    onFileSelect={handleFileSelect}
+                    disabled={isLoading}
+                  />
+                )}
+              </div>
             </div>
-            <div className="flex-grow">
-              <TranslatedOutput
-                text={translatedPattern}
-                isLoading={isLoading}
-                error={error}
-              />
+
+            <div className="flex flex-col">
+              <div className="flex items-center justify-between mb-3 px-1">
+                <h2 className="text-lg font-bold text-brand-800">Translation</h2>
+                {translatedPattern && <span className="text-xs bg-brand-100 text-brand-700 px-2 py-1 rounded-full font-medium">Completed</span>}
+              </div>
+              <div className="flex-grow">
+                <TranslatedOutput
+                  text={translatedPattern}
+                  isLoading={isLoading}
+                  error={error}
+                  languageCode={targetLanguage.code}
+                />
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {chatSessionId && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">

@@ -42,7 +42,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ history, onSendMessage, isLoad
         </span>
       </div>
       <div className="h-80 bg-brand-50 rounded-lg p-4 flex flex-col border border-brand-200">
-        <div className="flex-grow overflow-y-auto mb-4 space-y-4">
+        <div className="flex-grow overflow-y-auto mb-4 space-y-4" role="log" aria-live="polite">
           {history.map((msg, index) => (
             <div key={index} className={`flex ${msg.author === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-xs md:max-w-md lg:max-w-lg px-4 py-2 rounded-xl ${msg.author === 'user' ? 'bg-brand-600 text-white' : 'bg-brand-200 text-brand-800'}`}>
@@ -53,7 +53,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ history, onSendMessage, isLoad
           {isLoading && (
             <div className="flex justify-start">
                <div className="max-w-xs md:max-w-md lg:max-w-lg px-4 py-2 rounded-xl bg-brand-200 text-brand-800">
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-2" role="status" aria-label="Thinking">
                     <div className="w-2 h-2 bg-brand-500 rounded-full animate-pulse [animation-delay:-0.3s]"></div>
                     <div className="w-2 h-2 bg-brand-500 rounded-full animate-pulse [animation-delay:-0.15s]"></div>
                     <div className="w-2 h-2 bg-brand-500 rounded-full animate-pulse"></div>
@@ -62,7 +62,7 @@ export const Chatbot: React.FC<ChatbotProps> = ({ history, onSendMessage, isLoad
             </div>
           )}
           {error && (
-             <div className="flex justify-start">
+             <div className="flex justify-start" role="alert">
                <div className="max-w-xs md:max-w-md lg:max-w-lg px-4 py-2 rounded-xl bg-red-100 text-red-700">
                 <p className="text-sm">{error}</p>
               </div>

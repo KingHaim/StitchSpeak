@@ -1,9 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { GLOSSARY_TERMS, GLOSSARY_LANGUAGES } from '../../data/glossary';
 import { lookupTermWithAI, type AiTermResult } from '../../services/glossaryService';
+import { useAuth } from '../../contexts/AuthContext';
 import { SearchIcon } from '../icons/NavIcons';
 
 export const GlossaryPage: React.FC = () => {
+  const { idToken, isAuthenticated } = useAuth();
   const [sourceLang, setSourceLang] = useState('en');
   const [targetLang, setTargetLang] = useState('es');
   const [search, setSearch] = useState('');
@@ -46,11 +48,15 @@ export const GlossaryPage: React.FC = () => {
   const handleAiLookup = async () => {
     const q = aiQuery.trim() || search.trim();
     if (!q) return;
+    if (!isAuthenticated || !idToken) {
+      setAiError('Please sign in to use AI lookup.');
+      return;
+    }
     setAiLoading(true);
     setAiError(null);
     setAiResult(null);
     try {
-      const result = await lookupTermWithAI(q, sourceName, targetName);
+      const result = await lookupTermWithAI(q, sourceName, targetName, idToken);
       setAiResult(result);
     } catch (err) {
       setAiError(err instanceof Error ? err.message : 'Lookup failed');
