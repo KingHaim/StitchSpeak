@@ -75,7 +75,7 @@ export const DashboardPage: React.FC = () => {
 
     try {
       const sourceLangParam = sourceLanguage.code === 'auto' ? undefined : sourceLanguage.name;
-      const result = await translatePattern(patternFile, targetLanguage.name, idToken!, sourceLangParam);
+      const result = await translatePattern(patternFile, targetLanguage.name, idToken, sourceLangParam);
       setTranslatedPattern(result.html);
 
       saveTranslation({
@@ -88,8 +88,10 @@ export const DashboardPage: React.FC = () => {
         cost: priceEstimate?.translationCost ?? 0,
       });
 
-      const sessionId = await startChatSession(result.html, idToken!);
-      setChatSessionId(sessionId);
+      if (idToken) {
+        const sessionId = await startChatSession(result.html, idToken);
+        setChatSessionId(sessionId);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'An unexpected error occurred.';
       setError(message);

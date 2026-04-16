@@ -1,5 +1,6 @@
 import { GoogleGenAI, type Chat } from '@google/genai';
 import crypto from 'node:crypto';
+import { extractImages, buildImageCatalog, replaceImageMarkers } from './pdfImages.js';
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -92,6 +93,14 @@ const createSystemInstruction = (language: string, sourceLanguage?: string) => {
 - For table cells, use padding and center-alignment where appropriate.
 - DO NOT use markdown code blocks (\`\`\`html).
 
+### 5. IMAGE PLACEMENT (CRITICAL):
+- You may be given a numbered list of images extracted from the PDF (an "IMAGE CATALOG").
+- Each image has an ID (e.g. IMG_1), a page number, and a description of where it appeared on the page.
+- You MUST place each image in the translated HTML at the position corresponding to where it appeared in the original document.
+- Use the exact marker syntax: [IMG_1], [IMG_2], etc. Place each marker on its own line, wrapped in a <p> tag, e.g. <p>[IMG_1]</p>.
+- Do NOT skip any images. Every IMG marker from the catalog must appear exactly once in your output.
+- If no IMAGE CATALOG is provided, ignore this section.
+
 ${specificRules}
 
 The priority is a high-fidelity reconstruction. A pattern is useless without its charts and tables. Ensure they are perfectly translated and formatted as HTML tables.`;
@@ -112,9 +121,16 @@ export async function translatePattern(
   const base64Data = fileBuffer.toString('base64');
   const systemInstruction = createSystemInstruction(language, sourceLanguage);
 
+  const images = await extractImages(fileBuffer);
+  const catalog = buildImageCatalog(images);
+
   const sourcePromptClause = sourceLanguage
     ? `The pattern is in ${sourceLanguage}. Translate`
     : 'Detect the source language and translate';
+
+  const catalogInstruction = catalog
+    ? `\n\nThe following images were extracted from this PDF. Place each marker at the corresponding position in your HTML output.\n${catalog}\n`
+    : '';
 
   const response = await withRetry(() =>
     getAI().models.generateContent({
@@ -127,7 +143,7 @@ export async function translatePattern(
         {
           parts: [
             {
-              text: `${sourcePromptClause} and visually reconstruct this knitting pattern into ${language}. Pay special attention to TABLES and STITCH CHARTS; convert all of them into HTML <table> structures. Use the "Zebra Bolding" rule for all multi-size instructions. Ensure every technical term is correctly localized and all source language text is removed. Return raw HTML.`,
+              text: `${sourcePromptClause} and visually reconstruct this knitting pattern into ${language}. Pay special attention to TABLES and STITCH CHARTS; convert all of them into HTML <table> structures. Use the "Zebra Bolding" rule for all multi-size instructions. Ensure every technical term is correctly localized and all source language text is removed. Return raw HTML.${catalogInstruction}`,
             },
             {
               inlineData: { data: base64Data, mimeType },
@@ -146,7 +162,10 @@ export async function translatePattern(
       }
     : null;
 
-  return { html: response.text || '', usage };
+  let html = response.text || '';
+  html = replaceImageMarkers(html, images);
+
+  return { html, usage };
 }
 
 // --- Chat session management ---

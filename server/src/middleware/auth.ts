@@ -46,3 +46,34 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     }
   }
 }
+
+/**
+ * Like requireAuth but allows unauthenticated requests through.
+ * If a valid token is present, attaches user info; otherwise continues as guest.
+ */
+export async function optionalAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) {
+    next();
+    return;
+  }
+
+  const token = header.slice(7);
+
+  try {
+    const ticket = await oauthClient.verifyIdToken({
+      idToken: token,
+      audience: GOOGLE_CLIENT_ID || undefined,
+    });
+
+    const payload = ticket.getPayload();
+    if (payload?.sub) {
+      (req as AuthenticatedRequest).userSub = payload.sub;
+      (req as AuthenticatedRequest).userEmail = payload.email;
+    }
+  } catch {
+    // Invalid token — proceed as guest
+  }
+
+  next();
+}

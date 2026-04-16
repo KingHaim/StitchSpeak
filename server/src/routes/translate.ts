@@ -1,11 +1,11 @@
 import { Router, type Request, type Response } from 'express';
-import { requireAuth } from '../middleware/auth.js';
+import { optionalAuth } from '../middleware/auth.js';
 import { uploadPdf } from '../middleware/upload.js';
 import { translatePattern } from '../services/gemini.js';
 
 const router = Router();
 
-router.post('/', requireAuth, uploadPdf, async (req: Request, res: Response) => {
+router.post('/', optionalAuth, uploadPdf, async (req: Request, res: Response) => {
   try {
     const file = req.file;
     const language = req.body?.language;

@@ -32,13 +32,14 @@ app.use(
   }),
 );
 
-app.use(express.json({ limit: '25mb' }));
+app.use(express.json({ limit: '50mb' }));
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
 app.use('/api/translate', translateRouter);
+
 app.use('/api/chat', chatRouter);
 app.use('/api/credits', creditsRouter);
 app.use('/api/glossary', glossaryRouter);

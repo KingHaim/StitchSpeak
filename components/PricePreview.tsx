@@ -26,10 +26,14 @@ export const PricePreview: React.FC<PricePreviewProps> = ({ metrics, estimate })
         <h3 className="text-sm font-bold text-slate-700">Cost Estimate</h3>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 mb-4">
+      <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="bg-slate-50 rounded-xl p-3 text-center">
           <p className="text-xs text-slate-500 mb-1">Pages</p>
           <p className="text-lg font-bold text-slate-700">{metrics.pages}</p>
+        </div>
+        <div className="bg-slate-50 rounded-xl p-3 text-center">
+          <p className="text-xs text-slate-500 mb-1">Characters</p>
+          <p className="text-lg font-bold text-slate-700">{metrics.characters.toLocaleString()}</p>
         </div>
         <div className="bg-amber-50 rounded-xl p-3 text-center border border-amber-200">
           <p className="text-xs text-amber-600 mb-1 font-medium">Translation</p>

@@ -84,7 +84,8 @@ async function checkedFetch(
   return response;
 }
 
-function authHeaders(idToken: string): Record<string, string> {
+function authHeaders(idToken: string | null): Record<string, string> {
+  if (!idToken) return {};
   return { Authorization: `Bearer ${idToken}` };
 }
 
@@ -93,7 +94,7 @@ export { TranslationError };
 export const translatePattern = async (
   file: File,
   language: string,
-  idToken: string,
+  idToken: string | null,
   sourceLanguage?: string,
 ): Promise<TranslationResult> => {
   const formData = new FormData();
