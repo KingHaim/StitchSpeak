@@ -1,13 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   HomeIcon,
   FolderIcon,
   GridIcon,
 } from './icons/NavIcons';
 import { CloseIcon } from './icons/CloseIcon';
+import { BuyCreditsModal } from './BuyCreditsModal';
+import { CreditsOverviewModal } from './CreditsOverviewModal';
 import { useAuth } from '../contexts/AuthContext';
 import { useCredits } from '../contexts/CreditContext';
-import type { PageId } from '../types';
+import { getHistory } from '../services/historyService';
+import type { PageId, CreditPackage } from '../types';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -24,7 +27,16 @@ const navItems: { label: string; icon: React.FC<React.SVGProps<SVGSVGElement>>; 
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activePage, onNavigate }) => {
   const { isAuthenticated } = useAuth();
-  const { balance } = useCredits();
+  const { balance, addCredits } = useCredits();
+  const [showCreditsOverview, setShowCreditsOverview] = useState(false);
+  const [showBuyCredits, setShowBuyCredits] = useState(false);
+
+  const handlePurchase = async (pack: CreditPackage) => {
+    await addCredits(pack.credits);
+    setShowBuyCredits(false);
+  };
+
+  const historyRecords = getHistory();
 
   return (
     <>
@@ -79,20 +91,41 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activePage, o
 
         {isAuthenticated && (
           <div className="pb-4 pt-2 flex flex-col items-center">
-            <div className="relative w-12 h-12">
-              <svg className="w-12 h-12 -rotate-90" viewBox="0 0 36 36">
-                <circle cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" strokeWidth="2" className="text-brand-100" />
-                <circle cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-brand-600"
-                  strokeDasharray={`${Math.min(balance, 100)} 100`} strokeLinecap="round" />
-              </svg>
-              <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-brand-800">
-                {balance % 1 === 0 ? balance : balance.toFixed(1)}
-              </span>
-            </div>
-            <span className="text-[9px] text-brand-400 font-medium mt-1">Credits</span>
+            <button
+              type="button"
+              onClick={() => setShowCreditsOverview(true)}
+              className="flex flex-col items-center group"
+              aria-label="Open credits overview"
+            >
+              <div className="relative w-12 h-12">
+                <svg className="w-12 h-12 -rotate-90" viewBox="0 0 36 36">
+                  <circle cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" strokeWidth="2" className="text-brand-100" />
+                  <circle cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-brand-600"
+                    strokeDasharray={`${Math.min(balance, 100)} 100`} strokeLinecap="round" />
+                </svg>
+                <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-brand-800 group-hover:text-brand-600 transition-colors">
+                  {balance % 1 === 0 ? balance : balance.toFixed(1)}
+                </span>
+              </div>
+              <span className="text-[9px] text-brand-400 group-hover:text-brand-600 font-medium mt-1 transition-colors">Credits</span>
+            </button>
           </div>
         )}
       </aside>
+
+      <CreditsOverviewModal
+        isOpen={showCreditsOverview}
+        onClose={() => setShowCreditsOverview(false)}
+        onTopUp={() => setShowBuyCredits(true)}
+        balance={balance}
+        records={historyRecords}
+      />
+
+      <BuyCreditsModal
+        isOpen={showBuyCredits}
+        onClose={() => setShowBuyCredits(false)}
+        onPurchase={handlePurchase}
+      />
     </>
   );
 };
