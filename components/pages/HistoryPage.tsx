@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { getHistory, getTranslationHtml, deleteTranslation, clearHistory } from '../../services/historyService';
 import type { TranslationRecord } from '../../types';
 import { CloseIcon } from '../icons/CloseIcon';
@@ -8,10 +8,34 @@ export const HistoryPage: React.FC = () => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedHtml, setExpandedHtml] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [languageFilter, setLanguageFilter] = useState<'all' | string>('all');
 
   useEffect(() => {
     setRecords(getHistory());
   }, []);
+
+  const availableLanguages = useMemo(() => {
+    return Array.from(new Set(records.map(record => record.targetLanguage))).sort();
+  }, [records]);
+
+  const filteredRecords = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+
+    return records.filter((record) => {
+      const matchesSearch = !query || [
+        record.fileName,
+        record.sourceLanguage,
+        record.targetLanguage,
+      ]
+        .filter(Boolean)
+        .some((value) => value!.toLowerCase().includes(query));
+
+      const matchesLanguage = languageFilter === 'all' || record.targetLanguage === languageFilter;
+
+      return matchesSearch && matchesLanguage;
+    });
+  }, [records, searchQuery, languageFilter]);
 
   const handleToggleExpand = (id: string) => {
     if (expandedId === id) {
@@ -61,6 +85,8 @@ export const HistoryPage: React.FC = () => {
     }
     clearHistory();
     setRecords([]);
+    setExpandedId(null);
+    setExpandedHtml(null);
     setConfirmClear(false);
   };
 
@@ -74,12 +100,16 @@ export const HistoryPage: React.FC = () => {
     });
   };
 
+  const hasActiveFilters = searchQuery.trim().length > 0 || languageFilter !== 'all';
+
   return (
     <div className="max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-8">
         <div>
           <h2 className="text-2xl font-bold text-brand-800 mb-1">My Patterns</h2>
-          <p className="text-brand-400">{records.length} translated pattern{records.length !== 1 ? 's' : ''}</p>
+          <p className="text-brand-400">
+            {filteredRecords.length} of {records.length} translated pattern{records.length !== 1 ? 's' : ''}
+          </p>
         </div>
         {records.length > 0 && (
           <button
@@ -96,6 +126,58 @@ export const HistoryPage: React.FC = () => {
         )}
       </div>
 
+      {records.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-brand-200 p-4 sm:p-5 mb-6">
+          <div className="flex flex-col lg:flex-row gap-3 lg:items-end">
+            <div className="flex-1">
+              <label htmlFor="pattern-search" className="block text-xs font-semibold text-brand-500 uppercase tracking-wider mb-1.5">
+                Search patterns
+              </label>
+              <input
+                id="pattern-search"
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by file name or language"
+                className="w-full px-4 py-3 border border-brand-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors"
+              />
+            </div>
+
+            <div className="w-full lg:w-60">
+              <label htmlFor="language-filter" className="block text-xs font-semibold text-brand-500 uppercase tracking-wider mb-1.5">
+                Target language
+              </label>
+              <select
+                id="language-filter"
+                value={languageFilter}
+                onChange={(e) => setLanguageFilter(e.target.value)}
+                className="w-full px-4 py-3 border border-brand-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors"
+              >
+                <option value="all">All languages</option>
+                {availableLanguages.map((language) => (
+                  <option key={language} value={language}>
+                    {language}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setLanguageFilter('all');
+                }}
+                className="px-4 py-3 text-sm font-medium rounded-xl border border-brand-200 text-brand-600 hover:bg-brand-50 transition-colors"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {records.length === 0 ? (
         <div className="bg-white rounded-2xl shadow-sm border border-brand-200 p-16 text-center">
           <div className="bg-brand-100 p-5 rounded-full inline-block mb-4">
@@ -108,9 +190,26 @@ export const HistoryPage: React.FC = () => {
             Your translated patterns will show up here after you complete a translation.
           </p>
         </div>
+      ) : filteredRecords.length === 0 ? (
+        <div className="bg-white rounded-2xl shadow-sm border border-brand-200 p-12 text-center">
+          <h3 className="text-lg font-bold text-brand-800 mb-1">No matching patterns</h3>
+          <p className="text-brand-400 text-sm mb-4">
+            Try a different file name or language filter.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setSearchQuery('');
+              setLanguageFilter('all');
+            }}
+            className="px-4 py-2 text-sm font-medium rounded-lg border border-brand-200 text-brand-600 hover:bg-brand-50 transition-colors"
+          >
+            Reset filters
+          </button>
+        </div>
       ) : (
         <div className="space-y-4">
-          {records.map(record => (
+          {filteredRecords.map(record => (
             <div key={record.id} className="bg-white rounded-2xl shadow-sm border border-brand-200 overflow-hidden">
               <button
                 type="button"
@@ -126,7 +225,7 @@ export const HistoryPage: React.FC = () => {
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold text-brand-800 truncate">{record.fileName}</p>
-                    <div className="flex items-center gap-3 text-xs text-brand-400 mt-0.5">
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-brand-400 mt-0.5">
                       <span>{formatDate(record.timestamp)}</span>
                       <span className="bg-brand-100 text-brand-600 px-2 py-0.5 rounded font-medium">
                         {record.sourceLanguage && record.sourceLanguage !== 'Auto-Detect'
