@@ -172,6 +172,22 @@ export const DashboardPage: React.FC = () => {
     setChatMessagesAllowed(prev => prev + PRICING.chat.packageSize);
   }, []);
 
+  const handleStartNewTranslation = useCallback(() => {
+    setPatternFile(null);
+    setPdfMetrics(null);
+    setPriceEstimate(null);
+    setTranslatedPattern('');
+    setError(null);
+    setIsLoading(false);
+    setSourceLanguage(AUTO_DETECT_LANGUAGE);
+    setTargetLanguage(LANGUAGES[0]);
+    setChatSessionId(null);
+    setChatHistory([]);
+    setChatError(null);
+    setChatMessageCount(0);
+    setChatMessagesAllowed(PRICING.chat.freeMessages);
+  }, []);
+
   const creditCost = priceEstimate?.translationCost ?? 0;
   const translateLabel = isAuthenticated
     ? `Translate (${creditCost.toFixed(1)} credits)`
@@ -266,9 +282,20 @@ export const DashboardPage: React.FC = () => {
             </div>
 
             <div className="flex flex-col">
-              <div className="flex items-center justify-between mb-3 px-1">
+              <div className="flex items-center justify-between mb-3 px-1 gap-3">
                 <h2 className="text-lg font-bold text-brand-800">Translation</h2>
-                {translatedPattern && <span className="text-xs bg-brand-100 text-brand-700 px-2 py-1 rounded-full font-medium">Completed</span>}
+                <div className="flex items-center gap-2">
+                  {translatedPattern && (
+                    <button
+                      onClick={handleStartNewTranslation}
+                      disabled={isLoading}
+                      className="text-xs px-3 py-1.5 rounded-full border border-brand-200 bg-white text-brand-700 hover:bg-brand-50 transition-colors disabled:opacity-50"
+                    >
+                      Translate another pattern
+                    </button>
+                  )}
+                  {translatedPattern && <span className="text-xs bg-brand-100 text-brand-700 px-2 py-1 rounded-full font-medium">Completed</span>}
+                </div>
               </div>
               <div className="flex-grow">
                 <TranslatedOutput
