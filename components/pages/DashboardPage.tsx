@@ -196,9 +196,9 @@ export const DashboardPage: React.FC = () => {
   return (
     <>
       <div className="max-w-6xl mx-auto">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-brand-200 mb-8">
-          <div className="flex flex-col md:flex-row items-end justify-between gap-6">
-            <div className="flex flex-grow gap-4 w-full md:w-auto">
+        <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-brand-200 mb-6 sm:mb-8">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between md:gap-6">
+            <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto md:flex-grow">
               <LanguageSelector
                 selectedLanguage={sourceLanguage}
                 onSelectLanguage={setSourceLanguage}
@@ -216,7 +216,7 @@ export const DashboardPage: React.FC = () => {
             <button
               onClick={handleTranslateClick}
               disabled={isLoading || !patternFile || isAnalyzing || !priceEstimate}
-              className="w-full md:w-auto flex items-center justify-center px-8 py-3 bg-brand-600 text-white font-bold rounded-xl shadow-lg hover:bg-brand-700 focus:outline-none focus:ring-4 focus:ring-brand-200 transition-all duration-300 disabled:bg-brand-200 disabled:shadow-none disabled:cursor-not-allowed h-[42px]"
+              className="w-full md:w-auto flex items-center justify-center px-6 sm:px-8 py-3.5 bg-brand-600 text-white font-bold rounded-xl shadow-lg hover:bg-brand-700 focus:outline-none focus:ring-4 focus:ring-brand-200 transition-all duration-300 disabled:bg-brand-200 disabled:shadow-none disabled:cursor-not-allowed min-h-[48px]"
             >
               {isLoading ? (
                 <>
@@ -240,10 +240,10 @@ export const DashboardPage: React.FC = () => {
         )}
 
         {!translatedPattern && (
-          <div className="mb-8">
-            <div className="flex items-center justify-between mb-3 px-1">
+          <div className="mb-6 sm:mb-8">
+            <div className="flex items-center justify-between mb-3 px-1 gap-3">
               <h2 className="text-lg font-bold text-brand-800">Upload Pattern</h2>
-              {patternFile && <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-medium">Ready</span>}
+              {patternFile && <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-medium shrink-0">Ready</span>}
             </div>
             <PatternUpload
               selectedFile={patternFile}
@@ -254,21 +254,21 @@ export const DashboardPage: React.FC = () => {
         )}
 
         {(translatedPattern || isLoading || error) && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 mb-8">
-            <div className="flex flex-col">
-              <div className="flex items-center justify-between mb-3 px-1">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 mb-6 sm:mb-8">
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center justify-between mb-3 px-1 gap-3">
                 <h2 className="text-lg font-bold text-brand-800">Original</h2>
                 {patternFile && (
                   <button
                     onClick={() => handleFileSelect(null)}
                     disabled={isLoading}
-                    className="text-xs text-brand-500 hover:text-brand-700 transition-colors disabled:opacity-50"
+                    className="text-xs text-brand-500 hover:text-brand-700 transition-colors disabled:opacity-50 shrink-0"
                   >
                     Change file
                   </button>
                 )}
               </div>
-              <div className="flex-grow">
+              <div className="flex-grow min-w-0">
                 {patternFile ? (
                   <OriginalPreview file={patternFile} />
                 ) : (
@@ -281,23 +281,23 @@ export const DashboardPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex flex-col">
-              <div className="flex items-center justify-between mb-3 px-1 gap-3">
+            <div className="flex flex-col min-w-0">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 px-1 gap-3">
                 <h2 className="text-lg font-bold text-brand-800">Translation</h2>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                   {translatedPattern && (
                     <button
                       onClick={handleStartNewTranslation}
                       disabled={isLoading}
-                      className="text-xs px-3 py-1.5 rounded-full border border-brand-200 bg-white text-brand-700 hover:bg-brand-50 transition-colors disabled:opacity-50"
+                      className="text-xs px-3 py-2 rounded-full border border-brand-200 bg-white text-brand-700 hover:bg-brand-50 transition-colors disabled:opacity-50 w-full sm:w-auto"
                     >
                       Translate another pattern
                     </button>
                   )}
-                  {translatedPattern && <span className="text-xs bg-brand-100 text-brand-700 px-2 py-1 rounded-full font-medium">Completed</span>}
+                  {translatedPattern && <span className="text-xs bg-brand-100 text-brand-700 px-2 py-1 rounded-full font-medium w-fit">Completed</span>}
                 </div>
               </div>
-              <div className="flex-grow">
+              <div className="flex-grow min-w-0">
                 <TranslatedOutput
                   text={translatedPattern}
                   isLoading={isLoading}
@@ -323,7 +323,7 @@ export const DashboardPage: React.FC = () => {
           </div>
         )}
 
-        <p className="text-center text-sm text-brand-400 mt-12">
+        <p className="text-center text-sm text-brand-400 mt-10 sm:mt-12 pb-4">
           Localized terminology for expert knitters.
         </p>
       </div>

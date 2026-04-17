@@ -94,27 +94,22 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({ isOpen, onClos
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="buy-credits-dialog-title">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="buy-credits-dialog-title">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}></div>
 
-      <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-        <div className="bg-slate-50 p-6 border-b border-slate-100 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-brand-100 rounded-full">
-              <LockIcon className="w-5 h-5 text-brand-600" />
-            </div>
-            <div>
-              <h3 id="buy-credits-dialog-title" className="text-lg font-bold text-slate-800">Buy Credits</h3>
-              <p className="text-xs text-slate-500">Enter card details to complete your purchase</p>
-            </div>
+      <div className="relative w-full max-w-lg bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 max-h-[92vh] flex flex-col">
+        <div className="bg-slate-50 p-4 sm:p-6 border-b border-slate-100 flex justify-between items-center">
+          <div className="pr-3">
+            <h3 id="buy-credits-dialog-title" className="text-lg font-bold text-slate-800">Buy Credits</h3>
+            <p className="text-xs text-slate-500">Enter card details to complete your purchase</p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition" aria-label="Close">
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition shrink-0" aria-label="Close">
             <CloseIcon className="w-6 h-6" />
           </button>
         </div>
 
-        <form onSubmit={handleBuy} className="p-6">
-          <div className="grid grid-cols-2 gap-3 mb-6">
+        <form onSubmit={handleBuy} className="p-4 sm:p-6 overflow-y-auto flex-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
             {CREDIT_PACKAGES.map((pack, idx) => {
               const perCredit = pack.price / pack.credits;
               const isSelected = idx === selectedIdx;
@@ -124,7 +119,7 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({ isOpen, onClos
                   key={pack.credits}
                   type="button"
                   onClick={() => setSelectedIdx(idx)}
-                  className={`relative p-4 rounded-xl border-2 text-left transition-all ${
+                  className={`relative p-4 rounded-xl border-2 text-left transition-all min-h-[112px] ${
                     isSelected
                       ? 'border-brand-600 bg-brand-50'
                       : 'border-slate-200 hover:border-brand-300 bg-white'
@@ -161,7 +156,7 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({ isOpen, onClos
                 <input
                   type="text"
                   placeholder="0000 0000 0000 0000"
-                  className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors"
+                  className="w-full pl-10 pr-4 py-3.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors text-base"
                   value={cardNumber}
                   onChange={handleCardChange}
                   required
@@ -172,13 +167,13 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({ isOpen, onClos
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Expiration</label>
                 <input
                   type="text"
                   placeholder="MM / YY"
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors"
+                  className="w-full px-4 py-3.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors text-base"
                   value={expiry}
                   onChange={(e) => setExpiry(e.target.value)}
                   maxLength={5}
@@ -191,7 +186,7 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({ isOpen, onClos
                   <input
                     type="text"
                     placeholder="123"
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors"
+                    className="w-full px-4 py-3.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors text-base"
                     value={cvc}
                     onChange={(e) => setCvc(e.target.value)}
                     maxLength={4}
@@ -213,7 +208,7 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({ isOpen, onClos
             <button
               type="submit"
               disabled={isProcessing}
-              className="w-full flex items-center justify-center py-3.5 px-4 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-lg shadow-md transition-all transform hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none"
+              className="w-full flex items-center justify-center py-4 px-4 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-lg shadow-md transition-all disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {isProcessing ? (
                 <span className="flex items-center">
@@ -230,7 +225,7 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({ isOpen, onClos
           </div>
         </form>
 
-        <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 text-center">
+        <div className="bg-slate-50 px-4 sm:px-6 py-3 border-t border-slate-100 text-center">
           <p className="text-xs text-slate-400 flex items-center justify-center gap-1">
             <LockIcon className="w-3 h-3" />
             Demo mode — enter any valid-looking card details to proceed

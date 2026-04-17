@@ -19,7 +19,6 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
   const [cvc, setCvc] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
       setCardNumber('');
@@ -59,33 +58,26 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
     setError(null);
     setIsProcessing(true);
 
-    // --- LEMON SQUEEZY PAYMENT SIMULATION ---
-    // In production, this would redirect to Lemon Squeezy checkout or use their API.
-    // Lemon Squeezy handles tax collection and remittance automatically.
-    
-    // Simulating network request delay and validation
     setTimeout(() => {
       if (cardNumber.replace(/\s/g, '').length < 16) {
         setError('Please enter a valid card number.');
         setIsProcessing(false);
         return;
       }
-      
-      // Success!
+
       setIsProcessing(false);
       onSuccess();
     }, 1500);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="payment-dialog-title">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="payment-dialog-title">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}></div>
-      
-      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden transform transition-all animate-in fade-in zoom-in duration-200">
-        {/* Header */}
-        <div className="bg-slate-50 p-6 border-b border-slate-100 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-brand-100 rounded-full">
+
+      <div className="relative w-full max-w-md bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden transform transition-all animate-in fade-in zoom-in duration-200 max-h-[92vh] flex flex-col">
+        <div className="bg-slate-50 p-4 sm:p-6 border-b border-slate-100 flex justify-between items-center">
+          <div className="flex items-center gap-3 pr-3">
+            <div className="p-2 bg-brand-100 rounded-full shrink-0">
                <LockIcon className="w-5 h-5 text-brand-600" />
             </div>
             <div>
@@ -93,13 +85,12 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                 <p className="text-xs text-slate-500">Simulated checkout — no real charge</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition" aria-label="Close">
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition shrink-0" aria-label="Close">
             <CloseIcon className="w-6 h-6" />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="p-6">
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1">
             <div className="mb-6 text-center">
                 <p className="text-slate-500 mb-1">Total Amount</p>
                 <p className="text-4xl font-bold text-slate-800">${price.toFixed(2)}</p>
@@ -115,7 +106,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                         <input 
                             type="text" 
                             placeholder="0000 0000 0000 0000"
-                            className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors"
+                            className="w-full pl-10 pr-4 py-3.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors text-base"
                             value={cardNumber}
                             onChange={handleCardChange}
                             required
@@ -126,13 +117,13 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
                     <div>
                         <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Expiration</label>
                         <input 
                             type="text" 
                             placeholder="MM / YY"
-                            className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors"
+                            className="w-full px-4 py-3.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors text-base"
                             value={expiry}
                             onChange={(e) => setExpiry(e.target.value)}
                             maxLength={5}
@@ -145,7 +136,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                             <input 
                                 type="text" 
                                 placeholder="123"
-                                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors"
+                                className="w-full px-4 py-3.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors text-base"
                                 value={cvc}
                                 onChange={(e) => setCvc(e.target.value)}
                                 maxLength={4}
@@ -167,7 +158,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                 <button
                     type="submit"
                     disabled={isProcessing}
-                    className="w-full flex items-center justify-center py-3.5 px-4 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-lg shadow-md transition-all transform hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none mt-2"
+                    className="w-full flex items-center justify-center py-4 px-4 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-lg shadow-md transition-all disabled:opacity-70 disabled:cursor-not-allowed mt-2"
                 >
                     {isProcessing ? (
                         <span className="flex items-center">
@@ -183,8 +174,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, onS
                 </button>
             </form>
         </div>
-        
-        <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 text-center">
+
+        <div className="bg-slate-50 px-4 sm:px-6 py-3 border-t border-slate-100 text-center">
              <p className="text-xs text-slate-400 flex items-center justify-center gap-1">
                 <LockIcon className="w-3 h-3" />
                 Demo mode — enter any card number to proceed
