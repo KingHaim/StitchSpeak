@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { LanguageSelector } from '../LanguageSelector';
 import { PatternUpload } from '../PatternUpload';
 import { TranslatedOutput } from '../TranslatedOutput';
@@ -18,7 +18,7 @@ import type { Language, ChatMessage, PdfMetrics, PriceEstimate, CreditPackage } 
 
 export const DashboardPage: React.FC = () => {
   const { user, idToken, isAuthenticated } = useAuth();
-  const { balance, startCheckout, deductCredits, refreshBalance } = useCredits();
+  const { balance, addCredits, deductCredits } = useCredits();
 
   const [patternFile, setPatternFile] = useState<File | null>(null);
   const [sourceLanguage, setSourceLanguage] = useState<Language>(AUTO_DETECT_LANGUAGE);
@@ -134,8 +134,16 @@ export const DashboardPage: React.FC = () => {
   }, [executeTranslation]);
 
   const handleCreditPurchase = useCallback(async (pack: CreditPackage) => {
-    await startCheckout(pack);
-  }, [startCheckout]);
+    if (!user?.email) return;
+    await addCredits(pack.credits);
+    setIsBuyCreditsOpen(false);
+    if (priceEstimate) {
+      const ok = await deductCredits(priceEstimate.translationCost);
+      if (ok) {
+        executeTranslation();
+      }
+    }
+  }, [user, priceEstimate, addCredits, deductCredits, executeTranslation]);
 
   const handleSendMessage = useCallback(async (message: string) => {
     if (!chatSessionId) return;
@@ -181,19 +189,6 @@ export const DashboardPage: React.FC = () => {
   }, []);
 
   const creditCost = priceEstimate?.translationCost ?? 0;
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('checkout') !== 'success') return;
-
-    refreshBalance().finally(() => {
-      params.delete('checkout');
-      const next = params.toString();
-      const newUrl = `${window.location.pathname}${next ? `?${next}` : ''}${window.location.hash}`;
-      window.history.replaceState({}, '', newUrl);
-    });
-  }, [refreshBalance]);
-
   const translateLabel = isAuthenticated
     ? `Translate (${creditCost.toFixed(1)} credits)`
     : 'Translate Now';
