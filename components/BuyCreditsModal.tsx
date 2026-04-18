@@ -101,7 +101,7 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({ isOpen, onClos
         <div className="bg-slate-50 p-4 sm:p-6 border-b border-slate-100 flex justify-between items-center">
           <div className="pr-3">
             <h3 id="buy-credits-dialog-title" className="text-lg font-bold text-slate-800">Buy Credits</h3>
-            <p className="text-xs text-slate-500">Enter card details to complete your purchase</p>
+            <p className="text-xs text-slate-500">CARD payment is enabled — enter card details to complete your purchase</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition shrink-0" aria-label="Close">
             <CloseIcon className="w-6 h-6" />
@@ -109,6 +109,22 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({ isOpen, onClos
         </div>
 
         <form onSubmit={handleBuy} className="p-4 sm:p-6 overflow-y-auto flex-1">
+          <div className="mb-6">
+            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">Payment method</p>
+            <div className="flex items-center gap-3 rounded-xl border-2 border-brand-600 bg-brand-50 px-4 py-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white border border-brand-100">
+                <CreditCardIcon className="h-5 w-5 text-brand-700" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-slate-800">CARD</p>
+                <p className="text-xs text-slate-500">Pay securely with debit or credit card</p>
+              </div>
+              <span className="ml-auto rounded-full bg-brand-600 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white">
+                Selected
+              </span>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
             {CREDIT_PACKAGES.map((pack, idx) => {
               const perCredit = pack.price / pack.credits;
