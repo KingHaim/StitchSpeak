@@ -32,7 +32,14 @@ app.use(
   }),
 );
 
-app.use(express.json({ limit: '50mb' }));
+app.use((req, res, next) => {
+  if (req.path === '/api/credits/webhook') {
+    next();
+    return;
+  }
+
+  express.json({ limit: '50mb' })(req, res, next);
+});
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });

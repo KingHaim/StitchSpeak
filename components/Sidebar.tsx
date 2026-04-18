@@ -27,13 +27,12 @@ const navItems: { label: string; icon: React.FC<React.SVGProps<SVGSVGElement>>; 
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activePage, onNavigate }) => {
   const { isAuthenticated } = useAuth();
-  const { balance, addCredits } = useCredits();
+  const { balance, startCheckout } = useCredits();
   const [showCreditsOverview, setShowCreditsOverview] = useState(false);
   const [showBuyCredits, setShowBuyCredits] = useState(false);
 
   const handlePurchase = async (pack: CreditPackage) => {
-    await addCredits(pack.credits);
-    setShowBuyCredits(false);
+    await startCheckout(pack);
   };
 
   const historyRecords = getHistory();

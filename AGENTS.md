@@ -27,6 +27,9 @@ StitchSpeak is a React 19 + TypeScript + Tailwind CSS v4 frontend (Vite) with an
 | `PORT` | `server/.env` | Port the Express server listens on (default `3001`) |
 | `FRONTEND_URL` | `server/.env` | Comma-separated extra CORS origins (localhost dev ports are always allowed) |
 | `DATA_DIR` | `server/.env` | Directory for persistent data like the credits DB (default `./data`) |
+| `STRIPE_SECRET_KEY` | `server/.env` | Stripe secret key for creating card checkout sessions |
+| `STRIPE_WEBHOOK_SECRET` | `server/.env` | Stripe webhook signing secret for completed checkout events |
+| `APP_URL` | `server/.env` | Frontend app URL used for Stripe checkout success/cancel redirects |
 | `VITE_GOOGLE_CLIENT_ID` | `.env` | Google OAuth Web client ID for sign-in |
 | `VITE_API_URL` | `.env` | Backend origin the frontend calls (e.g. `http://localhost:3001`) |
 

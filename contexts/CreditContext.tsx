@@ -3,6 +3,7 @@ import { useAuth } from './AuthContext';
 import {
   getBalance as fetchBalance,
   addCredits as apiAdd,
+  createCreditsCheckout as apiCreateCheckout,
   deductCredits as apiDeduct,
 } from '../services/creditService';
 
@@ -12,6 +13,7 @@ type CreditContextValue = {
   balance: number;
   isLoading: boolean;
   addCredits: (amount: number) => Promise<void>;
+  startCheckout: (pack: { credits: number; price: number }) => Promise<void>;
   deductCredits: (amount: number) => Promise<boolean>;
   refreshBalance: () => Promise<void>;
 };
@@ -98,6 +100,17 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     [idToken],
   );
 
+  const startCheckout = useCallback(
+    async (pack: { credits: number; price: number }) => {
+      if (!idToken) {
+        throw new Error('Please sign in to buy credits.');
+      }
+      const checkoutUrl = await apiCreateCheckout(idToken, pack);
+      window.location.href = checkoutUrl;
+    },
+    [idToken],
+  );
+
   const deductCredits = useCallback(
     async (amount: number): Promise<boolean> => {
       if (!idToken) return false;
@@ -109,8 +122,8 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const value = useMemo<CreditContextValue>(
-    () => ({ balance, isLoading, addCredits, deductCredits, refreshBalance }),
-    [balance, isLoading, addCredits, deductCredits, refreshBalance],
+    () => ({ balance, isLoading, addCredits, startCheckout, deductCredits, refreshBalance }),
+    [balance, isLoading, addCredits, startCheckout, deductCredits, refreshBalance],
   );
 
   return (

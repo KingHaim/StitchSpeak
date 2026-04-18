@@ -48,6 +48,17 @@ export async function addCredits(idToken: string, amount: number): Promise<numbe
   return typeof data.balance === 'number' ? data.balance : 0;
 }
 
+export async function createCreditsCheckout(
+  idToken: string,
+  pack: { credits: number; price: number },
+): Promise<string> {
+  const data = await apiFetch('/checkout', idToken, 'POST', pack);
+  if (typeof data.checkoutUrl !== 'string' || !data.checkoutUrl) {
+    throw new Error('Checkout URL missing from server response.');
+  }
+  return data.checkoutUrl;
+}
+
 export async function deductCredits(
   idToken: string,
   amount: number,
