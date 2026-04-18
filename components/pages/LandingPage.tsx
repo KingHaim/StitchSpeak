@@ -72,24 +72,15 @@ export const LandingPage: React.FC = () => {
         <div className="mb-8">
           <img src="/logo.png" alt="" className="h-36 w-36 sm:h-40 sm:w-40 object-contain mx-auto mb-6" />
         </div>
-        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-brand-500 mb-4">
-          Knitting patterns that speak every language.
-        </p>
         <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-brand-800 mb-6 leading-tight">
-          Perfect knitting pattern
-          <br />
-          translations in seconds
+          Accurate knitting pattern translations, instantly.
         </h1>
-        <p className="text-lg text-brand-400 max-w-3xl mx-auto leading-relaxed mb-4">
-          Upload any knitting pattern PDF. Pick your language. Get a perfect translation in seconds — with every
-          SSK, YO, K2tog, and cable exactly right.
+        <p className="text-lg text-brand-400 max-w-3xl mx-auto leading-relaxed mb-8">
+          Upload any PDF pattern. Get a clean, professional translation with correct knitting terminology — in seconds.
         </p>
-        <p className="text-base text-brand-400 max-w-2xl mx-auto leading-relaxed mb-8">
-          No more waiting weeks for a translator. No more broken stitch names in Spanish or French.
-        </p>
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4">
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           <button onClick={() => setView('translate')} className="px-8 py-3 bg-brand-600 text-white font-bold rounded-xl shadow-lg hover:bg-brand-700 transition-all w-full sm:w-auto">
-            Upload your first pattern →
+            Upload your pattern — First page free
           </button>
           {clientId && (
             <div className="[&_iframe]:!shadow-none [&_div]:!rounded-xl">
@@ -105,33 +96,15 @@ export const LandingPage: React.FC = () => {
             </div>
           )}
         </div>
-        <p className="text-sm text-brand-500 font-medium">First page is completely free.</p>
       </section>
 
       <section className="max-w-6xl mx-auto px-6 pb-20">
-        <h2 className="text-2xl font-bold text-brand-800 text-center mb-12">Why designers love it</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { title: 'Instant', desc: 'Translation in seconds, not days' },
-            { title: 'Accurate', desc: 'Built for knitting, not generic AI' },
-            { title: 'Your brand', desc: 'Keep your logo, layout, and name on every file' },
-            { title: 'Multi-language', desc: 'Spanish, French, German, Italian, and more coming soon' },
-          ].map(({ title, desc }) => (
-            <div key={title} className="bg-white p-6 rounded-2xl border border-brand-200 text-center shadow-sm">
-              <h3 className="text-lg font-bold text-brand-800 mb-2">{title}</h3>
-              <p className="text-sm text-brand-400 leading-relaxed">{desc}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="max-w-6xl mx-auto px-6 pb-20">
-        <h2 className="text-2xl font-bold text-brand-800 text-center mb-12">How it works</h2>
+        <h2 className="text-2xl font-bold text-brand-800 text-center mb-12">How It Works</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {[
-            { step: '1', title: 'Upload your PDF pattern', desc: 'Drag and drop any knitting pattern PDF to get started.' },
-            { step: '2', title: 'Choose your target language', desc: 'Pick the language you want and let StitchSpeak handle the terminology.' },
-            { step: '3', title: 'Download the translated version', desc: 'Get a polished translation in seconds, ready to share or sell.' },
+            { step: '1', title: 'Upload your pattern', desc: 'Upload your knitting or crochet pattern as a PDF.' },
+            { step: '2', title: 'Choose target language', desc: 'Source language is auto-detected so you can move faster.' },
+            { step: '3', title: 'Download the result', desc: 'Get your translated pattern back with the layout untouched.' },
           ].map(({ step, title, desc }) => (
             <div key={step} className="bg-white p-6 rounded-2xl border border-brand-200 text-center">
               <div className="w-12 h-12 bg-brand-600 text-white rounded-xl flex items-center justify-center text-xl font-bold mx-auto mb-4">
@@ -144,32 +117,40 @@ export const LandingPage: React.FC = () => {
         </div>
       </section>
 
+      <section className="max-w-4xl mx-auto px-6 pb-20">
+        <div className="bg-white border border-brand-200 rounded-3xl p-8 sm:p-10 shadow-sm text-center">
+          <h2 className="text-2xl sm:text-3xl font-bold text-brand-800 mb-4">Built by knitters, for knitters</h2>
+          <p className="text-brand-400 leading-relaxed text-base sm:text-lg">
+            A software engineer and his wife (a lifelong knitter and designer) built this so the translations actually make sense to real knitters.
+          </p>
+        </div>
+      </section>
+
       <section className="max-w-6xl mx-auto px-6 pb-20">
-        <h2 className="text-2xl font-bold text-brand-800 text-center mb-3">Pricing</h2>
-        <p className="text-brand-400 text-center mb-10">Free to start, then flexible plans for every kind of designer.</p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-4xl mx-auto mb-10">
+        <h2 className="text-2xl font-bold text-brand-800 text-center mb-12">Why designers love StitchSpeak</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl mx-auto">
           {[
-            {
-              title: 'Free',
-              desc: '1 page, no card needed',
-            },
-            {
-              title: 'Pay-as-you-go',
-              desc: 'Buy credits, use them anytime',
-            },
-            {
-              title: 'Monthly',
-              desc: 'For designers who translate often',
-            },
-          ].map(({ title, desc }) => (
-            <div key={title} className="bg-white p-6 rounded-2xl border border-brand-200 text-center">
-              <h3 className="text-xl font-bold text-brand-800 mb-2">{title}</h3>
-              <p className="text-sm text-brand-400">{desc}</p>
+            'Correct knitting abbreviations in every language',
+            'Natural, easy-to-read instructions',
+            'Your design and branding stay exactly the same',
+            'Way faster and cheaper than hiring a translator',
+          ].map((item) => (
+            <div key={item} className="bg-white p-5 rounded-2xl border border-brand-200 flex gap-3 items-start shadow-sm">
+              <div className="mt-0.5 shrink-0">
+                <svg className="w-5 h-5 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <p className="text-sm text-brand-700 font-medium">{item}</p>
             </div>
           ))}
         </div>
+      </section>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto">
+      <section className="max-w-6xl mx-auto px-6 pb-20">
+        <h2 className="text-2xl font-bold text-brand-800 text-center mb-3">Pricing</h2>
+        <p className="text-brand-400 text-center mb-10">Buy credits — the more you buy, the less you pay per page.</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto mb-6">
           {CREDIT_PACKAGES.map((pack, idx) => {
             const perCredit = pack.price / pack.credits;
             const isBest = idx === CREDIT_PACKAGES.length - 1;
@@ -183,22 +164,36 @@ export const LandingPage: React.FC = () => {
                 <p className="text-3xl font-bold text-brand-800">{pack.credits}</p>
                 <p className="text-xs text-brand-400 mb-3">credits</p>
                 <p className="text-xl font-bold text-brand-700">${pack.price.toFixed(2)}</p>
-                <p className="text-[10px] text-brand-400 mt-1">${perCredit.toFixed(2)} / credit</p>
+                <p className="text-[10px] text-brand-400 mt-1">${perCredit.toFixed(2)} each</p>
               </div>
             );
           })}
         </div>
+        <p className="text-center text-sm text-brand-500 font-medium">Credits never expire.</p>
       </section>
 
-      <section className="max-w-4xl mx-auto px-6 pb-20 text-center">
-        <div className="bg-white border border-brand-200 rounded-3xl p-8 sm:p-10 shadow-sm">
-          <h2 className="text-3xl font-bold text-brand-800 mb-4">Try it now</h2>
-          <p className="text-brand-400 mb-6 leading-relaxed">
-            Upload your first pattern and see how StitchSpeak handles real knitting terminology across languages.
-          </p>
-          <button onClick={() => setView('translate')} className="px-8 py-3 bg-brand-600 text-white font-bold rounded-xl shadow-lg hover:bg-brand-700 transition-all w-full sm:w-auto">
-            Upload your first pattern →
-          </button>
+      <section className="max-w-4xl mx-auto px-6 pb-20">
+        <h2 className="text-2xl font-bold text-brand-800 text-center mb-10">FAQ</h2>
+        <div className="space-y-4">
+          {[
+            {
+              question: 'Will abbreviations like SSK or YO be correct?',
+              answer: 'Yes. The system is trained specifically on knitting patterns.',
+            },
+            {
+              question: 'Can I keep my original layout and logo?',
+              answer: '100%. We only translate the text.',
+            },
+            {
+              question: 'Is my pattern private?',
+              answer: 'Absolutely. Your files are never shared or used for training.',
+            },
+          ].map(({ question, answer }) => (
+            <div key={question} className="bg-white border border-brand-200 rounded-2xl p-6 shadow-sm">
+              <h3 className="text-lg font-bold text-brand-800 mb-2">{question}</h3>
+              <p className="text-sm text-brand-400 leading-relaxed">{answer}</p>
+            </div>
+          ))}
         </div>
       </section>
 
