@@ -297,7 +297,7 @@ export const HistoryPage: React.FC = () => {
                   <div className="border-t border-brand-200 p-4 sm:p-5 bg-brand-50/30">
                     {expandedHtml ? (
                       <div
-                        className="bg-white rounded-xl border border-brand-200 p-4 sm:p-6 max-h-96 overflow-y-auto text-sm text-brand-800 leading-relaxed"
+                        className="pattern-rendered bg-white rounded-xl border border-brand-200 p-4 sm:p-6 max-h-96 overflow-y-auto text-sm text-brand-800 leading-relaxed"
                         dangerouslySetInnerHTML={{ __html: expandedHtml }}
                       />
                     ) : (
@@ -346,7 +346,7 @@ export const HistoryPage: React.FC = () => {
             <div className="p-4 sm:p-6 overflow-y-auto bg-brand-50/20 flex-1">
               {fullViewHtml ? (
                 <div
-                  className="bg-white rounded-xl border border-brand-200 p-4 sm:p-8 text-sm sm:text-base text-brand-800 leading-relaxed shadow-sm"
+                  className="pattern-rendered bg-white rounded-xl border border-brand-200 p-4 sm:p-8 text-sm sm:text-base text-brand-800 leading-relaxed shadow-sm"
                   dangerouslySetInnerHTML={{ __html: fullViewHtml }}
                 />
               ) : (

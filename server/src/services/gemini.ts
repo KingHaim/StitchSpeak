@@ -1,6 +1,7 @@
 import { GoogleGenAI, type Chat } from '@google/genai';
 import crypto from 'node:crypto';
 import { extractImages, buildImageCatalog, replaceImageMarkers } from './pdfImages.js';
+import { extractTypographyHints, buildTypographyCatalog } from './pdfTypography.js';
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -88,18 +89,34 @@ const createSystemInstruction = (language: string, sourceLanguage?: string) => {
 
 ### 4. OUTPUT FORMAT:
 - Output raw semantic HTML5 wrapped in a single <div>.
-- Use <strong> for headers and Zebra Bolding.
+- Use real semantic headings: <h1> for the pattern title, <h2> for major sections (Materials, Gauge, Abbreviations, Pattern, Finishing, etc.), <h3> for sub-sections, and <h4> for sub-sub-sections.
+- Use <strong> ONLY for Zebra Bolding inside multi-size instructions and for true inline emphasis. NEVER use <strong> as a section header.
 - For tables, use <table> with styles: "width: 100%; border-collapse: collapse; margin: 10px 0; border: 1px solid #ccc;".
 - For table cells, use padding and center-alignment where appropriate.
 - DO NOT use markdown code blocks (\`\`\`html).
 
-### 5. IMAGE PLACEMENT (CRITICAL):
+### 5. IMAGE PLACEMENT (CRITICAL - STRICT FORMAT):
 - You may be given a numbered list of images extracted from the PDF (an "IMAGE CATALOG").
 - Each image has an ID (e.g. IMG_1), a page number, and a description of where it appeared on the page.
-- You MUST place each image in the translated HTML at the position corresponding to where it appeared in the original document.
-- Use the exact marker syntax: [IMG_1], [IMG_2], etc. Place each marker on its own line, wrapped in a <p> tag, e.g. <p>[IMG_1]</p>.
-- Do NOT skip any images. Every IMG marker from the catalog must appear exactly once in your output.
+- The catalog may also list "IMAGE ROW GROUPS" with IDs like ROW_1. A row group means those images sat side-by-side on the same horizontal row in the original document.
+- Some images may be marked as small top-of-page banners or logos. Those must remain above the page title/heading they precede in the original layout.
+- You MUST place each image in the translated HTML at the position corresponding to where it appeared in the original document, preserving the original reading order.
+- Markers MUST be one of two exact shapes and nothing else:
+    1. <p>[IMG_1]</p>  — for a single image.
+    2. <p>[ROW_1]</p>  — for an entire side-by-side row of images. The server expands this into a horizontal flex container with all member images in left-to-right order.
+- When a ROW group is listed in the catalog, you MUST use the [ROW_N] marker once and you MUST NOT also emit individual [IMG_N] markers for any of that row's members. Choosing the row marker is REQUIRED whenever it exists.
+- Each marker (whether IMG or ROW) may appear at most once. Cover every catalog item exactly once via either its row marker or its individual marker. Logos and small banners are NOT optional and must always be emitted via their [IMG_N] markers in their original document position.
+- The marker text MUST match this exact structure: opening "[", literal "IMG_" or "ROW_", the integer ID, closing "]". No spaces, no hyphens, no quotes, no markdown, no <code>, and no raw <img> tags.
+- Do NOT invent IDs that are not in the catalog. The server will inject the actual images for every valid marker.
 - If no IMAGE CATALOG is provided, ignore this section.
+
+### 6. HEADING STYLING (PRESERVE ORIGINAL APPEARANCE):
+- A TYPOGRAPHY HINTS list may be provided.
+- For each hint, when you emit the equivalent translated heading text, use the suggested tag (h1/h2/h3/h4) and add an inline style in this exact pattern: style="font-family: <family>, serif; font-size: <ratio>em;"
+- Use the same tag and ratio for translated text whose role or position matches the source heading even if the wording changes during translation.
+- Preserve obvious decorative styling from the source heading when it is visually clear, especially centered cover titles, underlines, and title placement directly beneath a small top banner/logo image.
+- If no hint matches a section, still choose the correct semantic heading tag from the rules above, but omit the inline style.
+- If a BODY font hint is provided, use it as a guide for paragraph text unless the document clearly uses a different body style.
 
 ${specificRules}
 
@@ -121,15 +138,22 @@ export async function translatePattern(
   const base64Data = fileBuffer.toString('base64');
   const systemInstruction = createSystemInstruction(language, sourceLanguage);
 
-  const images = await extractImages(fileBuffer);
+  const [images, typographyHints] = await Promise.all([
+    extractImages(fileBuffer),
+    extractTypographyHints(fileBuffer),
+  ]);
   const catalog = buildImageCatalog(images);
+  const typographyCatalog = buildTypographyCatalog(typographyHints);
 
   const sourcePromptClause = sourceLanguage
     ? `The pattern is in ${sourceLanguage}. Translate`
     : 'Detect the source language and translate';
 
   const catalogInstruction = catalog
-    ? `\n\nThe following images were extracted from this PDF. Place each marker at the corresponding position in your HTML output.\n${catalog}\n`
+    ? `The following images were extracted from this PDF. Place each marker at the corresponding position in your HTML output.\n${catalog}`
+    : '';
+  const typographyInstruction = typographyCatalog
+    ? `The following typography hints were extracted from this PDF. Preserve their heading hierarchy, font family, and relative scale in your translated HTML.\n${typographyCatalog}`
     : '';
 
   const response = await withRetry(() =>
@@ -143,7 +167,20 @@ export async function translatePattern(
         {
           parts: [
             {
-              text: `${sourcePromptClause} and visually reconstruct this knitting pattern into ${language}. Pay special attention to TABLES and STITCH CHARTS; convert all of them into HTML <table> structures. Use the "Zebra Bolding" rule for all multi-size instructions. Ensure every technical term is correctly localized and all source language text is removed. Return raw HTML.${catalogInstruction}`,
+              text: `${sourcePromptClause} and visually reconstruct this knitting pattern into ${language}. Pay special attention to TABLES and STITCH CHARTS; convert all of them into HTML <table> structures. Use the "Zebra Bolding" rule for all multi-size instructions. Ensure every technical term is correctly localized and all source language text is removed. Return raw HTML.`,
+            },
+            ...(catalogInstruction
+              ? [{
+                  text: catalogInstruction,
+                }]
+              : []),
+            ...(typographyInstruction
+              ? [{
+                  text: typographyInstruction,
+                }]
+              : []),
+            {
+              text: 'Remember: use the bracketed [ROW_N] marker for any catalog row group (the server will render its images side-by-side), and the [IMG_N] marker only for images that are not part of any row. Never emit raw <img> tags.',
             },
             {
               inlineData: { data: base64Data, mimeType },

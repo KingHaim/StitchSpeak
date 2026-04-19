@@ -40,14 +40,30 @@ h1, h2, h3, h4, h5, h6 {
 }
 .pattern-rendered h1, .pattern-rendered h2, .pattern-rendered h3,
 .pattern-rendered h4, .pattern-rendered h5, .pattern-rendered h6 {
-  font-family: 'Lora', serif;
+  font-family: inherit;
   color: #3D2B1F;
   margin: 1.5em 0 0.5em;
   line-height: 1.3;
 }
-.pattern-rendered h1 { font-size: 1.5rem; }
-.pattern-rendered h2 { font-size: 1.25rem; }
-.pattern-rendered h3 { font-size: 1.1rem; }
+.pattern-rendered h1 {
+  font-size: 1.875rem;
+  font-weight: 700;
+  margin-top: 0;
+}
+.pattern-rendered h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  border-bottom: 1px solid #E8DDD3;
+  padding-bottom: 0.25em;
+}
+.pattern-rendered h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+.pattern-rendered h4 {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
 .pattern-rendered p { margin: 0 0 0.75em; }
 .pattern-rendered ul, .pattern-rendered ol {
   margin: 0 0 0.75em 1.5rem;
