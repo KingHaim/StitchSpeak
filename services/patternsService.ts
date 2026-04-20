@@ -42,6 +42,13 @@ async function apiFetch<T>(
     throw new Error('Could not reach the server. Check your connection and try again.');
   }
 
+  const ct = res.headers.get('content-type') ?? '';
+  if (res.ok && !ct.includes('application/json')) {
+    throw new Error(
+      'The patterns API did not return JSON (often the static app’s index.html). Set VITE_API_URL to your StitchSpeak API origin, or use npm run dev so /api is proxied to the backend.',
+    );
+  }
+
   const data = await res.json().catch(() => ({} as Record<string, unknown>));
 
   if (!res.ok) {

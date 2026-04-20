@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   loadHistory,
   loadTranslationHtml,
@@ -54,6 +55,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
 
   const [fullViewRecord, setFullViewRecord] = useState<TranslationRecord | null>(null);
   const [fullViewHtml, setFullViewHtml] = useState<string | null>(null);
+  const [fullViewError, setFullViewError] = useState<string | null>(null);
   const [isFullViewLoading, setIsFullViewLoading] = useState(false);
 
   const [confirmClear, setConfirmClear] = useState(false);
@@ -129,13 +131,18 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
   const handleOpenFullView = async (record: TranslationRecord) => {
     setFullViewRecord(record);
     setFullViewHtml(null);
+    setFullViewError(null);
     setIsFullViewLoading(true);
     try {
       const html = await loadTranslationHtml(record.id, idToken);
       setFullViewHtml(html);
+      if (!html) {
+        setFullViewError('No saved HTML was found for this pattern.');
+      }
     } catch (err) {
       console.error('Failed to load pattern:', err);
       setFullViewHtml(null);
+      setFullViewError(err instanceof Error ? err.message : 'Could not load this pattern.');
     } finally {
       setIsFullViewLoading(false);
     }
@@ -144,6 +151,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
   const handleCloseFullView = () => {
     setFullViewRecord(null);
     setFullViewHtml(null);
+    setFullViewError(null);
   };
 
   const handleDelete = async (id: string) => {
@@ -558,51 +566,82 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
         </div>
       </div>
 
-      {fullViewRecord && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="absolute inset-0 bg-inverse-surface/60 backdrop-blur-sm" onClick={handleCloseFullView} />
-          <div className="relative w-full max-w-5xl max-h-[94vh] bg-surface rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col border border-outline-variant/20">
-            <div className="bg-surface-container-high p-4 sm:p-5 border-b border-outline-variant/15 flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <h3 className="text-lg font-bold text-on-surface break-words font-headline">{displayTitle(fullViewRecord.fileName)}</h3>
-                <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">
-                  {langLine(fullViewRecord)}
-                  {' · '}
-                  {formatDate(fullViewRecord.timestamp)}
-                </p>
+      {fullViewRecord &&
+        createPortal(
+          <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <button
+              type="button"
+              className="absolute inset-0 z-[100] bg-inverse-surface/60 backdrop-blur-sm cursor-default border-0 p-0"
+              onClick={handleCloseFullView}
+              aria-label="Close overlay"
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="full-view-pattern-title"
+              className="relative z-[110] w-full max-w-5xl max-h-[94vh] bg-surface rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-outline-variant/20 animate-in fade-in zoom-in duration-200"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="bg-surface-container-high p-4 sm:p-5 border-b border-outline-variant/15 flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h3 id="full-view-pattern-title" className="text-lg font-bold text-on-surface break-words font-headline">
+                    {displayTitle(fullViewRecord.fileName)}
+                  </h3>
+                  <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">
+                    {langLine(fullViewRecord)}
+                    {' · '}
+                    {formatDate(fullViewRecord.timestamp)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCloseFullView}
+                  className="text-on-surface-variant hover:text-on-surface transition shrink-0"
+                  aria-label="Close full view"
+                >
+                  <CloseIcon className="w-5 h-5" />
+                </button>
               </div>
-              <button onClick={handleCloseFullView} className="text-on-surface-variant hover:text-on-surface transition shrink-0" aria-label="Close full view">
-                <CloseIcon className="w-5 h-5" />
-              </button>
-            </div>
 
-            <div className="px-4 sm:px-5 py-3 border-b border-outline-variant/15 bg-surface-container-lowest">
-              <button
-                type="button"
-                onClick={() => handleDownload(fullViewRecord)}
-                className="w-full sm:w-auto px-4 py-3 text-sm font-semibold rounded-xl border border-outline-variant/30 text-primary hover:bg-surface-container-high transition-colors"
-              >
-                Download
-              </button>
-            </div>
+              <div className="px-4 sm:px-5 py-3 border-b border-outline-variant/15 bg-surface-container-lowest">
+                <button
+                  type="button"
+                  onClick={() => handleDownload(fullViewRecord)}
+                  className="w-full sm:w-auto px-4 py-3 text-sm font-semibold rounded-xl border border-outline-variant/30 text-primary hover:bg-surface-container-high transition-colors"
+                >
+                  Download
+                </button>
+              </div>
 
-            <div className="p-4 sm:p-6 overflow-y-auto bg-background flex-1">
-              {isFullViewLoading ? (
-                <p className="text-sm text-on-surface-variant italic">Loading pattern…</p>
-              ) : fullViewHtml ? (
-                <div
-                  className="pattern-rendered bg-surface-container-lowest rounded-xl border border-outline-variant/20 p-4 sm:p-8 text-sm sm:text-base text-on-surface leading-relaxed shadow-sm"
-                  dangerouslySetInnerHTML={{ __html: fullViewHtml }}
-                />
-              ) : (
-                <p className="text-sm text-on-surface-variant italic">
-                  Full view is not available for this pattern. Try downloading it instead.
-                </p>
-              )}
+              <div className="p-4 sm:p-6 overflow-y-auto bg-background flex-1">
+                {isFullViewLoading ? (
+                  <p className="text-sm text-on-surface-variant italic">Loading pattern…</p>
+                ) : fullViewHtml ? (
+                  <div
+                    className="pattern-rendered bg-surface-container-lowest rounded-xl border border-outline-variant/20 p-4 sm:p-8 text-sm sm:text-base text-on-surface leading-relaxed shadow-sm"
+                    dangerouslySetInnerHTML={{ __html: fullViewHtml }}
+                  />
+                ) : fullViewError ? (
+                  <div className="rounded-xl border border-error/30 bg-error-container/30 p-4 text-sm text-on-error-container space-y-3">
+                    <p className="font-medium">{fullViewError}</p>
+                    <button
+                      type="button"
+                      onClick={() => void handleOpenFullView(fullViewRecord)}
+                      className="px-4 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90"
+                    >
+                      Try again
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-on-surface-variant italic">
+                    Full view is not available for this pattern. Try downloading it instead.
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </>
   );
 };
