@@ -6,7 +6,25 @@ const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const DB_PATH = path.join(DATA_DIR, 'patterns.db');
 
 const MAX_RECORDS_PER_USER = 100;
-const MAX_HTML_BYTES = 1024 * 1024; // 1 MB
+// Patterns embed images as base64 data URLs, so a single HTML payload often
+// runs to several MB. The previous 1 MB cap silently truncated saved files
+// mid-image, leaving the rest of the document blank when re-opened. SQLite
+// happily handles an order of magnitude more per row.
+const MAX_HTML_BYTES = 16 * 1024 * 1024; // 16 MB
+
+/**
+ * Truncate at the last "safe" boundary so we never cut a tag in half. We rewind
+ * to the last `>` we can find (or to the last whitespace as a last resort) and
+ * append a placeholder so it's obvious to anyone reading the file what happened.
+ */
+function safeTruncateHtml(html: string, max: number): string {
+  if (html.length <= max) return html;
+  const slice = html.slice(0, max);
+  const lastClose = slice.lastIndexOf('>');
+  const cutoff = lastClose > 0 ? lastClose + 1 : slice.lastIndexOf(' ');
+  const safe = cutoff > 0 ? slice.slice(0, cutoff) : slice;
+  return `${safe}\n<!-- StitchSpeak: pattern HTML was truncated at ${max} bytes -->`;
+}
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -152,9 +170,13 @@ const saveTx = db.transaction((sub: string, input: SavePatternInput): PatternRow
   const id = generateId();
   const timestamp = Date.now();
 
-  const html = input.html.length > MAX_HTML_BYTES
-    ? input.html.slice(0, MAX_HTML_BYTES)
-    : input.html;
+  if (input.html.length > MAX_HTML_BYTES) {
+    console.warn(
+      `[patternStore] HTML payload (${input.html.length} bytes) exceeds limit ` +
+        `(${MAX_HTML_BYTES} bytes); truncating at a safe tag boundary.`,
+    );
+  }
+  const html = safeTruncateHtml(input.html, MAX_HTML_BYTES);
 
   const metricsJson = input.pdfMetrics == null ? null : JSON.stringify(input.pdfMetrics);
 

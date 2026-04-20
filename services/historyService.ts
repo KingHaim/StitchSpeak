@@ -10,10 +10,28 @@ import {
 const INDEX_KEY = 'ss_translation_history';
 const HTML_PREFIX = 'ss_pattern_html_';
 const MAX_RECORDS = 50;
-const MAX_HTML_BYTES = 512 * 1024; // 512 KB per pattern
+// Browser localStorage realistically tops out at ~5 MB per origin, but most
+// patterns embed several base64 images and easily exceed the old 512 KB cap.
+// Cap individual entries at 4 MB and fail gracefully if the browser still
+// rejects the write (eviction logic below handles that).
+const MAX_HTML_BYTES = 4 * 1024 * 1024;
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+/**
+ * Truncate at the last `>` we can find so we never split an HTML tag in two
+ * (especially the giant base64 `<img src="data:...">` that blew past the
+ * previous limit and corrupted everything after it).
+ */
+function safeTruncateHtml(html: string, max: number): string {
+  if (html.length <= max) return html;
+  const slice = html.slice(0, max);
+  const lastClose = slice.lastIndexOf('>');
+  const cutoff = lastClose > 0 ? lastClose + 1 : slice.lastIndexOf(' ');
+  const safe = cutoff > 0 ? slice.slice(0, cutoff) : slice;
+  return `${safe}\n<!-- StitchSpeak: pattern HTML was truncated at ${max} bytes -->`;
 }
 
 function readIndex(): TranslationRecord[] {
@@ -77,9 +95,7 @@ function localSave(params: SaveTranslationParams): TranslationRecord {
 
   writeIndex(history);
 
-  const html = translatedHtml.length > MAX_HTML_BYTES
-    ? translatedHtml.slice(0, MAX_HTML_BYTES)
-    : translatedHtml;
+  const html = safeTruncateHtml(translatedHtml, MAX_HTML_BYTES);
 
   try {
     localStorage.setItem(HTML_PREFIX + id, html);
