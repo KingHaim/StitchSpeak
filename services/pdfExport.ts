@@ -63,10 +63,45 @@ function sanitizeFileName(value: string): string {
   return cleaned || 'translated-pattern';
 }
 
-function getPdfFileName(html: string): string {
+function getPatternTitle(html: string): string {
   const doc = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html');
-  const title = doc.querySelector('h1')?.textContent?.trim() || 'translated-pattern';
-  return `${sanitizeFileName(title)}.pdf`;
+  return doc.querySelector('h1')?.textContent?.trim() || 'translated-pattern';
+}
+
+function getBaseFileName(html: string): string {
+  return sanitizeFileName(getPatternTitle(html));
+}
+
+function getPdfFileName(html: string): string {
+  return `${getBaseFileName(html)}.pdf`;
+}
+
+function triggerDownload(blob: Blob, fileName: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function htmlToPlainText(html: string): string {
+  const container = document.createElement('div');
+  container.innerHTML = html;
+
+  container.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
+  container.querySelectorAll('li').forEach((li) => {
+    li.insertAdjacentText('beforebegin', '• ');
+    li.insertAdjacentText('afterend', '\n');
+  });
+  container
+    .querySelectorAll('p, h1, h2, h3, h4, h5, h6, div, tr')
+    .forEach((el) => el.insertAdjacentText('afterend', '\n'));
+
+  const text = container.textContent || '';
+  return text.replace(/\n{3,}/g, '\n\n').trim();
 }
 
 async function waitForImages(container: HTMLElement): Promise<void> {
@@ -179,4 +214,53 @@ export async function exportPatternPdf(html: string): Promise<void> {
   } finally {
     container.remove();
   }
+}
+
+export function exportPatternHtml(html: string): void {
+  const title = getPatternTitle(html);
+  const fileName = `${getBaseFileName(html)}.html`;
+  const document = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${title}</title>
+<style>${PATTERN_EXPORT_CSS}</style>
+</head>
+<body>
+<div class="pdf-pattern">${html}</div>
+</body>
+</html>`;
+  triggerDownload(new Blob([document], { type: 'text/html;charset=utf-8' }), fileName);
+}
+
+export function exportPatternText(html: string): void {
+  const fileName = `${getBaseFileName(html)}.txt`;
+  const text = htmlToPlainText(html);
+  triggerDownload(new Blob([text], { type: 'text/plain;charset=utf-8' }), fileName);
+}
+
+export function exportPatternDoc(html: string): void {
+  const title = getPatternTitle(html);
+  const fileName = `${getBaseFileName(html)}.doc`;
+  const docHtml = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="utf-8">
+<title>${title}</title>
+<!--[if gte mso 9]>
+<xml>
+<w:WordDocument>
+<w:View>Print</w:View>
+<w:Zoom>100</w:Zoom>
+<w:DoNotOptimizeForBrowser/>
+</w:WordDocument>
+</xml>
+<![endif]-->
+<style>${PATTERN_EXPORT_CSS}</style>
+</head>
+<body>
+<div class="pdf-pattern">${html}</div>
+</body>
+</html>`;
+  triggerDownload(new Blob([docHtml], { type: 'application/msword' }), fileName);
 }

@@ -5,9 +5,11 @@ import type { AbbreviationMatch } from '../services/abbreviationService';
 interface PatternViewerProps {
   html: string;
   languageCode: string;
+  /** Manuscript serif styling for Translation Studio right panel. */
+  tone?: 'default' | 'studio';
 }
 
-export const PatternViewer: React.FC<PatternViewerProps> = ({ html, languageCode }) => {
+export const PatternViewer: React.FC<PatternViewerProps> = ({ html, languageCode, tone = 'default' }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
 
@@ -62,15 +64,23 @@ export const PatternViewer: React.FC<PatternViewerProps> = ({ html, languageCode
     >
       {tooltip && (
         <div
-          className="absolute z-20 px-2.5 py-1.5 text-xs font-medium bg-brand-800 text-white rounded-lg shadow-lg pointer-events-none whitespace-nowrap -translate-x-1/2 -translate-y-full"
+          className={`absolute z-20 px-2.5 py-1.5 text-xs font-medium rounded-lg shadow-lg pointer-events-none whitespace-nowrap -translate-x-1/2 -translate-y-full ${
+            tone === 'studio'
+              ? 'bg-inverse-surface text-inverse-on-surface'
+              : 'bg-brand-800 text-white'
+          }`}
           style={{ left: tooltip.x, top: tooltip.y }}
         >
           {tooltip.text}
-          <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-brand-800" />
+          <div
+            className={`absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent ${
+              tone === 'studio' ? 'border-t-inverse-surface' : 'border-t-brand-800'
+            }`}
+          />
         </div>
       )}
       <div
-        className="pattern-rendered"
+        className={tone === 'studio' ? 'pattern-rendered pattern-rendered--studio' : 'pattern-rendered'}
         dangerouslySetInnerHTML={{ __html: processedHtml }}
       />
     </div>

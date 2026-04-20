@@ -23,7 +23,7 @@ const App: React.FC = () => {
       case 'glossary':
         return <GlossaryPage />;
       case 'history':
-        return <HistoryPage />;
+        return <HistoryPage onNavigateToTranslate={() => setCurrentPage('dashboard')} />;
     }
   };
 

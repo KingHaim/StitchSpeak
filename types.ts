@@ -68,3 +68,30 @@ export interface CreditPackage {
   price: number;
   label: string;
 }
+
+export type TranslationJobStatus = 'translating' | 'complete' | 'error';
+
+export interface TranslationJob {
+  id: string;
+  file: File;
+  fileName: string;
+  sourceLanguage: Language;
+  targetLanguage: Language;
+  pdfMetrics: PdfMetrics | null;
+  priceEstimate: PriceEstimate | null;
+  status: TranslationJobStatus;
+  translatedHtml: string;
+  error: string | null;
+  chatSessionId: string | null;
+  chatHistory: ChatMessage[];
+  chatMessageCount: number;
+  chatMessagesAllowed: number;
+}
+
+export interface PendingTranslationStart {
+  file: File;
+  sourceLanguage: Language;
+  targetLanguage: Language;
+  pdfMetrics: PdfMetrics | null;
+  priceEstimate: PriceEstimate;
+}

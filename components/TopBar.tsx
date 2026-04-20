@@ -3,13 +3,20 @@ import { useAuth } from '../contexts/AuthContext';
 import { useCredits } from '../contexts/CreditContext';
 import { MenuIcon } from './icons/NavIcons';
 import { BuyCreditsModal } from './BuyCreditsModal';
-import type { CreditPackage } from '../types';
+import type { CreditPackage, PageId } from '../types';
+
+const PAGE_HEADER: Record<PageId, { kicker: string; title: string }> = {
+  dashboard: { kicker: 'Translation Studio', title: 'Pattern Translator' },
+  history: { kicker: 'My Patterns', title: 'Your Tactile Collection' },
+  glossary: { kicker: 'Glossary', title: 'Knitting & Crochet Glossary' },
+};
 
 interface TopBarProps {
   onMenuToggle: () => void;
+  activePage: PageId;
 }
 
-export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle }) => {
+export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, activePage }) => {
   const { user, isAuthenticated, signOut } = useAuth();
   const { balance, addCredits } = useCredits();
   const [showBuyCredits, setShowBuyCredits] = useState(false);
@@ -24,30 +31,59 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle }) => {
     setShowBuyCredits(false);
   };
 
+  const { kicker, title } = PAGE_HEADER[activePage];
+  const showStudioActions = activePage === 'dashboard';
+
   return (
     <>
-      <div className="bg-white/60 backdrop-blur-sm border-b border-brand-200 px-4 sm:px-6 lg:px-8 py-4">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
+      <div className="bg-surface-container-low/70 glass-nav border-b border-outline-variant/25 px-4 sm:px-6 lg:px-10 py-4">
+        <div className="flex justify-between gap-4 items-end sm:items-end">
+          <div className="flex items-start gap-3 min-w-0">
             <button
+              type="button"
               onClick={onMenuToggle}
-              className="lg:hidden p-2 rounded-xl text-brand-500 hover:bg-brand-100 transition-colors"
+              className="lg:hidden p-2 rounded-xl text-primary hover:bg-surface-container-high transition-colors shrink-0 mt-1"
             >
               <MenuIcon className="w-5 h-5" />
             </button>
-            <div className="min-w-0">
-              <h1 className="text-xl sm:text-2xl font-bold text-brand-800 truncate">
-                Welcome back{displayName ? `, ${displayName}` : ''}!
+            <div className="min-w-0 pt-0.5">
+              <span className="text-primary font-medium tracking-widest text-xs uppercase mb-1 block">
+                {kicker}
+              </span>
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-headline italic text-on-surface leading-tight">
+                {title}
               </h1>
-              <p className="text-sm text-brand-400">What are we stitching today?</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0 pb-0.5">
+            {showStudioActions && (
+              <>
+                <button
+                  type="button"
+                  className="p-3 rounded-full bg-surface-container-high text-on-surface-variant hover:bg-surface-variant transition-colors disabled:opacity-40"
+                  aria-label="Search"
+                  disabled
+                  title="Coming soon"
+                >
+                  <span className="material-symbols-outlined text-xl">search</span>
+                </button>
+                <button
+                  type="button"
+                  className="p-3 rounded-full bg-surface-container-high text-on-surface-variant hover:bg-surface-variant transition-colors disabled:opacity-40"
+                  aria-label="Settings"
+                  disabled
+                  title="Coming soon"
+                >
+                  <span className="material-symbols-outlined text-xl">settings</span>
+                </button>
+              </>
+            )}
             {isAuthenticated && (
               <button
+                type="button"
                 onClick={() => setShowBuyCredits(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-100 text-brand-700 rounded-lg text-sm font-semibold hover:bg-brand-200 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/12 text-primary rounded-lg text-sm font-semibold hover:bg-primary/18 transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
@@ -59,8 +95,9 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle }) => {
             {isAuthenticated && user?.picture ? (
               <div className="relative">
                 <button
-                  onClick={() => setShowUserMenu(prev => !prev)}
-                  className="h-9 w-9 rounded-full border-2 border-brand-200 overflow-hidden hover:border-brand-400 transition-colors"
+                  type="button"
+                  onClick={() => setShowUserMenu((prev) => !prev)}
+                  className="h-9 w-9 rounded-full border-2 border-outline-variant/40 overflow-hidden hover:border-primary/50 transition-colors"
                 >
                   <img
                     src={user.picture}
@@ -78,6 +115,7 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle }) => {
                         {user.email && <p className="text-xs text-brand-400 truncate">{user.email}</p>}
                       </div>
                       <button
+                        type="button"
                         onClick={() => { setShowUserMenu(false); signOut(); }}
                         className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2"
                       >
@@ -91,8 +129,8 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle }) => {
                 )}
               </div>
             ) : (
-              <div className="h-9 w-9 rounded-full bg-brand-200 flex items-center justify-center">
-                <span className="text-sm font-semibold text-brand-600">
+              <div className="h-9 w-9 rounded-full bg-surface-container-high flex items-center justify-center">
+                <span className="text-sm font-semibold text-primary">
                   {displayName ? displayName[0] : '?'}
                 </span>
               </div>

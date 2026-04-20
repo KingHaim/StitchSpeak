@@ -1,21 +1,88 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { getHistory, getTranslationHtml, deleteTranslation, clearHistory } from '../../services/historyService';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import {
+  loadHistory,
+  loadTranslationHtml,
+  deleteTranslation,
+  clearHistory,
+} from '../../services/historyService';
 import type { TranslationRecord } from '../../types';
+import { useAuth } from '../../contexts/AuthContext';
 import { CloseIcon } from '../icons/CloseIcon';
 
-export const HistoryPage: React.FC = () => {
+const PLACEHOLDER_IMAGES = [
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuCpgaNtjUhnSj5fWpj87xmX14PtoZKyHM7hb4baN2rDogUl65AO0ibafZ14ruclNXszrqk0cPDsCbAQq0jE2uTl7O0ugog66FNhf1kPoqLnYm9G0Dmgo_p15HugFXDveT8JMwFc2YxswiVWaSfBXg1eVcGZlylIZ6N73Kahrmf5dldNq_zWvJ08qcuJkbp9tfMrZT6HO1nRl6P9ZWWUdfDnvSVTVMKYyIz_3dHa0rWbju1HWc3Utons2RGNYkGyTUCf3odTrnnWErM',
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuBc1XcTX1NH1noyUs-CXlYFOGPQoB8-zLXACloiMpophzG7iU2hFGxGHCCrl5-UNrvNUC4NIFh-yxE8X8k4HbFNvkyT_z_1hBo4jJq_PaHq9hHi2lOuLm90sHTm8QH0uKCMA6GW4Q2zo7XlLdfGrL0-n_frRJNzMXfErQf1OPbMsqUO4qwx5kI0rIdAgocq-Hh_8LJanOI3KgnDxYZbB7_1QY9BMnGGFBm64B9ok9USAepNMoUli77GQ-VYPLggACUvNXOSutENALw',
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuAp8x6mkJk3z5RUuLaSMeAjbAKwvKaMZ-nkWyd7yUY1EiDFQJ3jCQPF72QAmumkHFSMibgT6ETApHcxoeOnJMC2yZSS8SRw_GPEaD7VCUIqVab9adIh4Vrj2PyZ9Kmoml5D7TXbu3qd3t6jSAz6XNGjJxsDi-IieoldJMsU00-CuOgUjpZXRjS4B2LSRCbau5M-qfT4CrA3SyxYkRMqy9J0b2-gW__Ggl1kH22W0uRgYBRisC1hDqBHl_1D8Hwb5kDorxgh6u4N3Tg',
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuCPVwqLvTsZs-KtIZWItODiMcwjwvM9h9FLVPpPgTLADVi5IQozJmmlCWdrKnMkNpijSDBCoELeDzXED6JP6U4iPrOlQeCKE5oQlbDdo-ZHNcf7TtXLxOWQIhQlpjq7cYiD0-rQilb4tf_rKlhJ4bdlNnVO_hMocuHpvU9SBgz7FS2r0XKjViTxY2WqoZ1-9Pjh8yYuIKqD686gVnrb9fzpeTuF3XGp4bYc2ejIcV-xHP4Em8ZwvbhEEmRgBYqZ8Za4zknhArYJjmU',
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuCkHtLFIfOMQAPJNey1MQuD47ZSqkdBh-UxMDGfYMd13j8x5buZm7nPAJO1z0QCyb0HC3z-OK9D0tNcF5Vk7P67htIZEX6mIWM9673x3A41GZemb6RpMFHj63oxZTYNLqGaQguRZyYaF7LWs8rXwsjcjRmnGyAIzUwr71JYSHVX86Yeb1LDPT_Bs08Gzz7FxhrKtEQSJvVhn6jolOPMW1bWxVaVbLnaBKsZPj2OB8qSQOxlxVTEk7JC1k3I-GlxEB4hQlrv6ZlSXqU',
+];
+
+function imageForRecord(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h + id.charCodeAt(i)) % 997;
+  return PLACEHOLDER_IMAGES[h % PLACEHOLDER_IMAGES.length];
+}
+
+const Icon: React.FC<{ name: string; className?: string; filled?: boolean }> = ({
+  name,
+  className,
+  filled,
+}) => (
+  <span
+    className={`material-symbols-outlined ${className ?? ''}`}
+    style={filled ? { fontVariationSettings: "'FILL' 1" } : undefined}
+    aria-hidden
+  >
+    {name}
+  </span>
+);
+
+export interface HistoryPageProps {
+  onNavigateToTranslate?: () => void;
+}
+
+export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate }) => {
+  const { idToken, isAuthenticated } = useAuth();
+
   const [records, setRecords] = useState<TranslationRecord[]>([]);
+  const [isLoadingRecords, setIsLoadingRecords] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedHtml, setExpandedHtml] = useState<string | null>(null);
+  const [isExpandedLoading, setIsExpandedLoading] = useState(false);
+
   const [fullViewRecord, setFullViewRecord] = useState<TranslationRecord | null>(null);
   const [fullViewHtml, setFullViewHtml] = useState<string | null>(null);
+  const [isFullViewLoading, setIsFullViewLoading] = useState(false);
+
   const [confirmClear, setConfirmClear] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [languageFilter, setLanguageFilter] = useState<'all' | string>('all');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+
+  const refresh = useCallback(async () => {
+    setIsLoadingRecords(true);
+    setLoadError(null);
+    try {
+      const list = await loadHistory(idToken);
+      setRecords(list);
+    } catch (err) {
+      console.error('Failed to load patterns:', err);
+      setLoadError(
+        err instanceof Error
+          ? err.message
+          : 'Could not load your patterns. Please try again.',
+      );
+      setRecords([]);
+    } finally {
+      setIsLoadingRecords(false);
+    }
+  }, [idToken]);
 
   useEffect(() => {
-    setRecords(getHistory());
-  }, []);
+    refresh();
+  }, [refresh]);
 
   const availableLanguages = useMemo(() => {
     return Array.from(new Set(records.map(record => record.targetLanguage))).sort();
@@ -39,19 +106,39 @@ export const HistoryPage: React.FC = () => {
     });
   }, [records, searchQuery, languageFilter]);
 
-  const handleToggleExpand = (id: string) => {
+  const handleToggleExpand = async (id: string) => {
     if (expandedId === id) {
       setExpandedId(null);
       setExpandedHtml(null);
-    } else {
-      setExpandedId(id);
-      setExpandedHtml(getTranslationHtml(id));
+      return;
+    }
+    setExpandedId(id);
+    setExpandedHtml(null);
+    setIsExpandedLoading(true);
+    try {
+      const html = await loadTranslationHtml(id, idToken);
+      setExpandedHtml(html);
+    } catch (err) {
+      console.error('Failed to load pattern preview:', err);
+      setExpandedHtml(null);
+    } finally {
+      setIsExpandedLoading(false);
     }
   };
 
-  const handleOpenFullView = (record: TranslationRecord) => {
+  const handleOpenFullView = async (record: TranslationRecord) => {
     setFullViewRecord(record);
-    setFullViewHtml(getTranslationHtml(record.id));
+    setFullViewHtml(null);
+    setIsFullViewLoading(true);
+    try {
+      const html = await loadTranslationHtml(record.id, idToken);
+      setFullViewHtml(html);
+    } catch (err) {
+      console.error('Failed to load pattern:', err);
+      setFullViewHtml(null);
+    } finally {
+      setIsFullViewLoading(false);
+    }
   };
 
   const handleCloseFullView = () => {
@@ -59,8 +146,13 @@ export const HistoryPage: React.FC = () => {
     setFullViewHtml(null);
   };
 
-  const handleDelete = (id: string) => {
-    deleteTranslation(id);
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteTranslation(id, idToken);
+    } catch (err) {
+      console.error('Failed to delete pattern:', err);
+      return;
+    }
     setRecords(prev => prev.filter(r => r.id !== id));
     if (expandedId === id) {
       setExpandedId(null);
@@ -71,8 +163,19 @@ export const HistoryPage: React.FC = () => {
     }
   };
 
-  const handleDownload = (record: TranslationRecord) => {
-    const htmlContent = getTranslationHtml(record.id);
+  const handleDownload = async (record: TranslationRecord) => {
+    let htmlContent = record.id === fullViewRecord?.id ? fullViewHtml : null;
+    if (!htmlContent && record.id === expandedId) {
+      htmlContent = expandedHtml;
+    }
+    if (!htmlContent) {
+      try {
+        htmlContent = await loadTranslationHtml(record.id, idToken);
+      } catch (err) {
+        console.error('Failed to load pattern for download:', err);
+        return;
+      }
+    }
     if (!htmlContent) return;
     const html = `<!DOCTYPE html>
 <html lang="en">
@@ -93,12 +196,18 @@ export const HistoryPage: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleClear = () => {
+  const handleClear = async () => {
     if (!confirmClear) {
       setConfirmClear(true);
       return;
     }
-    clearHistory();
+    try {
+      await clearHistory(idToken);
+    } catch (err) {
+      console.error('Failed to clear patterns:', err);
+      setConfirmClear(false);
+      return;
+    }
     setRecords([]);
     setExpandedId(null);
     setExpandedHtml(null);
@@ -116,241 +225,377 @@ export const HistoryPage: React.FC = () => {
     });
   };
 
+  const displayTitle = (fileName: string) => fileName.replace(/\.[^.]+$/, '');
+
+  const langLine = (record: TranslationRecord) =>
+    record.sourceLanguage && record.sourceLanguage !== 'Auto-Detect'
+      ? `${record.sourceLanguage} → ${record.targetLanguage}`
+      : record.targetLanguage;
+
   const hasActiveFilters = searchQuery.trim().length > 0 || languageFilter !== 'all';
+
+  const goTranslate = () => onNavigateToTranslate?.();
 
   return (
     <>
-      <div className="max-w-6xl mx-auto">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-8">
-          <div>
-            <h2 className="text-2xl font-bold text-brand-800 mb-1">My Patterns</h2>
-            <p className="text-brand-400">
-              {filteredRecords.length} of {records.length} translated pattern{records.length !== 1 ? 's' : ''}
-            </p>
-          </div>
-          {records.length > 0 && (
-            <button
-              onClick={handleClear}
-              onBlur={() => setConfirmClear(false)}
-              className={`px-4 py-3 text-sm font-medium rounded-lg transition-colors w-full md:w-auto ${
-                confirmClear
-                  ? 'bg-red-500 text-white hover:bg-red-600'
-                  : 'text-brand-500 border border-brand-200 hover:bg-brand-100'
-              }`}
-            >
-              {confirmClear ? 'Confirm clear all?' : 'Clear all'}
-            </button>
-          )}
-        </div>
-
-        {records.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-sm border border-brand-200 p-4 sm:p-5 mb-6">
-            <div className="flex flex-col lg:flex-row gap-3 lg:items-end">
-              <div className="flex-1">
-                <label htmlFor="pattern-search" className="block text-xs font-semibold text-brand-500 uppercase tracking-wider mb-1.5">
-                  Search patterns
-                </label>
-                <input
-                  id="pattern-search"
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by file name or language"
-                  className="w-full px-4 py-3 border border-brand-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors text-base"
-                />
-              </div>
-
-              <div className="w-full lg:w-60">
-                <label htmlFor="language-filter" className="block text-xs font-semibold text-brand-500 uppercase tracking-wider mb-1.5">
-                  Target language
-                </label>
-                <select
-                  id="language-filter"
-                  value={languageFilter}
-                  onChange={(e) => setLanguageFilter(e.target.value)}
-                  className="w-full px-4 py-3 border border-brand-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors text-base"
-                >
-                  <option value="all">All languages</option>
-                  {availableLanguages.map((language) => (
-                    <option key={language} value={language}>
-                      {language}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {hasActiveFilters && (
+      <div className="min-h-full bg-background text-on-background font-body selection:bg-primary-fixed selection:text-on-primary-fixed -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-2 sm:py-4 pb-36 sm:pb-40">
+        <header className="mb-10 lg:mb-12 relative">
+          {((isAuthenticated && !loadError) || records.length > 0) && (
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+              {isAuthenticated && !loadError && (
+                <p className="text-xs text-on-surface-variant/80 order-2 sm:order-1">
+                  Synced to your account — available on any device.
+                </p>
+              )}
+              {records.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setSearchQuery('');
-                    setLanguageFilter('all');
-                  }}
-                  className="px-4 py-3 text-sm font-medium rounded-xl border border-brand-200 text-brand-600 hover:bg-brand-50 transition-colors w-full lg:w-auto"
+                  onClick={handleClear}
+                  onBlur={() => setConfirmClear(false)}
+                  className={`shrink-0 px-4 py-2.5 text-sm font-semibold rounded-xl transition-colors self-start sm:ml-auto order-1 sm:order-2 ${
+                    confirmClear
+                      ? 'bg-error text-on-error hover:opacity-95'
+                      : 'border border-outline-variant/40 text-on-surface-variant hover:bg-surface-container-high'
+                  }`}
                 >
-                  Clear filters
+                  {confirmClear ? 'Confirm clear all?' : 'Clear all'}
                 </button>
               )}
             </div>
+          )}
+
+          <div className="relative w-full max-w-md mb-6">
+            <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-outline text-lg pointer-events-none" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search patterns…"
+              className="w-full bg-surface-container-highest border-none rounded-lg pl-10 pr-4 py-2.5 sm:py-2 text-sm text-on-surface placeholder:text-on-surface-variant/60 focus:ring-2 focus:ring-primary/40 transition-all"
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-3 items-center">
+            <button
+              type="button"
+              onClick={() => setLanguageFilter('all')}
+              className={`px-5 py-2 rounded-full text-sm font-semibold tracking-wide flex items-center gap-2 transition-all ${
+                languageFilter === 'all'
+                  ? 'bg-primary text-on-primary'
+                  : 'bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest'
+              }`}
+            >
+              All patterns
+              <span className={`px-2 rounded-full text-xs ${languageFilter === 'all' ? 'bg-on-primary/20' : 'bg-on-surface-variant/10'}`}>
+                {records.length}
+              </span>
+            </button>
+            {availableLanguages.map((lang) => {
+              const count = records.filter(r => r.targetLanguage === lang).length;
+              const active = languageFilter === lang;
+              return (
+                <button
+                  key={lang}
+                  type="button"
+                  onClick={() => setLanguageFilter(active ? 'all' : lang)}
+                  className={`px-5 py-2 rounded-full text-sm font-semibold tracking-wide flex items-center gap-2 transition-all ${
+                    active
+                      ? 'bg-primary text-on-primary'
+                      : 'bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest'
+                  }`}
+                >
+                  {lang}
+                  <span className={`px-2 rounded-full text-xs ${active ? 'bg-on-primary/20' : 'bg-on-surface-variant/10'}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setLanguageFilter('all');
+                }}
+                className="text-sm font-semibold text-primary hover:underline"
+              >
+                Reset filters
+              </button>
+            )}
+            <div className="ml-auto flex gap-2">
+              <button
+                type="button"
+                onClick={() => setViewMode('grid')}
+                className={`p-2 rounded-lg transition-colors ${
+                  viewMode === 'grid' ? 'bg-surface-container text-on-surface' : 'bg-transparent text-outline hover:bg-surface-container-high'
+                }`}
+                aria-label="Grid view"
+              >
+                <Icon name="grid_view" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={`p-2 rounded-lg transition-colors ${
+                  viewMode === 'list' ? 'bg-surface-container text-on-surface' : 'bg-transparent text-outline hover:bg-surface-container-high'
+                }`}
+                aria-label="List view"
+              >
+                <Icon name="list" />
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {loadError && (
+          <div className="bg-error-container text-on-error-container rounded-xl p-5 mb-8 text-sm border border-error/20">
+            <p className="font-semibold mb-1">Could not load your patterns</p>
+            <p className="mb-3 opacity-90">{loadError}</p>
+            <button
+              type="button"
+              onClick={refresh}
+              className="px-4 py-2 text-sm font-semibold rounded-lg border border-on-error-container/30 hover:bg-error/10 transition-colors"
+            >
+              Try again
+            </button>
           </div>
         )}
 
-        {records.length === 0 ? (
-          <div className="bg-white rounded-2xl shadow-sm border border-brand-200 p-10 sm:p-16 text-center">
-            <div className="bg-brand-100 p-5 rounded-full inline-block mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-brand-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-bold text-brand-800 mb-1">No patterns yet</h3>
-            <p className="text-brand-400 text-sm">
-              Your translated patterns will show up here after you complete a translation.
-            </p>
+        {isLoadingRecords ? (
+          <div className="flex flex-col items-center justify-center py-24 gap-4 text-on-surface-variant">
+            <svg className="animate-spin h-8 w-8 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            <span className="text-sm font-medium">Loading your patterns…</span>
+          </div>
+        ) : records.length === 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <article className="md:col-span-2 lg:col-span-3 relative bg-surface-container-low border-2 border-dashed border-outline-variant/30 rounded-xl overflow-hidden flex flex-col sm:flex-row items-center justify-center p-10 sm:p-12 text-center gap-6">
+              <div className="w-20 h-20 rounded-full bg-surface-container-highest flex items-center justify-center shrink-0">
+                <Icon name="folder_open" className="text-4xl text-primary" />
+              </div>
+              <div className="max-w-md">
+                <h3 className="font-headline text-2xl font-bold text-on-surface mb-2">No patterns yet</h3>
+                <p className="text-on-surface-variant text-sm mb-6 leading-relaxed">
+                  Your translated patterns will show up here after you complete a translation.
+                </p>
+                <button
+                  type="button"
+                  onClick={goTranslate}
+                  className="bg-primary text-on-primary px-8 py-3 rounded-xl font-bold hover:shadow-lg transition-all active:scale-95"
+                >
+                  Start translating
+                </button>
+              </div>
+            </article>
           </div>
         ) : filteredRecords.length === 0 ? (
-          <div className="bg-white rounded-2xl shadow-sm border border-brand-200 p-10 sm:p-12 text-center">
-            <h3 className="text-lg font-bold text-brand-800 mb-1">No matching patterns</h3>
-            <p className="text-brand-400 text-sm mb-4">
-              Try a different file name or language filter.
-            </p>
+          <div className="bg-surface-container-low rounded-xl p-10 text-center border border-outline-variant/20">
+            <h3 className="font-headline text-xl font-bold text-on-surface mb-2">No matching patterns</h3>
+            <p className="text-on-surface-variant text-sm mb-6">Try a different search or language filter.</p>
             <button
               type="button"
               onClick={() => {
                 setSearchQuery('');
                 setLanguageFilter('all');
               }}
-              className="px-4 py-3 text-sm font-medium rounded-lg border border-brand-200 text-brand-600 hover:bg-brand-50 transition-colors w-full sm:w-auto"
+              className="px-6 py-2.5 text-sm font-semibold rounded-xl bg-primary text-on-primary hover:opacity-90 transition-all"
             >
               Reset filters
             </button>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div
+            className={
+              viewMode === 'grid'
+                ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8'
+                : 'flex flex-col gap-4'
+            }
+          >
             {filteredRecords.map(record => (
-              <div key={record.id} className="bg-white rounded-2xl shadow-sm border border-brand-200 overflow-hidden">
-                <div className="p-4 sm:p-5">
-                  <button
-                    type="button"
-                    className="w-full text-left"
-                    onClick={() => handleToggleExpand(record.id)}
-                    aria-expanded={expandedId === record.id}
+              <article
+                key={record.id}
+                className="group relative bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-500 flex flex-col h-full border border-outline-variant/10"
+              >
+                <div
+                  className={
+                    viewMode === 'list'
+                      ? 'flex flex-col md:flex-row md:items-stretch'
+                      : 'flex flex-col flex-1'
+                  }
+                >
+                  <div
+                    className={`overflow-hidden relative bg-surface-container shrink-0 ${
+                      viewMode === 'grid'
+                        ? 'aspect-[4/3]'
+                        : 'aspect-[4/3] md:aspect-auto md:w-56 md:min-h-[220px]'
+                    }`}
                   >
-                    <div className="flex items-start gap-4 min-w-0">
-                      <div className="bg-brand-100 p-2.5 rounded-xl shrink-0 mt-0.5">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                        </svg>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="font-semibold text-brand-800 break-words">{record.fileName}</p>
-                            <div className="flex flex-wrap items-center gap-2 text-xs text-brand-400 mt-1">
-                              <span>{formatDate(record.timestamp)}</span>
-                              <span className="bg-brand-100 text-brand-600 px-2 py-0.5 rounded font-medium">
-                                {record.sourceLanguage && record.sourceLanguage !== 'Auto-Detect'
-                                  ? `${record.sourceLanguage} → ${record.targetLanguage}`
-                                  : record.targetLanguage}
-                              </span>
-                              {record.pdfMetrics && <span>{record.pdfMetrics.pages} page{record.pdfMetrics.pages !== 1 ? 's' : ''}</span>}
-                              {record.cost > 0 && <span>${record.cost.toFixed(2)}</span>}
-                            </div>
-                          </div>
-                          <svg
-                            className={`w-5 h-5 text-brand-400 transition-transform shrink-0 mt-1 ${expandedId === record.id ? 'rotate-180' : ''}`}
-                            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}
-                            aria-hidden="true"
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                          </svg>
-                        </div>
-                      </div>
+                    <img
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                      alt=""
+                      src={imageForRecord(record.id)}
+                    />
+                    <div className="absolute top-4 left-4 flex flex-wrap gap-2">
+                      <span className="bg-secondary-container text-on-secondary-container px-3 py-1 rounded-full text-[10px] uppercase font-bold tracking-widest flex items-center gap-1">
+                        <Icon name="check_circle" className="text-xs" filled />
+                        Completed
+                      </span>
+                      <span className="bg-surface/80 glass-nav text-on-surface px-3 py-1 rounded-full text-[10px] uppercase font-bold tracking-widest">
+                        {record.targetLanguage}
+                      </span>
                     </div>
-                  </button>
-
-                  <div className="mt-4 flex flex-col sm:flex-row sm:flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleOpenFullView(record)}
-                      className="px-3 py-2.5 text-sm font-medium text-brand-600 border border-brand-200 hover:bg-brand-100 rounded-lg transition-colors w-full sm:w-auto"
-                    >
-                      Open full view
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDownload(record)}
-                      className="px-3 py-2.5 text-sm font-medium text-brand-600 border border-brand-200 hover:bg-brand-100 rounded-lg transition-colors w-full sm:w-auto"
-                    >
-                      Download
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(record.id)}
-                      className="px-3 py-2.5 text-sm font-medium text-red-500 border border-red-100 hover:bg-red-50 rounded-lg transition-colors w-full sm:w-auto"
-                    >
-                      Delete
-                    </button>
+                  </div>
+                  <div className="p-6 sm:p-8 flex flex-col flex-1 min-w-0">
+                    <h3 className="font-headline text-xl sm:text-2xl font-bold mb-2 text-on-surface group-hover:text-primary transition-colors break-words">
+                      {displayTitle(record.fileName)}
+                    </h3>
+                    <p className="text-on-surface-variant text-sm mb-4 leading-relaxed">
+                      {langLine(record)}
+                      {record.pdfMetrics ? ` · ${record.pdfMetrics.pages} page${record.pdfMetrics.pages !== 1 ? 's' : ''}` : ''}
+                      {record.cost > 0 ? ` · $${record.cost.toFixed(2)}` : ''}
+                    </p>
+                    <p className="text-on-surface-variant/90 text-xs mb-6">{formatDate(record.timestamp)}</p>
+                    <div className="mt-auto pt-6 border-t border-outline-variant/10 flex flex-wrap items-center gap-2 sm:justify-between">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenFullView(record)}
+                          className="text-primary font-bold text-sm flex items-center gap-1 group/btn hover:underline"
+                        >
+                          View pattern
+                          <Icon name="arrow_forward" className="text-lg group-hover/btn:translate-x-1 transition-transform" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDownload(record)}
+                          className="px-3 py-1.5 rounded-lg text-sm font-semibold border border-outline-variant/30 hover:bg-surface-container-high transition-colors"
+                        >
+                          Download
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleExpand(record.id)}
+                          className="px-3 py-1.5 rounded-lg text-sm font-semibold border border-outline-variant/30 hover:bg-surface-container-high transition-colors"
+                        >
+                          {expandedId === record.id ? 'Hide preview' : 'Preview'}
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(record.id)}
+                        className="p-2 rounded-full text-error hover:bg-error-container/30 transition-colors ml-auto"
+                        aria-label="Delete pattern"
+                      >
+                        <Icon name="delete" />
+                      </button>
+                    </div>
                   </div>
                 </div>
-
                 {expandedId === record.id && (
-                  <div className="border-t border-brand-200 p-4 sm:p-5 bg-brand-50/30">
-                    {expandedHtml ? (
+                  <div className="border-t border-outline-variant/10 p-4 sm:p-6 bg-surface-container-low w-full">
+                    {isExpandedLoading ? (
+                      <p className="text-sm text-on-surface-variant italic">Loading preview…</p>
+                    ) : expandedHtml ? (
                       <div
-                        className="pattern-rendered bg-white rounded-xl border border-brand-200 p-4 sm:p-6 max-h-96 overflow-y-auto text-sm text-brand-800 leading-relaxed"
+                        className="pattern-rendered bg-surface-container-lowest rounded-xl border border-outline-variant/20 p-4 max-h-80 overflow-y-auto text-sm text-on-surface leading-relaxed"
                         dangerouslySetInnerHTML={{ __html: expandedHtml }}
                       />
                     ) : (
-                      <p className="text-sm text-brand-400 italic">
-                        Preview not available. Use the download button if you saved the file separately.
+                      <p className="text-sm text-on-surface-variant italic">
+                        Preview not available. Try downloading the file.
                       </p>
                     )}
                   </div>
                 )}
-              </div>
+              </article>
             ))}
+
+            <article className="group relative bg-surface-container-low border-2 border-dashed border-outline-variant/30 rounded-xl overflow-hidden flex flex-col items-center justify-center p-10 sm:p-12 text-center min-h-[320px] hover:bg-surface-container-high transition-colors">
+              <div className="w-20 h-20 rounded-full bg-surface-container-highest flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                <Icon name="auto_fix_high" className="text-4xl text-primary" />
+              </div>
+              <h3 className="font-headline text-2xl font-bold text-on-surface mb-2">Translate new pattern</h3>
+              <p className="text-on-surface-variant text-sm max-w-xs mb-8 leading-relaxed">
+                Upload a PDF and get a clean, translated pattern with layout preserved.
+              </p>
+              <button
+                type="button"
+                onClick={goTranslate}
+                className="bg-primary text-on-primary px-8 py-3 rounded-xl font-bold hover:shadow-lg transition-all active:scale-95"
+              >
+                Start translating
+              </button>
+            </article>
           </div>
         )}
       </div>
 
+      <div className="fixed bottom-8 right-8 z-30 max-w-[calc(100vw-2rem)]">
+        <div className="bg-surface/80 glass-nav backdrop-blur-xl p-4 rounded-2xl shadow-2xl border border-outline-variant/20 flex flex-col gap-3 min-w-[200px]">
+          <div className="flex items-center justify-between border-b border-outline-variant/10 pb-2">
+            <span className="text-[10px] uppercase font-bold tracking-widest text-on-surface-variant">StitchSpeak</span>
+            <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-full text-[10px] font-bold">
+              {filteredRecords.length} saved
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-xs text-outline mb-1 truncate">Translator</div>
+              <div className="text-lg font-bold text-primary font-headline tracking-tight truncate">Upload &amp; translate</div>
+            </div>
+            <button
+              type="button"
+              onClick={goTranslate}
+              className="w-10 h-10 shrink-0 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-lg hover:scale-110 active:scale-95 transition-all"
+              aria-label="Open translator"
+            >
+              <Icon name="add" />
+            </button>
+          </div>
+        </div>
+      </div>
+
       {fullViewRecord && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={handleCloseFullView}></div>
-          <div className="relative w-full max-w-5xl max-h-[94vh] bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col">
-            <div className="bg-slate-50 p-4 sm:p-5 border-b border-slate-100 flex items-start justify-between gap-4">
+          <div className="absolute inset-0 bg-inverse-surface/60 backdrop-blur-sm" onClick={handleCloseFullView} />
+          <div className="relative w-full max-w-5xl max-h-[94vh] bg-surface rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col border border-outline-variant/20">
+            <div className="bg-surface-container-high p-4 sm:p-5 border-b border-outline-variant/15 flex items-start justify-between gap-4">
               <div className="min-w-0">
-                <h3 className="text-lg font-bold text-slate-800 break-words">{fullViewRecord.fileName}</h3>
-                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  {fullViewRecord.sourceLanguage && fullViewRecord.sourceLanguage !== 'Auto-Detect'
-                    ? `${fullViewRecord.sourceLanguage} → ${fullViewRecord.targetLanguage}`
-                    : fullViewRecord.targetLanguage}
+                <h3 className="text-lg font-bold text-on-surface break-words font-headline">{displayTitle(fullViewRecord.fileName)}</h3>
+                <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">
+                  {langLine(fullViewRecord)}
                   {' · '}
                   {formatDate(fullViewRecord.timestamp)}
                 </p>
               </div>
-              <button onClick={handleCloseFullView} className="text-slate-400 hover:text-slate-600 transition shrink-0" aria-label="Close full view">
+              <button onClick={handleCloseFullView} className="text-on-surface-variant hover:text-on-surface transition shrink-0" aria-label="Close full view">
                 <CloseIcon className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="px-4 sm:px-5 py-3 border-b border-slate-100 bg-white">
+            <div className="px-4 sm:px-5 py-3 border-b border-outline-variant/15 bg-surface-container-lowest">
               <button
                 type="button"
                 onClick={() => handleDownload(fullViewRecord)}
-                className="w-full sm:w-auto px-4 py-3 text-sm font-medium rounded-lg border border-brand-200 text-brand-600 hover:bg-brand-50 transition-colors"
+                className="w-full sm:w-auto px-4 py-3 text-sm font-semibold rounded-xl border border-outline-variant/30 text-primary hover:bg-surface-container-high transition-colors"
               >
                 Download
               </button>
             </div>
 
-            <div className="p-4 sm:p-6 overflow-y-auto bg-brand-50/20 flex-1">
-              {fullViewHtml ? (
+            <div className="p-4 sm:p-6 overflow-y-auto bg-background flex-1">
+              {isFullViewLoading ? (
+                <p className="text-sm text-on-surface-variant italic">Loading pattern…</p>
+              ) : fullViewHtml ? (
                 <div
-                  className="pattern-rendered bg-white rounded-xl border border-brand-200 p-4 sm:p-8 text-sm sm:text-base text-brand-800 leading-relaxed shadow-sm"
+                  className="pattern-rendered bg-surface-container-lowest rounded-xl border border-outline-variant/20 p-4 sm:p-8 text-sm sm:text-base text-on-surface leading-relaxed shadow-sm"
                   dangerouslySetInnerHTML={{ __html: fullViewHtml }}
                 />
               ) : (
-                <p className="text-sm text-brand-400 italic">
+                <p className="text-sm text-on-surface-variant italic">
                   Full view is not available for this pattern. Try downloading it instead.
                 </p>
               )}

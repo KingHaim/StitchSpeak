@@ -67,13 +67,8 @@ export const GlossaryPage: React.FC = () => {
 
   return (
     <div className="max-w-6xl mx-auto">
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-brand-800 mb-1">Knitting & Crochet Glossary</h2>
-        <p className="text-brand-400">Search {GLOSSARY_TERMS.length}+ terms across {GLOSSARY_LANGUAGES.length} languages</p>
-      </div>
-
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-brand-100 p-1 rounded-xl w-fit">
+      <div className="flex gap-1 mb-3 bg-brand-100 p-1 rounded-xl w-fit">
         <button
           onClick={() => setActiveTab('knitting')}
           className={`px-5 py-2 text-sm font-semibold rounded-lg transition-colors ${
@@ -95,6 +90,10 @@ export const GlossaryPage: React.FC = () => {
           Crochet
         </button>
       </div>
+
+      <p className="text-sm text-on-surface-variant mb-6">
+        Search {GLOSSARY_TERMS.length}+ terms across {GLOSSARY_LANGUAGES.length} languages
+      </p>
 
       {/* Filters */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-brand-200 mb-6">
