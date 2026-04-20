@@ -51,6 +51,8 @@ export const DashboardPage: React.FC = () => {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isBuyCreditsOpen, setIsBuyCreditsOpen] = useState(false);
   const [pendingStart, setPendingStart] = useState<PendingTranslationStart | null>(null);
+  const [modalStartError, setModalStartError] = useState<string | null>(null);
+  const [isStartingFromModal, setIsStartingFromModal] = useState(false);
 
   const [isChatSending, setIsChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
@@ -124,6 +126,8 @@ export const DashboardPage: React.FC = () => {
     setModalPdfMetrics(null);
     setModalPriceEstimate(null);
     setModalAnalyzeError(null);
+    setModalStartError(null);
+    setIsStartingFromModal(false);
     setIsModalAnalyzing(false);
   }, []);
 
@@ -205,7 +209,7 @@ export const DashboardPage: React.FC = () => {
   );
 
   const tryStartFromModal = useCallback(async () => {
-    if (!modalFile || !modalPriceEstimate) return;
+    if (!modalFile || !modalPriceEstimate || isStartingFromModal) return;
 
     const payload: PendingTranslationStart = {
       file: modalFile,
@@ -215,24 +219,44 @@ export const DashboardPage: React.FC = () => {
       priceEstimate: modalPriceEstimate,
     };
 
-    if (isAuthenticated && user?.email) {
+    setModalStartError(null);
+    setIsStartingFromModal(true);
+
+    try {
+      if (!(isAuthenticated && user?.email)) {
+        setPendingStart(payload);
+        setIsPaymentModalOpen(true);
+        return;
+      }
+
       const cost = modalPriceEstimate.translationCost;
-      if (balance >= cost - 0.001) {
-        const ok = await deductCredits(cost);
-        if (ok) {
-          closeLanguageModal();
-          void beginTranslationJob(payload);
-        } else {
-          setPendingStart(payload);
-          setIsBuyCreditsOpen(true);
-        }
-      } else {
+      if (balance < cost - 0.001) {
         setPendingStart(payload);
         setIsBuyCreditsOpen(true);
+        return;
       }
-    } else {
-      setPendingStart(payload);
-      setIsPaymentModalOpen(true);
+
+      const ok = await deductCredits(cost);
+      if (!ok) {
+        setPendingStart(payload);
+        setIsBuyCreditsOpen(true);
+        return;
+      }
+
+      closeLanguageModal();
+      void beginTranslationJob(payload);
+    } catch (err) {
+      console.error('[DashboardPage] tryStartFromModal failed:', err);
+      const status = (err as { status?: number }).status;
+      const baseMessage = err instanceof Error
+        ? err.message
+        : 'Could not start the translation. Please try again.';
+      const message = status === 401
+        ? 'Your sign-in session expired. Please sign out and sign in again, then try once more.'
+        : baseMessage;
+      setModalStartError(message);
+    } finally {
+      setIsStartingFromModal(false);
     }
   }, [
     modalFile,
@@ -246,6 +270,7 @@ export const DashboardPage: React.FC = () => {
     deductCredits,
     beginTranslationJob,
     closeLanguageModal,
+    isStartingFromModal,
   ]);
 
   const handlePaymentSuccess = useCallback(() => {
@@ -669,7 +694,9 @@ export const DashboardPage: React.FC = () => {
         onClose={closeLanguageModal}
         onStart={() => void tryStartFromModal()}
         startLabel={modalStartLabel}
-        startDisabled={modalStartDisabled}
+        startDisabled={modalStartDisabled || isStartingFromModal}
+        startBusy={isStartingFromModal}
+        startError={modalStartError}
       />
 
       <PaymentModal

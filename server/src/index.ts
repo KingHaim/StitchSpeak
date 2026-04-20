@@ -21,9 +21,11 @@ function normalizeOrigin(value: string): string {
 const DEFAULT_ALLOWED_ORIGINS = [
   'http://localhost:5173',
   'http://localhost:4173',
-  // Production Vercel deployment for StitchSpeak. Keeping this in code means a
-  // missing FRONTEND_URL env var on Railway can't silently break the live site.
+  // Production frontends for StitchSpeak. Keeping these in code means a missing
+  // FRONTEND_URL env var on Railway can't silently break the live site.
   'https://stitch-speak.vercel.app',
+  'https://stitchspeak.com',
+  'https://www.stitchspeak.com',
 ];
 
 const VERCEL_PREVIEW_REGEX = /^https:\/\/stitch-speak(-[a-z0-9-]+)?(-[a-z0-9-]+\.vercel\.app|\.vercel\.app)$/;

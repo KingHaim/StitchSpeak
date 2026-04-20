@@ -70,6 +70,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
+  // Watchdog: Google ID tokens are valid for ~1 hour. Once expired, every API
+  // request silently 401s, which previously made buttons look like they did
+  // nothing. Periodically re-check expiration and sign the user out so the UI
+  // can offer a fresh sign-in instead of stalling.
+  useEffect(() => {
+    if (!idToken) return;
+    const checkExpiry = () => {
+      try {
+        const payload = decodeGoogleIdToken(idToken);
+        if (isPayloadExpired(payload)) signOut();
+      } catch {
+        signOut();
+      }
+    };
+    checkExpiry();
+    const interval = window.setInterval(checkExpiry, 30_000);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') checkExpiry();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [idToken, signOut]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,

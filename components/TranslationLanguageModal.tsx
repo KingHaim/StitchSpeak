@@ -21,6 +21,8 @@ interface TranslationLanguageModalProps {
   onStart: () => void;
   startLabel: string;
   startDisabled: boolean;
+  startBusy?: boolean;
+  startError?: string | null;
 }
 
 export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> = ({
@@ -38,6 +40,8 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
   onStart,
   startLabel,
   startDisabled,
+  startBusy = false,
+  startError = null,
 }) => {
   const dialogRef = useModalA11y(isOpen, onClose);
 
@@ -142,6 +146,15 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
             </div>
           )}
 
+          {startError && (
+            <div
+              role="alert"
+              className="text-sm text-on-error-container bg-error-container/40 border border-error/30 rounded-xl px-4 py-3"
+            >
+              {startError}
+            </div>
+          )}
+
           <div className="bg-surface-container rounded-xl p-5 sm:p-6 flex items-start gap-4 border border-outline-variant/15">
             <div className="bg-primary/10 p-2.5 rounded-lg shrink-0">
               <span className="text-primary text-xl leading-none" aria-hidden>
@@ -169,10 +182,23 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
             type="button"
             onClick={onStart}
             disabled={startDisabled}
+            aria-busy={startBusy}
             className="order-1 sm:order-2 bg-primary hover:bg-primary-container text-on-primary px-8 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 min-h-[48px]"
           >
-            {startLabel}
-            <span aria-hidden>→</span>
+            {startBusy ? (
+              <>
+                <svg className="animate-spin h-5 w-5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden>
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Starting…
+              </>
+            ) : (
+              <>
+                {startLabel}
+                <span aria-hidden>→</span>
+              </>
+            )}
           </button>
         </div>
       </div>
