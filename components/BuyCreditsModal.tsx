@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CloseIcon } from './icons/CloseIcon';
 import { CreditCardIcon } from './icons/CreditCardIcon';
 import { LockIcon } from './icons/LockIcon';
@@ -10,9 +10,16 @@ interface BuyCreditsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onPurchase: (pack: CreditPackage) => void | Promise<void>;
+  /** When set (e.g. after landing pricing → sign-in), pre-select this package in the grid. */
+  initialSelectedIndex?: number;
 }
 
-export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({ isOpen, onClose, onPurchase }) => {
+export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({
+  isOpen,
+  onClose,
+  onPurchase,
+  initialSelectedIndex,
+}) => {
   const dialogRef = useModalA11y(isOpen, onClose);
   const [selectedIdx, setSelectedIdx] = useState(1);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -20,10 +27,18 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({ isOpen, onClos
   const [expiry, setExpiry] = useState('');
   const [cvc, setCvc] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const initialIdxRef = useRef(initialSelectedIndex);
+
+  initialIdxRef.current = initialSelectedIndex;
 
   useEffect(() => {
     if (isOpen) {
-      setSelectedIdx(1);
+      let nextIdx = 1;
+      const initialIdx = initialIdxRef.current;
+      if (initialIdx !== undefined && initialIdx >= 0 && initialIdx < CREDIT_PACKAGES.length) {
+        nextIdx = initialIdx;
+      }
+      setSelectedIdx(nextIdx);
       setIsProcessing(false);
       setCardNumber('');
       setExpiry('');
@@ -84,6 +99,9 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({ isOpen, onClos
       }
 
       try {
+        // #region agent log
+        fetch('http://127.0.0.1:7482/ingest/185ff8c9-bcd0-4e81-ae0d-16eb4a306fdb',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9b47bb'},body:JSON.stringify({sessionId:'9b47bb',runId:'buy-credits-initial',hypothesisId:'H1',location:'components/BuyCreditsModal.tsx:101',message:'Buy credits submit passed validation',data:{selectedCredits:selectedPack.credits,selectedPrice:selectedPack.price,cardDigits:cardNumber.replace(/\s/g, '').length,expiryLength:expiry.trim().length,cvcLength:cvc.trim().length},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         await onPurchase(selectedPack);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Payment could not be completed.';

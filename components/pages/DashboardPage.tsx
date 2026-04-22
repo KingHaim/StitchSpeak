@@ -14,7 +14,13 @@ import { saveTranslation } from '../../services/historyService';
 import { exportPatternPdf, exportPatternHtml } from '../../services/pdfExport';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCredits } from '../../contexts/CreditContext';
-import { LANGUAGES, AUTO_DETECT_LANGUAGE, PRICING } from '../../constants';
+import {
+  LANGUAGES,
+  AUTO_DETECT_LANGUAGE,
+  PRICING,
+  CREDIT_PACKAGES,
+  PENDING_BUY_CREDITS_PACK_INDEX_KEY,
+} from '../../constants';
 import type {
   Language,
   PdfMetrics,
@@ -50,6 +56,7 @@ export const DashboardPage: React.FC = () => {
 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isBuyCreditsOpen, setIsBuyCreditsOpen] = useState(false);
+  const [buyCreditsInitialIdx, setBuyCreditsInitialIdx] = useState<number | undefined>(undefined);
   const [pendingStart, setPendingStart] = useState<PendingTranslationStart | null>(null);
   const [modalStartError, setModalStartError] = useState<string | null>(null);
   const [isStartingFromModal, setIsStartingFromModal] = useState(false);
@@ -57,7 +64,6 @@ export const DashboardPage: React.FC = () => {
   const [isChatSending, setIsChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
 
-  const [stitchCount, setStitchCount] = useState(42);
   const [studioExportBusy, setStudioExportBusy] = useState(false);
 
   const newTranslationRef = useRef<HTMLDivElement>(null);
@@ -71,6 +77,24 @@ export const DashboardPage: React.FC = () => {
   useEffect(() => {
     setChatError(null);
   }, [selectedJobId]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    try {
+      const raw = sessionStorage.getItem(PENDING_BUY_CREDITS_PACK_INDEX_KEY);
+      if (raw == null) return;
+      const idx = Number.parseInt(raw, 10);
+      if (!Number.isInteger(idx) || idx < 0 || idx >= CREDIT_PACKAGES.length) {
+        sessionStorage.removeItem(PENDING_BUY_CREDITS_PACK_INDEX_KEY);
+        return;
+      }
+      sessionStorage.removeItem(PENDING_BUY_CREDITS_PACK_INDEX_KEY);
+      setBuyCreditsInitialIdx(idx);
+      setIsBuyCreditsOpen(true);
+    } catch {
+      /* ignore */
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (selectedJobId && !jobs.some((j) => j.id === selectedJobId)) {
@@ -630,56 +654,6 @@ export const DashboardPage: React.FC = () => {
         </section>
       </div>
 
-      <div className="fixed bottom-6 right-4 sm:right-8 z-40 max-w-[calc(100vw-2rem)]">
-        <div className="group glass-panel p-5 sm:p-6 rounded-[2rem] shadow-[0_20px_50px_rgba(80,96,74,0.15)] border border-surface-container-highest flex flex-col sm:flex-row items-center gap-6 sm:gap-8 hover:scale-105 transition-transform duration-300">
-          <div className="text-center w-full sm:w-auto">
-            <span className="block text-[10px] uppercase tracking-widest text-primary/70 font-bold mb-1">
-              Stitch counter
-            </span>
-            <div className="flex items-center justify-center gap-3 sm:gap-4">
-              <button
-                type="button"
-                onClick={() => setStitchCount((c) => Math.max(0, c - 1))}
-                className="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center text-primary hover:bg-primary-fixed transition-colors"
-                aria-label="Decrease stitch count"
-              >
-                <span className="material-symbols-outlined">remove</span>
-              </button>
-              <span className="text-3xl sm:text-4xl font-headline italic min-w-[3rem] text-on-surface tabular-nums">
-                {stitchCount}
-              </span>
-              <button
-                type="button"
-                onClick={() => setStitchCount((c) => c + 1)}
-                className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-lg shadow-primary/20 hover:scale-105 transition-transform"
-                aria-label="Increase stitch count"
-              >
-                <span className="material-symbols-outlined">add</span>
-              </button>
-            </div>
-          </div>
-          <div className="hidden sm:block h-12 w-px bg-outline-variant/30 shrink-0" aria-hidden />
-          <div className="flex flex-row sm:flex-col gap-2 justify-center">
-            <button
-              type="button"
-              onClick={() => setStitchCount(0)}
-              className="p-2 rounded-lg hover:bg-surface-container-highest text-on-surface-variant transition-colors"
-              aria-label="Reset stitch counter"
-            >
-              <span className="material-symbols-outlined text-xl">restart_alt</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setStitchCount(42)}
-              className="p-2 rounded-lg hover:bg-surface-container-highest text-on-surface-variant transition-colors"
-              aria-label="Set stitch counter to 42"
-            >
-              <span className="material-symbols-outlined text-xl">edit</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
       <TranslationLanguageModal
         isOpen={isLanguageModalOpen}
         fileName={modalFile?.name ?? null}
@@ -711,8 +685,15 @@ export const DashboardPage: React.FC = () => {
 
       <BuyCreditsModal
         isOpen={isBuyCreditsOpen}
+        initialSelectedIndex={buyCreditsInitialIdx}
         onClose={() => {
+          try {
+            sessionStorage.removeItem(PENDING_BUY_CREDITS_PACK_INDEX_KEY);
+          } catch {
+            /* ignore */
+          }
           setIsBuyCreditsOpen(false);
+          setBuyCreditsInitialIdx(undefined);
           setPendingStart(null);
         }}
         onPurchase={handleCreditPurchase}

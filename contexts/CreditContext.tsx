@@ -91,11 +91,21 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const addCredits = useCallback(
     async (amount: number) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7482/ingest/185ff8c9-bcd0-4e81-ae0d-16eb4a306fdb',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9b47bb'},body:JSON.stringify({sessionId:'9b47bb',runId:'buy-credits-initial',hypothesisId:'H2',location:'contexts/CreditContext.tsx:94',message:'CreditContext.addCredits called',data:{amount,hasIdToken:Boolean(idToken),isAuthenticated},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       if (!idToken) return;
-      const newBalance = await apiAdd(idToken, amount);
-      setBalance(newBalance);
+      try {
+        const newBalance = await apiAdd(idToken, amount);
+        setBalance(newBalance);
+      } catch (err) {
+        // #region agent log
+        fetch('http://127.0.0.1:7482/ingest/185ff8c9-bcd0-4e81-ae0d-16eb4a306fdb',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9b47bb'},body:JSON.stringify({sessionId:'9b47bb',runId:'buy-credits-initial',hypothesisId:'H3',location:'contexts/CreditContext.tsx:101',message:'CreditContext.addCredits failed',data:{amount,error:err instanceof Error ? err.message : 'unknown'},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        throw err;
+      }
     },
-    [idToken],
+    [idToken, isAuthenticated],
   );
 
   const deductCredits = useCallback(

@@ -1,6 +1,5 @@
 import React from 'react';
 import type { PdfMetrics, PriceEstimate } from '../types';
-import { PRICING } from '../constants';
 import { formatPrice } from '../services/pricingService';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -41,9 +40,8 @@ export const PricePreview: React.FC<PricePreviewProps> = ({ metrics, estimate })
         </div>
       </div>
 
-      <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-        <span>File: {metrics.fileSizeKB} KB</span>
-        <span>Chat: {PRICING.chat.freeMessages} free msgs, then {formatPrice(estimate.chatPackageCost)}/{PRICING.chat.packageSize} msgs</span>
+      <div className="text-xs text-slate-400 px-1">
+        File: {metrics.fileSizeKB} KB
       </div>
     </div>
   );

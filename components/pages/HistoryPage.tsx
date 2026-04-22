@@ -59,6 +59,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
   const [isFullViewLoading, setIsFullViewLoading] = useState(false);
 
   const [confirmClear, setConfirmClear] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [languageFilter, setLanguageFilter] = useState<'all' | string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -66,6 +67,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
   const refresh = useCallback(async () => {
     setIsLoadingRecords(true);
     setLoadError(null);
+    setActionError(null);
     try {
       const list = await loadHistory(idToken);
       setRecords(list);
@@ -155,10 +157,16 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
   };
 
   const handleDelete = async (id: string) => {
+    setActionError(null);
     try {
       await deleteTranslation(id, idToken);
     } catch (err) {
       console.error('Failed to delete pattern:', err);
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Could not delete this pattern. Please try again.';
+      setActionError(message);
       return;
     }
     setRecords(prev => prev.filter(r => r.id !== id));
@@ -209,10 +217,16 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
       setConfirmClear(true);
       return;
     }
+    setActionError(null);
     try {
       await clearHistory(idToken);
     } catch (err) {
       console.error('Failed to clear patterns:', err);
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Could not clear your patterns. Please try again.';
+      setActionError(message);
       setConfirmClear(false);
       return;
     }
@@ -243,6 +257,11 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
   const hasActiveFilters = searchQuery.trim().length > 0 || languageFilter !== 'all';
 
   const goTranslate = () => onNavigateToTranslate?.();
+
+  const referencePatternFrame =
+    viewMode === 'grid'
+      ? 'aspect-[4/3]'
+      : 'aspect-[4/3] md:aspect-auto md:w-56 md:min-h-[220px]';
 
   return (
     <>
@@ -370,6 +389,22 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
           </div>
         )}
 
+        {actionError && (
+          <div
+            className="bg-error-container text-on-error-container rounded-xl p-4 mb-6 text-sm border border-error/20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+            role="alert"
+          >
+            <p className="font-medium">{actionError}</p>
+            <button
+              type="button"
+              onClick={() => setActionError(null)}
+              className="shrink-0 px-3 py-1.5 text-sm font-semibold rounded-lg border border-on-error-container/30 hover:bg-error/10 transition-colors self-start sm:self-auto"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {isLoadingRecords ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4 text-on-surface-variant">
             <svg className="animate-spin h-8 w-8 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -435,11 +470,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
                   }
                 >
                   <div
-                    className={`overflow-hidden relative bg-surface-container shrink-0 ${
-                      viewMode === 'grid'
-                        ? 'aspect-[4/3]'
-                        : 'aspect-[4/3] md:aspect-auto md:w-56 md:min-h-[220px]'
-                    }`}
+                    className={`overflow-hidden relative bg-surface-container shrink-0 ${referencePatternFrame}`}
                   >
                     <img
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
@@ -503,18 +534,34 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
                   </div>
                 </div>
                 {expandedId === record.id && (
-                  <div className="border-t border-outline-variant/10 p-4 sm:p-6 bg-surface-container-low w-full">
+                  <div
+                    className={`border-t border-outline-variant/10 p-4 sm:p-6 bg-surface-container-low w-full ${
+                      viewMode === 'list' ? 'flex justify-start' : ''
+                    }`}
+                  >
                     {isExpandedLoading ? (
-                      <p className="text-sm text-on-surface-variant italic">Loading preview…</p>
+                      <div
+                        className={`flex items-center justify-center bg-surface-container-lowest rounded-xl border border-outline-variant/20 min-h-0 overflow-hidden ${referencePatternFrame} w-full shrink-0`}
+                      >
+                        <p className="text-sm text-on-surface-variant italic px-4">Loading preview…</p>
+                      </div>
                     ) : expandedHtml ? (
                       <div
-                        className="pattern-rendered bg-surface-container-lowest rounded-xl border border-outline-variant/20 p-4 max-h-80 overflow-y-auto text-sm text-on-surface leading-relaxed"
-                        dangerouslySetInnerHTML={{ __html: expandedHtml }}
-                      />
+                        className={`bg-surface-container-lowest rounded-xl border border-outline-variant/20 flex flex-col min-h-0 overflow-hidden ${referencePatternFrame} w-full shrink-0`}
+                      >
+                        <div
+                          className="pattern-rendered flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 text-sm text-on-surface leading-relaxed [scrollbar-gutter:stable]"
+                          dangerouslySetInnerHTML={{ __html: expandedHtml }}
+                        />
+                      </div>
                     ) : (
-                      <p className="text-sm text-on-surface-variant italic">
-                        Preview not available. Try downloading the file.
-                      </p>
+                      <div
+                        className={`flex items-center justify-center bg-surface-container-lowest rounded-xl border border-outline-variant/20 min-h-0 overflow-hidden ${referencePatternFrame} w-full shrink-0`}
+                      >
+                        <p className="text-sm text-on-surface-variant italic px-4 text-center">
+                          Preview not available. Try downloading the file.
+                        </p>
+                      </div>
                     )}
                   </div>
                 )}
@@ -541,30 +588,32 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
         )}
       </div>
 
-      <div className="fixed bottom-8 right-8 z-30 max-w-[calc(100vw-2rem)]">
-        <div className="bg-surface/80 glass-nav backdrop-blur-xl p-4 rounded-2xl shadow-2xl border border-outline-variant/20 flex flex-col gap-3 min-w-[200px]">
-          <div className="flex items-center justify-between border-b border-outline-variant/10 pb-2">
-            <span className="text-[10px] uppercase font-bold tracking-widest text-on-surface-variant">StitchSpeak</span>
-            <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-full text-[10px] font-bold">
-              {filteredRecords.length} saved
-            </span>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-xs text-outline mb-1 truncate">Translator</div>
-              <div className="text-lg font-bold text-primary font-headline tracking-tight truncate">Upload &amp; translate</div>
+      {!isLoadingRecords && !loadError && records.length > 0 && (
+        <div className="fixed bottom-8 left-4 sm:left-8 lg:left-24 z-30 max-w-[calc(100vw-2rem)] pointer-events-none">
+          <div className="pointer-events-auto bg-surface/80 glass-nav backdrop-blur-xl p-4 rounded-2xl shadow-2xl border border-outline-variant/20 flex flex-col gap-3 min-w-[200px]">
+            <div className="flex items-center justify-between border-b border-outline-variant/10 pb-2">
+              <span className="text-[10px] uppercase font-bold tracking-widest text-on-surface-variant">StitchSpeak</span>
+              <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-full text-[10px] font-bold">
+                {filteredRecords.length} saved
+              </span>
             </div>
-            <button
-              type="button"
-              onClick={goTranslate}
-              className="w-10 h-10 shrink-0 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-lg hover:scale-110 active:scale-95 transition-all"
-              aria-label="Open translator"
-            >
-              <Icon name="add" />
-            </button>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs text-outline mb-1 truncate">Translator</div>
+                <div className="text-lg font-bold text-primary font-headline tracking-tight truncate">Upload &amp; translate</div>
+              </div>
+              <button
+                type="button"
+                onClick={goTranslate}
+                className="w-10 h-10 shrink-0 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-lg hover:scale-110 active:scale-95 transition-all"
+                aria-label="Open translator"
+              >
+                <Icon name="add" />
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {fullViewRecord &&
         createPortal(

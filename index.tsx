@@ -27,7 +27,10 @@ const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
     {googleClientId ? (
-      <GoogleOAuthProvider clientId={googleClientId}>{appTree}</GoogleOAuthProvider>
+      // Keep the Google iframe text in sync with the custom English "Sign in" overlay on landing.
+      <GoogleOAuthProvider clientId={googleClientId} locale="en">
+        {appTree}
+      </GoogleOAuthProvider>
     ) : (
       appTree
     )}

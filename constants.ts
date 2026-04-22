@@ -30,6 +30,9 @@ export const CREDIT_PACKAGES: CreditPackage[] = [
   { credits: 50, price: 35.00, label: '50 credits' },
 ];
 
+/** Landing pricing → sign in: `DashboardPage` opens Buy Credits for this package index. Cleared when that modal closes. */
+export const PENDING_BUY_CREDITS_PACK_INDEX_KEY = 'ss_pending_buy_credits_pack_idx';
+
 export const PRICING = {
   translation: {
     inputCostPer1MTokens: 1.25,
