@@ -133,17 +133,93 @@ export interface SaveTranslationParams {
   cost: number;
 }
 
+export type LoadHistoryResult = {
+  records: TranslationRecord[];
+  /**
+   * Signed in, but the server could not list patterns; showing entries stored
+   * in this browser from guest mode or a previous offline session.
+   */
+  offlineFallback: boolean;
+};
+
+export const PATTERNS_SYNCED_EVENT = 'ss-patterns-synced';
+
+function dispatchPatternsSynced(): void {
+  try {
+    window.dispatchEvent(new CustomEvent(PATTERNS_SYNCED_EVENT));
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * If the user translated while signed out, patterns live in localStorage only.
+ * After sign-in, copy them to the server once the remote library is still empty.
+ * Returns true when local guest data was uploaded and cleared.
+ */
+export async function migrateGuestHistoryToServerIfRemoteEmpty(
+  idToken: string,
+): Promise<boolean> {
+  let remote: TranslationRecord[];
+  try {
+    remote = await remoteList(idToken);
+  } catch {
+    return false;
+  }
+  if (remote.length > 0) return false;
+
+  const localRecords = readIndex();
+  if (localRecords.length === 0) return false;
+
+  const pending = localRecords.filter((r) => localGetHtml(r.id)?.trim());
+  if (pending.length === 0) return false;
+
+  for (const record of pending) {
+    const html = localGetHtml(record.id);
+    if (!html?.trim()) continue;
+    try {
+      await remoteSave(idToken, {
+        fileName: record.fileName,
+        fileType: record.fileType,
+        sourceLanguage: record.sourceLanguage,
+        targetLanguage: record.targetLanguage,
+        html,
+        pdfMetrics: record.pdfMetrics,
+        cost: record.cost,
+      });
+    } catch {
+      return false;
+    }
+  }
+
+  localClear();
+  dispatchPatternsSynced();
+  return true;
+}
+
 /**
  * Auth-aware accessors. When `idToken` is provided, patterns are stored
  * server-side (per Google account) and synced across devices. When it's
  * null, we fall back to browser localStorage (guest mode).
  */
 
-export async function loadHistory(idToken: string | null): Promise<TranslationRecord[]> {
-  if (idToken) {
-    return remoteList(idToken);
+export async function loadHistory(idToken: string | null): Promise<LoadHistoryResult> {
+  if (!idToken) {
+    return { records: localGetHistory(), offlineFallback: false };
   }
-  return localGetHistory();
+  try {
+    const records = await remoteList(idToken);
+    return { records, offlineFallback: false };
+  } catch (err) {
+    const status = (err as { status?: number }).status;
+    if (status === 401) throw err;
+    const local = localGetHistory();
+    if (local.length > 0) {
+      console.warn('[history] Server list failed; using browser-stored patterns.', err);
+      return { records: local, offlineFallback: true };
+    }
+    throw err;
+  }
 }
 
 export async function loadTranslationHtml(

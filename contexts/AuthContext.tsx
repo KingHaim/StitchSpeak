@@ -17,6 +17,7 @@ import {
   writeStoredIdToken,
   clearStoredIdToken,
 } from '../auth/sessionStorage';
+import { migrateGuestHistoryToServerIfRemoteEmpty } from '../services/historyService';
 
 type AuthContextValue = {
   user: AuthenticatedUser | null;
@@ -95,6 +96,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [idToken, signOut]);
+
+  useEffect(() => {
+    if (!idToken) return;
+    void migrateGuestHistoryToServerIfRemoteEmpty(idToken);
+  }, [idToken]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

@@ -52,7 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activePage, o
     if (!showCreditsOverview) return;
     let cancelled = false;
     loadHistory(idToken)
-      .then((records) => {
+      .then(({ records }) => {
         if (!cancelled) setHistoryRecords(records);
       })
       .catch((err) => {

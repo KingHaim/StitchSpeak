@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
 import translateRouter from './routes/translate.js';
 import chatRouter from './routes/chat.js';
@@ -71,6 +71,16 @@ app.use('/api/chat', chatRouter);
 app.use('/api/credits', creditsRouter);
 app.use('/api/glossary', glossaryRouter);
 app.use('/api/patterns', patternsRouter);
+
+app.use(
+  (err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    if (res.headersSent) return;
+    console.error('[StitchSpeak Server] Unhandled error:', err);
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Internal server error.',
+    });
+  },
+);
 
 app.listen(PORT, () => {
   console.log(`[StitchSpeak Server] listening on port ${PORT}`);

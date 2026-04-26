@@ -51,6 +51,27 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_patterns_sub_ts ON patterns(sub, timestamp DESC);
 `);
 
+/** Older dev DBs may predate a column; missing columns make SELECT fail with 500s. */
+function ensurePatternsColumns(): void {
+  const rows = db.prepare(`PRAGMA table_info(patterns)`).all() as { name: string }[];
+  if (rows.length === 0) return;
+
+  const have = new Set(rows.map((r) => r.name));
+  const add = (col: string, ddl: string) => {
+    if (!have.has(col)) {
+      db.exec(ddl);
+      have.add(col);
+    }
+  };
+
+  add('file_type', 'ALTER TABLE patterns ADD COLUMN file_type TEXT');
+  add('source_language', 'ALTER TABLE patterns ADD COLUMN source_language TEXT');
+  add('pdf_metrics', 'ALTER TABLE patterns ADD COLUMN pdf_metrics TEXT');
+  add('cost', 'ALTER TABLE patterns ADD COLUMN cost REAL NOT NULL DEFAULT 0');
+}
+
+ensurePatternsColumns();
+
 export interface PatternRow {
   id: string;
   timestamp: number;

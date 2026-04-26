@@ -5,6 +5,7 @@ import {
   loadTranslationHtml,
   deleteTranslation,
   clearHistory,
+  PATTERNS_SYNCED_EVENT,
 } from '../../services/historyService';
 import {
   exportPatternPdf,
@@ -65,6 +66,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
   const [records, setRecords] = useState<TranslationRecord[]>([]);
   const [isLoadingRecords, setIsLoadingRecords] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [offlineNotice, setOfflineNotice] = useState<string | null>(null);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedHtml, setExpandedHtml] = useState<string | null>(null);
@@ -88,10 +90,16 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
   const refresh = useCallback(async () => {
     setIsLoadingRecords(true);
     setLoadError(null);
+    setOfflineNotice(null);
     setActionError(null);
     try {
-      const list = await loadHistory(idToken);
+      const { records: list, offlineFallback } = await loadHistory(idToken);
       setRecords(list);
+      if (offlineFallback) {
+        setOfflineNotice(
+          'Showing patterns stored only on this device. The server could not load your account library. For local development, run the API in the server folder and ensure VITE_API_URL points at it (or leave it unset so the dev proxy can reach port 3001).',
+        );
+      }
     } catch (err) {
       console.error('Failed to load patterns:', err);
       setLoadError(
@@ -107,6 +115,14 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
 
   useEffect(() => {
     refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    const onSynced = () => {
+      void refresh();
+    };
+    window.addEventListener(PATTERNS_SYNCED_EVENT, onSynced);
+    return () => window.removeEventListener(PATTERNS_SYNCED_EVENT, onSynced);
   }, [refresh]);
 
   useEffect(() => {
@@ -434,6 +450,23 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
               className="px-4 py-2 text-sm font-semibold rounded-lg border border-on-error-container/30 hover:bg-error/10 transition-colors"
             >
               Try again
+            </button>
+          </div>
+        )}
+
+        {offlineNotice && !loadError && (
+          <div
+            className="bg-surface-container-high text-on-surface rounded-xl p-5 mb-8 text-sm border border-primary/25"
+            role="status"
+          >
+            <p className="font-semibold mb-1 text-primary">Working from this browser only</p>
+            <p className="text-on-surface-variant opacity-95 leading-relaxed">{offlineNotice}</p>
+            <button
+              type="button"
+              onClick={refresh}
+              className="mt-3 px-4 py-2 text-sm font-semibold rounded-lg border border-outline-variant/40 hover:bg-surface-container transition-colors"
+            >
+              Retry sync
             </button>
           </div>
         )}
