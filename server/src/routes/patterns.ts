@@ -11,6 +11,9 @@ import {
   getSourceFile,
   attachThumbnail,
   getThumbnailFile,
+  getChatState,
+  appendChatMessages,
+  bumpChatAllowance,
 } from '../services/patternStore.js';
 
 const router = Router();
@@ -188,6 +191,80 @@ router.get('/:id/source', (req, res: Response) => {
     console.error('[patterns] source fetch failed:', err);
     res.status(500).json({
       error: err instanceof Error ? err.message : 'Could not load source file.',
+    });
+  }
+});
+
+router.get('/:id/chat', (req, res: Response) => {
+  try {
+    const { userSub } = req as unknown as AuthenticatedRequest;
+    const id = String(req.params.id);
+    const state = getChatState(userSub, id);
+    if (!state) {
+      res.status(404).json({ error: 'Pattern not found.' });
+      return;
+    }
+    res.json(state);
+  } catch (err) {
+    console.error('[patterns] chat fetch failed:', err);
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Could not load chat history.',
+    });
+  }
+});
+
+router.post('/:id/chat', (req, res: Response) => {
+  try {
+    const { userSub } = req as unknown as AuthenticatedRequest;
+    const id = String(req.params.id);
+    const messages = (req.body?.messages ?? []) as Array<{ role?: unknown; content?: unknown }>;
+    if (!Array.isArray(messages) || messages.length === 0) {
+      res.status(400).json({ error: 'messages must be a non-empty array.' });
+      return;
+    }
+    const cleaned: { role: 'user' | 'model'; content: string }[] = [];
+    for (const m of messages) {
+      const role = m.role === 'user' || m.role === 'model' ? m.role : null;
+      const content = typeof m.content === 'string' ? m.content : '';
+      if (!role || !content.trim()) {
+        res.status(400).json({ error: 'Each message needs a valid role and non-empty content.' });
+        return;
+      }
+      cleaned.push({ role, content });
+    }
+    const ok = appendChatMessages(userSub, id, cleaned);
+    if (!ok) {
+      res.status(404).json({ error: 'Pattern not found.' });
+      return;
+    }
+    res.json({ ok: true, appended: cleaned.length });
+  } catch (err) {
+    console.error('[patterns] chat append failed:', err);
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Could not save chat messages.',
+    });
+  }
+});
+
+router.post('/:id/chat/unlock', (req, res: Response) => {
+  try {
+    const { userSub } = req as unknown as AuthenticatedRequest;
+    const id = String(req.params.id);
+    const by = Number(req.body?.by);
+    if (!Number.isInteger(by) || by <= 0 || by > 1000) {
+      res.status(400).json({ error: 'by must be a positive integer.' });
+      return;
+    }
+    const state = bumpChatAllowance(userSub, id, by);
+    if (!state) {
+      res.status(404).json({ error: 'Pattern not found.' });
+      return;
+    }
+    res.json({ ok: true, extraAllowance: state.extraAllowance });
+  } catch (err) {
+    console.error('[patterns] chat unlock failed:', err);
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Could not update chat allowance.',
     });
   }
 });

@@ -21,6 +21,7 @@ import { PatternThumbnail } from '../PatternThumbnail';
 import { PatternViewer } from '../PatternViewer';
 import { abbreviationLanguageCodeFromTargetLabel } from '../../services/abbreviationService';
 import { setAddTranslationHint } from '../../services/addTranslationHint';
+import { setOpenPatternHint } from '../../services/openPatternHint';
 
 type DownloadFormat = 'pdf' | 'doc' | 'html' | 'txt';
 
@@ -74,6 +75,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
   const [activeDownloadMenuId, setActiveDownloadMenuId] = useState<string | null>(null);
   const [downloadingRecordId, setDownloadingRecordId] = useState<string | null>(null);
   const [addingTranslationId, setAddingTranslationId] = useState<string | null>(null);
+  const [openingInStudioId, setOpeningInStudioId] = useState<string | null>(null);
   /**
    * Per-source-file selection: which translation is the "active" one inside a
    * grouped card. We keep this as a controlled override; when absent we fall
@@ -406,6 +408,36 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
   function setActiveRecord(fileName: string, recordId: string): void {
     setSelectedByFile((prev) => ({ ...prev, [fileName]: recordId }));
   }
+
+  /**
+   * Re-open a saved translation in the dashboard so the user can keep chatting
+   * with the AI about it. We fetch the translated HTML up-front (the dashboard
+   * needs it to start a chat session) and hand the record off via the
+   * openPatternHint module.
+   */
+  const handleOpenInStudio = useCallback(
+    async (record: TranslationRecord) => {
+      setActionError(null);
+      setOpeningInStudioId(record.id);
+      try {
+        const html = await loadTranslationHtml(record.id, idToken);
+        if (!html?.trim()) {
+          setActionError('We could not load this translation. Please try again.');
+          return;
+        }
+        setOpenPatternHint({ record, translatedHtml: html });
+        onNavigateToTranslate?.();
+      } catch (err) {
+        console.error('Failed to open pattern in studio:', err);
+        setActionError(
+          err instanceof Error ? err.message : 'Could not open this pattern in the studio.',
+        );
+      } finally {
+        setOpeningInStudioId(null);
+      }
+    },
+    [idToken, onNavigateToTranslate],
+  );
 
   const handleAddTranslation = useCallback(
     async (record: TranslationRecord) => {
@@ -805,6 +837,28 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
                             className="px-3 py-1.5 rounded-lg text-sm font-semibold border border-outline-variant/30 hover:bg-surface-container-high transition-colors"
                           >
                             {expandedId === record.id ? 'Hide preview' : 'Preview'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleOpenInStudio(record)}
+                            disabled={openingInStudioId === record.id}
+                            className="px-3 py-1.5 rounded-lg text-sm font-semibold border border-outline-variant/30 hover:bg-surface-container-high transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
+                            title="Reopen this translation in the studio to continue chatting with the AI"
+                          >
+                            {openingInStudioId === record.id ? (
+                              <>
+                                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden>
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                </svg>
+                                Opening…
+                              </>
+                            ) : (
+                              <>
+                                <Icon name="forum" className="text-base" />
+                                Continue chat
+                              </>
+                            )}
                           </button>
                         </div>
                         <button

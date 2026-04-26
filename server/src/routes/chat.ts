@@ -8,13 +8,26 @@ router.use(requireAuth);
 
 router.post('/start', async (req: Request, res: Response) => {
   try {
-    const { patternHtml } = req.body;
+    const { patternHtml, priorMessages } = req.body;
     if (!patternHtml || typeof patternHtml !== 'string') {
       res.status(400).json({ error: 'Missing "patternHtml" in request body.' });
       return;
     }
 
-    const sessionId = await createChatSession(patternHtml);
+    const cleanedPrior = Array.isArray(priorMessages)
+      ? priorMessages
+          .filter(
+            (m: unknown): m is { role: 'user' | 'model'; content: string } =>
+              !!m &&
+              typeof m === 'object' &&
+              ((m as { role?: unknown }).role === 'user' ||
+                (m as { role?: unknown }).role === 'model') &&
+              typeof (m as { content?: unknown }).content === 'string',
+          )
+          .map((m) => ({ role: m.role, content: m.content }))
+      : [];
+
+    const sessionId = await createChatSession(patternHtml, cleanedPrior);
     res.json({ sessionId });
   } catch (err: any) {
     console.error('[chat/start] Error:', err);

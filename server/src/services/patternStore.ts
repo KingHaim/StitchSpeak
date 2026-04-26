@@ -63,6 +63,17 @@ db.exec(`
     html            TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_patterns_sub_ts ON patterns(sub, timestamp DESC);
+
+  CREATE TABLE IF NOT EXISTS chat_messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    pattern_id  TEXT NOT NULL,
+    sub         TEXT NOT NULL,
+    role        TEXT NOT NULL CHECK (role IN ('user', 'model')),
+    content     TEXT NOT NULL,
+    created_at  INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_chat_pattern ON chat_messages(pattern_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_chat_sub ON chat_messages(sub, pattern_id);
 `);
 
 /** Older dev DBs may predate a column; missing columns make SELECT fail with 500s. */
@@ -86,6 +97,10 @@ function ensurePatternsColumns(): void {
   add('source_size', 'ALTER TABLE patterns ADD COLUMN source_size INTEGER');
   add('source_ext', 'ALTER TABLE patterns ADD COLUMN source_ext TEXT');
   add('thumb_size', 'ALTER TABLE patterns ADD COLUMN thumb_size INTEGER');
+  add(
+    'chat_extra_allowance',
+    'ALTER TABLE patterns ADD COLUMN chat_extra_allowance INTEGER NOT NULL DEFAULT 0',
+  );
 }
 
 ensurePatternsColumns();
@@ -156,6 +171,30 @@ const stmts = {
   `),
   exists: db.prepare<[string, string]>(`
     SELECT 1 FROM patterns WHERE sub = ? AND id = ? LIMIT 1
+  `),
+  getChatAllowance: db.prepare<[string, string]>(`
+    SELECT chat_extra_allowance FROM patterns WHERE sub = ? AND id = ?
+  `),
+  bumpChatAllowance: db.prepare<[number, string, string]>(`
+    UPDATE patterns
+    SET chat_extra_allowance = chat_extra_allowance + ?
+    WHERE sub = ? AND id = ?
+  `),
+  listChat: db.prepare<[string, string]>(`
+    SELECT role, content, created_at
+    FROM chat_messages
+    WHERE sub = ? AND pattern_id = ?
+    ORDER BY created_at ASC, id ASC
+  `),
+  appendChat: db.prepare<[string, string, string, string, number]>(`
+    INSERT INTO chat_messages (pattern_id, sub, role, content, created_at)
+    VALUES (?, ?, ?, ?, ?)
+  `),
+  deleteChatForPattern: db.prepare<[string, string]>(`
+    DELETE FROM chat_messages WHERE sub = ? AND pattern_id = ?
+  `),
+  deleteAllChat: db.prepare<[string]>(`
+    DELETE FROM chat_messages WHERE sub = ?
   `),
   insert: db.prepare<
     [string, string, number, string, string | null, string | null, string, string | null, number, string]
@@ -460,6 +499,7 @@ export function deletePattern(sub: string, id: string): boolean {
   if (result.changes > 0) {
     if (meta?.source_ext) safeUnlinkSource(id, meta.source_ext);
     safeUnlinkThumb(id);
+    stmts.deleteChatForPattern.run(sub, id);
   }
   return result.changes > 0;
 }
@@ -471,5 +511,74 @@ export function deleteAllPatterns(sub: string): number {
     if (row.source_ext) safeUnlinkSource(row.id, row.source_ext);
     safeUnlinkThumb(row.id);
   }
+  stmts.deleteAllChat.run(sub);
   return result.changes;
+}
+
+export interface ChatMessageRow {
+  role: 'user' | 'model';
+  content: string;
+  createdAt: number;
+}
+
+export interface ChatStateForPattern {
+  messages: ChatMessageRow[];
+  extraAllowance: number;
+}
+
+export function getChatState(sub: string, id: string): ChatStateForPattern | null {
+  const row = stmts.getChatAllowance.get(sub, id) as
+    | { chat_extra_allowance: number }
+    | undefined;
+  if (!row) return null;
+  const rawMessages = stmts.listChat.all(sub, id) as Array<{
+    role: 'user' | 'model';
+    content: string;
+    created_at: number;
+  }>;
+  return {
+    messages: rawMessages.map((m) => ({
+      role: m.role,
+      content: m.content,
+      createdAt: m.created_at,
+    })),
+    extraAllowance: row.chat_extra_allowance,
+  };
+}
+
+export interface ChatMessageInput {
+  role: 'user' | 'model';
+  content: string;
+}
+
+export function appendChatMessages(
+  sub: string,
+  id: string,
+  messages: ChatMessageInput[],
+): boolean {
+  const exists = stmts.exists.get(sub, id);
+  if (!exists) return false;
+  const insertMany = db.transaction((entries: ChatMessageInput[]) => {
+    const now = Date.now();
+    for (let i = 0; i < entries.length; i++) {
+      const m = entries[i];
+      // Add a microsecond-style nudge so messages saved in the same tick keep
+      // the order they were appended in.
+      stmts.appendChat.run(id, sub, m.role, m.content, now + i);
+    }
+  });
+  insertMany(messages);
+  return true;
+}
+
+export function bumpChatAllowance(
+  sub: string,
+  id: string,
+  by: number,
+): { extraAllowance: number } | null {
+  const exists = stmts.exists.get(sub, id);
+  if (!exists) return null;
+  stmts.bumpChatAllowance.run(by, sub, id);
+  const row = stmts.getChatAllowance.get(sub, id) as { chat_extra_allowance: number };
+  return { extraAllowance: row.chat_extra_allowance };
 }

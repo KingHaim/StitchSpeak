@@ -10,7 +10,16 @@ import { TranslationJobCard } from '../TranslationJobCard';
 import { translatePattern, startChatSession, sendChatMessage } from '../../services/translationService';
 import { analyzeFile } from '../../services/fileAnalyzer';
 import { estimateBatchTranslationCost, estimateTranslationCost } from '../../services/pricingService';
-import { saveTranslation } from '../../services/historyService';
+import { saveTranslation, loadPatternSource } from '../../services/historyService';
+import {
+  appendPatternChatMessages,
+  fetchPatternChatState,
+  unlockPatternChatAllowance,
+} from '../../services/patternsService';
+import {
+  onOpenPatternHintChange,
+  takeOpenPatternHint,
+} from '../../services/openPatternHint';
 import {
   exportPatternPdf,
   exportPatternDoc,
@@ -28,12 +37,14 @@ import {
 } from '../../services/addTranslationHint';
 import {
   LANGUAGES,
+  SOURCE_LANGUAGES,
   AUTO_DETECT_LANGUAGE,
   PRICING,
   CREDIT_PACKAGES,
   PENDING_BUY_CREDITS_PACK_INDEX_KEY,
 } from '../../constants';
 import type {
+  ChatMessage,
   Language,
   PdfMetrics,
   PriceEstimate,
@@ -260,6 +271,87 @@ export const DashboardPage: React.FC = () => {
     newTranslationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [addTranslationHint, isLanguageModalOpen, handleNewTranslationFile]);
 
+  /**
+   * "Open in studio" handoff from My Patterns: rebuild a TranslationJob from a
+   * saved pattern record so the user can keep chatting with the AI about it.
+   * We hydrate the persisted chat history, start a fresh Gemini chat session
+   * primed with that history, and pre-fetch the original source for the side
+   * preview when it's available.
+   */
+  const rehydrateFromOpenHint = useCallback(async () => {
+    const hint = takeOpenPatternHint();
+    if (!hint || !idToken) return;
+    const { record, translatedHtml } = hint;
+    if (!translatedHtml.trim()) return;
+
+    const sourcePromise = record.hasSource
+      ? loadPatternSource(record.id, idToken).catch(() => null)
+      : Promise.resolve(null);
+    const chatStatePromise = fetchPatternChatState(idToken, record.id).catch(() => null);
+
+    const [sourceFile, chatState] = await Promise.all([sourcePromise, chatStatePromise]);
+
+    const placeholderFile =
+      sourceFile ?? new File([], record.fileName, { type: record.fileType || 'application/pdf' });
+
+    const chatHistory: ChatMessage[] =
+      chatState?.messages.map((m) => ({
+        author: m.role === 'user' ? 'user' : 'model',
+        content: m.content,
+      })) ?? [];
+
+    const userMessageCount = chatHistory.filter((m) => m.author === 'user').length;
+    const allowance = PRICING.chat.freeMessages + (chatState?.extraAllowance ?? 0);
+
+    let chatSessionId: string | null = null;
+    try {
+      chatSessionId = await startChatSession(
+        translatedHtml,
+        idToken,
+        chatHistory.map((m) => ({
+          role: m.author === 'user' ? ('user' as const) : ('model' as const),
+          content: m.content,
+        })),
+      );
+    } catch (err) {
+      console.warn('[chat] Could not start session for rehydrated pattern:', err);
+    }
+
+    const sourceLanguageObj: Language = SOURCE_LANGUAGES.find(
+      (l) => l.name === (record.sourceLanguage ?? AUTO_DETECT_LANGUAGE.name),
+    ) ?? AUTO_DETECT_LANGUAGE;
+    const targetLanguageObj: Language =
+      LANGUAGES.find((l) => l.name === record.targetLanguage) ?? LANGUAGES[0];
+
+    const newJob: TranslationJob = {
+      id: createJobId(),
+      file: placeholderFile,
+      fileName: record.fileName,
+      sourceLanguage: sourceLanguageObj,
+      targetLanguage: targetLanguageObj,
+      pdfMetrics: record.pdfMetrics,
+      priceEstimate: null,
+      status: 'complete',
+      translatedHtml,
+      error: null,
+      chatSessionId,
+      chatHistory,
+      chatMessageCount: userMessageCount,
+      chatMessagesAllowed: allowance,
+      serverPatternId: record.id,
+    };
+
+    setJobs((prev) => [newJob, ...prev]);
+    setSelectedJobId(newJob.id);
+  }, [idToken]);
+
+  useEffect(() => {
+    void rehydrateFromOpenHint();
+    return onOpenPatternHintChange(() => {
+      void rehydrateFromOpenHint();
+    });
+  }, [rehydrateFromOpenHint]);
+
   const closeLanguageModal = useCallback(() => {
     setIsLanguageModalOpen(false);
     setModalFiles([]);
@@ -298,6 +390,7 @@ export const DashboardPage: React.FC = () => {
         chatHistory: [],
         chatMessageCount: 0,
         chatMessagesAllowed: PRICING.chat.freeMessages,
+        serverPatternId: null,
       };
       setJobs((prev) => [newJob, ...prev]);
       setSelectedJobId(id);
@@ -314,8 +407,9 @@ export const DashboardPage: React.FC = () => {
           ),
         );
 
+        let serverPatternId: string | null = null;
         try {
-          await saveTranslation(
+          const savedRecord = await saveTranslation(
             {
               fileName: file.name,
               fileType: file.type || 'unknown',
@@ -327,6 +421,12 @@ export const DashboardPage: React.FC = () => {
               sourceFile: file,
             },
             idToken,
+          );
+          if (idToken) {
+            serverPatternId = savedRecord.id;
+          }
+          setJobs((prev) =>
+            prev.map((j) => (j.id === id ? { ...j, serverPatternId } : j)),
           );
           if (readAddTranslationHint()) {
             clearAddTranslationHint();
@@ -497,6 +597,17 @@ export const DashboardPage: React.FC = () => {
               : j,
           ),
         );
+
+        if (job.serverPatternId) {
+          try {
+            await appendPatternChatMessages(idToken, job.serverPatternId, [
+              { role: 'user', content: message },
+              { role: 'model', content: text },
+            ]);
+          } catch (persistErr) {
+            console.warn('[chat] Failed to persist exchange:', persistErr);
+          }
+        }
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : 'Sorry, something went wrong. Please try again.';
         console.error('Error sending chat message:', err);
@@ -510,6 +621,7 @@ export const DashboardPage: React.FC = () => {
 
   const handleUnlockChat = useCallback(() => {
     if (!selectedJobId) return;
+    const job = jobs.find((j) => j.id === selectedJobId);
     setJobs((prev) =>
       prev.map((j) =>
         j.id === selectedJobId
@@ -517,7 +629,12 @@ export const DashboardPage: React.FC = () => {
           : j,
       ),
     );
-  }, [selectedJobId]);
+    if (job?.serverPatternId && idToken) {
+      void unlockPatternChatAllowance(idToken, job.serverPatternId, PRICING.chat.packageSize).catch(
+        (err) => console.warn('[chat] Failed to persist unlock:', err),
+      );
+    }
+  }, [selectedJobId, jobs, idToken]);
 
   const modalCreditCost = modalPriceEstimate?.translationCost ?? 0;
   const modalFileCount = modalFiles.length;

@@ -90,6 +90,11 @@ export interface TranslationJob {
   chatHistory: ChatMessage[];
   chatMessageCount: number;
   chatMessagesAllowed: number;
+  /**
+   * Server-side pattern row id once the translation has been saved. Lets us
+   * persist chat exchanges and unlock paid allowance per pattern.
+   */
+  serverPatternId: string | null;
 }
 
 export interface PendingTranslationStart {

@@ -224,8 +224,42 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
-export async function createChatSession(patternHtml: string): Promise<string> {
+export interface PriorChatMessage {
+  role: 'user' | 'model';
+  content: string;
+}
+
+export async function createChatSession(
+  patternHtml: string,
+  priorMessages: PriorChatMessage[] = [],
+): Promise<string> {
   const sessionId = crypto.randomUUID();
+
+  const baseHistory = [
+    {
+      role: 'user' as const,
+      parts: [
+        {
+          text: `Here is the knitting pattern I need help with (in HTML format):\n\n---PATTERN START---\n\n${patternHtml}\n\n---PATTERN END---\n\nPlease act as my knitting assistant for this pattern.`,
+        },
+      ],
+    },
+    {
+      role: 'model' as const,
+      parts: [
+        {
+          text: "Of course! I've reviewed the pattern and I'm ready to help. What's your first question?",
+        },
+      ],
+    },
+  ];
+
+  const replayedHistory = priorMessages
+    .filter((m) => typeof m.content === 'string' && m.content.trim().length > 0)
+    .map((m) => ({
+      role: m.role,
+      parts: [{ text: m.content }],
+    }));
 
   const chat = await withRetry(() =>
     getAI().chats.create({
@@ -233,24 +267,7 @@ export async function createChatSession(patternHtml: string): Promise<string> {
       config: {
         systemInstruction: `You are a friendly and expert knitting assistant. All your answers must be based *only* on the knitting pattern provided by the user (which is in HTML format). If a question is not related to the pattern, politely decline to answer. Be helpful and encouraging. Use the correct localized terminology.`,
       },
-      history: [
-        {
-          role: 'user',
-          parts: [
-            {
-              text: `Here is the knitting pattern I need help with (in HTML format):\n\n---PATTERN START---\n\n${patternHtml}\n\n---PATTERN END---\n\nPlease act as my knitting assistant for this pattern.`,
-            },
-          ],
-        },
-        {
-          role: 'model',
-          parts: [
-            {
-              text: "Of course! I've reviewed the pattern and I'm ready to help. What's your first question?",
-            },
-          ],
-        },
-      ],
+      history: [...baseHistory, ...replayedHistory],
     }),
   );
 

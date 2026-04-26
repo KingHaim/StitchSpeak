@@ -113,16 +113,22 @@ export const translatePattern = async (
   return response.json();
 };
 
+export interface PriorChatMessage {
+  role: 'user' | 'model';
+  content: string;
+}
+
 export const startChatSession = async (
   patternHtml: string,
   idToken: string,
+  priorMessages: PriorChatMessage[] = [],
 ): Promise<string> => {
   const response = await checkedFetch(
     `${getApiUrl()}/api/chat/start`,
     {
       method: 'POST',
       headers: { ...authHeaders(idToken), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ patternHtml }),
+      body: JSON.stringify({ patternHtml, priorMessages }),
     },
     'Chat session',
   );

@@ -271,3 +271,65 @@ export async function fetchPatternThumbnail(
   }
   return await res.blob();
 }
+
+export interface ServerChatMessage {
+  role: 'user' | 'model';
+  content: string;
+  createdAt: number;
+}
+
+export interface ServerChatState {
+  messages: ServerChatMessage[];
+  /** Extra messages already paid for on top of the free allowance. */
+  extraAllowance: number;
+}
+
+/** Fetch persisted chat history + paid allowance for a saved pattern. */
+export async function fetchPatternChatState(
+  idToken: string,
+  id: string,
+): Promise<ServerChatState | null> {
+  try {
+    const data = await apiFetch<ServerChatState>(
+      `/${encodeURIComponent(id)}/chat`,
+      idToken,
+    );
+    return {
+      messages: data.messages ?? [],
+      extraAllowance: typeof data.extraAllowance === 'number' ? data.extraAllowance : 0,
+    };
+  } catch (err) {
+    if ((err as { status?: number }).status === 404) return null;
+    throw err;
+  }
+}
+
+/** Append one or more chat messages to a pattern's persisted history. */
+export async function appendPatternChatMessages(
+  idToken: string,
+  id: string,
+  messages: { role: 'user' | 'model'; content: string }[],
+): Promise<void> {
+  if (messages.length === 0) return;
+  await apiFetch<{ ok: boolean; appended: number }>(
+    `/${encodeURIComponent(id)}/chat`,
+    idToken,
+    'POST',
+    { messages },
+  );
+}
+
+/** Bump the per-pattern paid chat allowance by `by` messages. */
+export async function unlockPatternChatAllowance(
+  idToken: string,
+  id: string,
+  by: number,
+): Promise<number> {
+  const data = await apiFetch<{ ok: boolean; extraAllowance: number }>(
+    `/${encodeURIComponent(id)}/chat/unlock`,
+    idToken,
+    'POST',
+    { by },
+  );
+  return data.extraAllowance;
+}
