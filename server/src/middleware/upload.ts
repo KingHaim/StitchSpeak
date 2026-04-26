@@ -33,3 +33,23 @@ const sourceUpload = multer({
 });
 
 export const uploadPatternSource = sourceUpload.single('file');
+
+const ACCEPTED_THUMB_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+]);
+
+const thumbUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 512 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (ACCEPTED_THUMB_MIME_TYPES.has(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Unsupported thumbnail type. Use JPEG, PNG, or WebP.'));
+    }
+  },
+});
+
+export const uploadPatternThumbnail = thumbUpload.single('file');

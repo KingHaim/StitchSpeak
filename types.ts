@@ -63,6 +63,8 @@ export interface TranslationRecord {
   cost: number;
   /** True when the original source file is stored server-side and can be re-fetched. */
   hasSource?: boolean;
+  /** True when a page-1 thumbnail has been generated and stored server-side. */
+  hasThumbnail?: boolean;
 }
 
 export interface CreditPackage {

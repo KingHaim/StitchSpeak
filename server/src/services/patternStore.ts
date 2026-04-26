@@ -13,6 +13,9 @@ const SOURCES_DIR = path.join(DATA_DIR, 'sources');
  */
 const MAX_SOURCE_BYTES = 25 * 1024 * 1024;
 
+/** Thumbnails are tiny page-1 JPEGs; refuse anything bigger than 512 KB. */
+const MAX_THUMB_BYTES = 512 * 1024;
+
 const MAX_RECORDS_PER_USER = 100;
 // Patterns embed images as base64 data URLs, so a single HTML payload often
 // runs to several MB. The previous 1 MB cap silently truncated saved files
@@ -82,6 +85,7 @@ function ensurePatternsColumns(): void {
   add('source_mime', 'ALTER TABLE patterns ADD COLUMN source_mime TEXT');
   add('source_size', 'ALTER TABLE patterns ADD COLUMN source_size INTEGER');
   add('source_ext', 'ALTER TABLE patterns ADD COLUMN source_ext TEXT');
+  add('thumb_size', 'ALTER TABLE patterns ADD COLUMN thumb_size INTEGER');
 }
 
 ensurePatternsColumns();
@@ -99,6 +103,8 @@ export interface PatternRow {
   sourceMime: string | null;
   sourceSize: number | null;
   sourceExt: string | null;
+  hasThumbnail: boolean;
+  thumbSize: number | null;
 }
 
 export interface PatternRowWithHtml extends PatternRow {
@@ -117,20 +123,21 @@ interface RawRow {
   source_mime: string | null;
   source_size: number | null;
   source_ext: string | null;
+  thumb_size: number | null;
   html?: string;
 }
 
 const stmts = {
   list: db.prepare<[string]>(`
     SELECT id, timestamp, file_name, file_type, source_language, target_language,
-           pdf_metrics, cost, source_mime, source_size, source_ext
+           pdf_metrics, cost, source_mime, source_size, source_ext, thumb_size
     FROM patterns
     WHERE sub = ?
     ORDER BY timestamp DESC
   `),
   getOne: db.prepare<[string, string]>(`
     SELECT id, timestamp, file_name, file_type, source_language, target_language,
-           pdf_metrics, cost, source_mime, source_size, source_ext, html
+           pdf_metrics, cost, source_mime, source_size, source_ext, thumb_size, html
     FROM patterns
     WHERE sub = ? AND id = ?
   `),
@@ -143,6 +150,12 @@ const stmts = {
     UPDATE patterns
     SET source_mime = ?, source_size = ?, source_ext = ?
     WHERE sub = ? AND id = ?
+  `),
+  setThumbSize: db.prepare<[number | null, string, string]>(`
+    UPDATE patterns SET thumb_size = ? WHERE sub = ? AND id = ?
+  `),
+  exists: db.prepare<[string, string]>(`
+    SELECT 1 FROM patterns WHERE sub = ? AND id = ? LIMIT 1
   `),
   insert: db.prepare<
     [string, string, number, string, string | null, string | null, string, string | null, number, string]
@@ -189,6 +202,8 @@ function rowToPattern(row: RawRow): PatternRow {
     sourceMime: row.source_mime,
     sourceSize: row.source_size,
     sourceExt: row.source_ext,
+    hasThumbnail: row.thumb_size != null && row.thumb_size > 0,
+    thumbSize: row.thumb_size,
   };
 }
 
@@ -270,6 +285,8 @@ const saveTx = db.transaction((sub: string, input: SavePatternInput): PatternRow
     sourceMime: null,
     sourceSize: null,
     sourceExt: null,
+    hasThumbnail: false,
+    thumbSize: null,
   };
 });
 
@@ -300,12 +317,26 @@ function sourceFilePath(id: string, ext: string | null): string {
   return path.join(SOURCES_DIR, `${safeId}${sanitizeExtension(ext ?? '')}`);
 }
 
+function thumbFilePath(id: string): string {
+  const safeId = id.replace(/[^A-Za-z0-9_-]/g, '');
+  return path.join(SOURCES_DIR, `${safeId}.thumb.jpg`);
+}
+
 function safeUnlinkSource(id: string, ext: string | null): void {
   try {
     const target = sourceFilePath(id, ext);
     if (fs.existsSync(target)) fs.unlinkSync(target);
   } catch (err) {
     console.warn(`[patternStore] could not unlink source for ${id}:`, err);
+  }
+}
+
+function safeUnlinkThumb(id: string): void {
+  try {
+    const target = thumbFilePath(id);
+    if (fs.existsSync(target)) fs.unlinkSync(target);
+  } catch (err) {
+    console.warn(`[patternStore] could not unlink thumb for ${id}:`, err);
   }
 }
 
@@ -356,6 +387,46 @@ export function attachSource(
   return { size: input.data.byteLength, mime, ext: ext || null };
 }
 
+/**
+ * Persist a tiny page-1 JPEG thumbnail next to the source file. The frontend
+ * generates this with PDF.js while saving so the My Patterns gallery can show
+ * the actual cover instead of a generic placeholder.
+ */
+export function attachThumbnail(
+  sub: string,
+  id: string,
+  data: Buffer,
+): { size: number } | null {
+  const exists = stmts.exists.get(sub, id);
+  if (!exists) return null;
+
+  if (data.byteLength > MAX_THUMB_BYTES) {
+    throw new Error(
+      `Thumbnail is too large (${data.byteLength} bytes; max ${MAX_THUMB_BYTES}).`,
+    );
+  }
+
+  const target = thumbFilePath(id);
+  fs.writeFileSync(target, data);
+  stmts.setThumbSize.run(data.byteLength, sub, id);
+  return { size: data.byteLength };
+}
+
+export interface PatternThumbnail {
+  data: Buffer;
+  size: number;
+}
+
+export function getThumbnailFile(sub: string, id: string): PatternThumbnail | null {
+  const row = stmts.getOne.get(sub, id) as RawRow | undefined;
+  if (!row) return null;
+  if (!row.thumb_size || row.thumb_size <= 0) return null;
+  const target = thumbFilePath(id);
+  if (!fs.existsSync(target)) return null;
+  const data = fs.readFileSync(target);
+  return { data, size: data.byteLength };
+}
+
 export interface PatternSource {
   data: Buffer;
   mime: string | null;
@@ -386,8 +457,9 @@ export function deletePattern(sub: string, id: string): boolean {
     | { source_ext: string | null }
     | undefined;
   const result = stmts.deleteOne.run(sub, id);
-  if (result.changes > 0 && meta?.source_ext) {
-    safeUnlinkSource(id, meta.source_ext);
+  if (result.changes > 0) {
+    if (meta?.source_ext) safeUnlinkSource(id, meta.source_ext);
+    safeUnlinkThumb(id);
   }
   return result.changes > 0;
 }
@@ -397,6 +469,7 @@ export function deleteAllPatterns(sub: string): number {
   const result = stmts.deleteAllForUser.run(sub);
   for (const row of rows) {
     if (row.source_ext) safeUnlinkSource(row.id, row.source_ext);
+    safeUnlinkThumb(row.id);
   }
   return result.changes;
 }

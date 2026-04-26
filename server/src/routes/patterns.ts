@@ -1,6 +1,6 @@
 import { Router, type Response } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
-import { uploadPatternSource } from '../middleware/upload.js';
+import { uploadPatternSource, uploadPatternThumbnail } from '../middleware/upload.js';
 import {
   listPatterns,
   getPattern,
@@ -9,6 +9,8 @@ import {
   deleteAllPatterns,
   attachSource,
   getSourceFile,
+  attachThumbnail,
+  getThumbnailFile,
 } from '../services/patternStore.js';
 
 const router = Router();
@@ -117,6 +119,50 @@ router.post('/:id/source', uploadPatternSource, (req, res: Response) => {
     console.error('[patterns] source upload failed:', err);
     res.status(500).json({
       error: err instanceof Error ? err.message : 'Could not save source file.',
+    });
+  }
+});
+
+router.post('/:id/thumb', uploadPatternThumbnail, (req, res: Response) => {
+  try {
+    const { userSub } = req as AuthenticatedRequest;
+    const id = String(req.params.id);
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: 'No thumbnail file provided.' });
+      return;
+    }
+    const result = attachThumbnail(userSub, id, file.buffer);
+    if (!result) {
+      res.status(404).json({ error: 'Pattern not found.' });
+      return;
+    }
+    res.json({ ok: true, size: result.size });
+  } catch (err) {
+    console.error('[patterns] thumbnail upload failed:', err);
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Could not save thumbnail.',
+    });
+  }
+});
+
+router.get('/:id/thumb', (req, res: Response) => {
+  try {
+    const { userSub } = req as unknown as AuthenticatedRequest;
+    const id = String(req.params.id);
+    const thumb = getThumbnailFile(userSub, id);
+    if (!thumb) {
+      res.status(404).json({ error: 'Thumbnail not found.' });
+      return;
+    }
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Content-Length', thumb.size.toString());
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.send(thumb.data);
+  } catch (err) {
+    console.error('[patterns] thumbnail fetch failed:', err);
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Could not load thumbnail.',
     });
   }
 });

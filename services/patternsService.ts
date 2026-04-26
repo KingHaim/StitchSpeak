@@ -17,6 +17,8 @@ interface ServerPattern {
   sourceMime?: string | null;
   sourceSize?: number | null;
   sourceExt?: string | null;
+  hasThumbnail?: boolean;
+  thumbSize?: number | null;
 }
 
 interface ServerPatternWithHtml extends ServerPattern {
@@ -79,6 +81,7 @@ function toRecord(server: ServerPattern): TranslationRecord {
     pdfMetrics: server.pdfMetrics ?? null,
     cost: server.cost,
     hasSource: server.hasSource ?? false,
+    hasThumbnail: server.hasThumbnail ?? false,
   };
 }
 
@@ -212,4 +215,59 @@ export async function fetchPatternSource(
   const mime = res.headers.get('content-type') ?? 'application/octet-stream';
   const buffer = await res.arrayBuffer();
   return new File([buffer], fileName, { type: mime });
+}
+
+/**
+ * Upload a small page-1 JPEG thumbnail for a pattern. Best-effort: failures
+ * here should never break the save flow, since the gallery falls back to a
+ * deterministic placeholder when no thumbnail is on file.
+ */
+export async function uploadPatternThumbnail(
+  idToken: string,
+  id: string,
+  blob: Blob,
+): Promise<void> {
+  const form = new FormData();
+  form.append('file', blob, `pattern-${id}.jpg`);
+
+  const res = await fetch(
+    `${getApiUrl()}/api/patterns/${encodeURIComponent(id)}/thumb`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${idToken}` },
+      body: form,
+    },
+  );
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({} as Record<string, unknown>));
+    const err = new Error(
+      typeof (data as { error?: unknown }).error === 'string'
+        ? (data as { error: string }).error
+        : `Thumbnail upload failed (${res.status})`,
+    ) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+}
+
+/**
+ * Fetch the stored thumbnail as a `Blob`. Returns `null` when the pattern has
+ * no thumbnail on file (older saves, non-PDF sources, etc.).
+ */
+export async function fetchPatternThumbnail(
+  idToken: string,
+  id: string,
+): Promise<Blob | null> {
+  const res = await fetch(
+    `${getApiUrl()}/api/patterns/${encodeURIComponent(id)}/thumb`,
+    {
+      headers: { Authorization: `Bearer ${idToken}` },
+    },
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`Thumbnail fetch failed (${res.status})`);
+  }
+  return await res.blob();
 }
