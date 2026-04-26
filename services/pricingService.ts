@@ -28,6 +28,23 @@ export function estimateTranslationCost(metrics: PdfMetrics): PriceEstimate {
   };
 }
 
+export function estimateBatchTranslationCost(metricsList: PdfMetrics[]): PriceEstimate {
+  const estimates = metricsList.map(estimateTranslationCost);
+  const translationCost = estimates.reduce((sum, estimate) => sum + estimate.translationCost, 0);
+
+  return {
+    translationCost,
+    chatPackageCost: PRICING.chat.packagePrice,
+    totalCost: translationCost,
+    breakdown: {
+      inputTokens: estimates.reduce((sum, estimate) => sum + estimate.breakdown.inputTokens, 0),
+      outputTokens: estimates.reduce((sum, estimate) => sum + estimate.breakdown.outputTokens, 0),
+      rawCost: Math.round(estimates.reduce((sum, estimate) => sum + estimate.breakdown.rawCost, 0) * 10000) / 10000,
+      margin: estimates.reduce((sum, estimate) => sum + estimate.breakdown.margin, 0),
+    },
+  };
+}
+
 export function estimateChatCost(messageCount: number): number {
   const { packageSize, packagePrice, freeMessages } = PRICING.chat;
   const billable = Math.max(0, messageCount - freeMessages);

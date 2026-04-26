@@ -8,7 +8,7 @@ import { useModalA11y } from '../hooks/useModalA11y';
 
 interface TranslationLanguageModalProps {
   isOpen: boolean;
-  fileName: string | null;
+  fileNames: string[];
   isAnalyzing: boolean;
   analyzeError: string | null;
   pdfMetrics: PdfMetrics | null;
@@ -27,7 +27,7 @@ interface TranslationLanguageModalProps {
 
 export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> = ({
   isOpen,
-  fileName,
+  fileNames,
   isAnalyzing,
   analyzeError,
   pdfMetrics,
@@ -46,6 +46,9 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
   const dialogRef = useModalA11y(isOpen, onClose);
 
   if (!isOpen) return null;
+
+  const fileCount = fileNames.length;
+  const isBatch = fileCount > 1;
 
   return (
     <div
@@ -76,15 +79,25 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
             Select translation language
           </h2>
           <p className="text-on-surface-variant mt-2 font-body text-sm sm:text-base">
-            {fileName ? (
+            {fileCount > 0 ? (
               <>
-                <span className="font-medium text-on-surface">{fileName}</span>
+                <span className="font-medium text-on-surface">
+                  {isBatch ? `${fileCount} patterns selected` : fileNames[0]}
+                </span>
                 {' — '}confirm the source language and choose where to translate.
               </>
             ) : (
               'Confirm the source language and choose your target language.'
             )}
           </p>
+          {isBatch && (
+            <ul className="mt-3 max-h-20 overflow-y-auto text-xs text-on-surface-variant space-y-1 pr-6">
+              {fileNames.slice(0, 5).map((name, index) => (
+                <li key={`${name}-${index}`} className="truncate">{name}</li>
+              ))}
+              {fileCount > 5 && <li>+{fileCount - 5} more</li>}
+            </ul>
+          )}
         </div>
 
         <div className="px-6 sm:px-10 py-6 space-y-8 overflow-y-auto flex-1 min-h-0">
@@ -110,7 +123,7 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 />
               </svg>
-              Analyzing pattern for credits and page count…
+              {isBatch ? 'Analyzing patterns for credits and page count…' : 'Analyzing pattern for credits and page count…'}
             </div>
           )}
 
@@ -143,6 +156,11 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
           {pdfMetrics && priceEstimate && !isAnalyzing && (
             <div className="border-t border-outline-variant/20 pt-6">
               <PricePreview metrics={pdfMetrics} estimate={priceEstimate} />
+              {isBatch && (
+                <p className="text-xs text-on-surface-variant -mt-6 mb-8 px-1">
+                  Total shown for {fileCount} patterns. Each pattern will be translated and saved separately.
+                </p>
+              )}
             </div>
           )}
 

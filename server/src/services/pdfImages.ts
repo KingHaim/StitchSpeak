@@ -523,12 +523,13 @@ function logMarkerDiff(html: string, images: ExtractedImage[], rows: RowSummary[
 }
 
 function buildImageHtml(img: ExtractedImage, options: { inline?: boolean } = {}): string {
+  const roleAttr = img.isCoverBanner ? ' data-stitchspeak-role="cover-banner"' : '';
   if (options.inline) {
     const grow = Math.max(0.05, img.flexWeight || 1 / Math.max(img.rowSize, 1));
-    return `<img src="${img.dataUrl}" style="flex:${grow.toFixed(3)} 1 0;min-width:0;max-width:100%;height:auto;display:block;" alt="${img.id}" />`;
+    return `<img src="${img.dataUrl}"${roleAttr} style="flex:${grow.toFixed(3)} 1 0;min-width:0;max-width:100%;height:auto;display:block;" alt="${img.id}" />`;
   }
   const widthPct = Math.round(Math.min(1, Math.max(0.15, img.widthRatio || 1)) * 100);
-  return `<img src="${img.dataUrl}" style="display:block;max-width:${widthPct}%;height:auto;margin:1em auto;" alt="${img.id}" />`;
+  return `<img src="${img.dataUrl}"${roleAttr} style="display:block;max-width:${widthPct}%;height:auto;margin:1em auto;" alt="${img.id}" />`;
 }
 
 function buildRowHtml(row: RowSummary): string {

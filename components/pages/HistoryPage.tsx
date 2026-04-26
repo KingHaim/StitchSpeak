@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   loadHistory,
@@ -6,9 +6,26 @@ import {
   deleteTranslation,
   clearHistory,
 } from '../../services/historyService';
+import {
+  exportPatternPdf,
+  exportPatternDoc,
+  exportPatternHtml,
+  exportPatternText,
+} from '../../services/pdfExport';
 import type { TranslationRecord } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { CloseIcon } from '../icons/CloseIcon';
+import { PatternViewer } from '../PatternViewer';
+import { abbreviationLanguageCodeFromTargetLabel } from '../../services/abbreviationService';
+
+type DownloadFormat = 'pdf' | 'doc' | 'html' | 'txt';
+
+const downloadOptions: { id: DownloadFormat; label: string; icon: string }[] = [
+  { id: 'pdf', label: 'PDF', icon: 'picture_as_pdf' },
+  { id: 'doc', label: 'Word (.docx)', icon: 'description' },
+  { id: 'html', label: 'HTML', icon: 'code' },
+  { id: 'txt', label: 'Text (.txt)', icon: 'article' },
+];
 
 const PLACEHOLDER_IMAGES = [
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCpgaNtjUhnSj5fWpj87xmX14PtoZKyHM7hb4baN2rDogUl65AO0ibafZ14ruclNXszrqk0cPDsCbAQq0jE2uTl7O0ugog66FNhf1kPoqLnYm9G0Dmgo_p15HugFXDveT8JMwFc2YxswiVWaSfBXg1eVcGZlylIZ6N73Kahrmf5dldNq_zWvJ08qcuJkbp9tfMrZT6HO1nRl6P9ZWWUdfDnvSVTVMKYyIz_3dHa0rWbju1HWc3Utons2RGNYkGyTUCf3odTrnnWErM',
@@ -43,7 +60,7 @@ export interface HistoryPageProps {
 }
 
 export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate }) => {
-  const { idToken, isAuthenticated } = useAuth();
+  const { idToken } = useAuth();
 
   const [records, setRecords] = useState<TranslationRecord[]>([]);
   const [isLoadingRecords, setIsLoadingRecords] = useState(true);
@@ -63,6 +80,10 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
   const [searchQuery, setSearchQuery] = useState('');
   const [languageFilter, setLanguageFilter] = useState<'all' | string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [activeDownloadMenuId, setActiveDownloadMenuId] = useState<string | null>(null);
+  const [downloadingRecordId, setDownloadingRecordId] = useState<string | null>(null);
+
+  const downloadMenuRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
     setIsLoadingRecords(true);
@@ -87,6 +108,24 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!activeDownloadMenuId) return;
+    const handleClick = (event: MouseEvent) => {
+      if (downloadMenuRef.current && !downloadMenuRef.current.contains(event.target as Node)) {
+        setActiveDownloadMenuId(null);
+      }
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setActiveDownloadMenuId(null);
+    };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [activeDownloadMenuId]);
 
   const availableLanguages = useMemo(() => {
     return Array.from(new Set(records.map(record => record.targetLanguage))).sort();
@@ -179,7 +218,10 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
     }
   };
 
-  const handleDownload = async (record: TranslationRecord) => {
+  const handleDownload = async (record: TranslationRecord, format: DownloadFormat) => {
+    setActionError(null);
+    setActiveDownloadMenuId(null);
+    setDownloadingRecordId(record.id);
     let htmlContent = record.id === fullViewRecord?.id ? fullViewHtml : null;
     if (!htmlContent && record.id === expandedId) {
       htmlContent = expandedHtml;
@@ -189,27 +231,41 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
         htmlContent = await loadTranslationHtml(record.id, idToken);
       } catch (err) {
         console.error('Failed to load pattern for download:', err);
+        setActionError(err instanceof Error ? err.message : 'Could not download this pattern.');
+        setDownloadingRecordId(null);
         return;
       }
     }
-    if (!htmlContent) return;
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${record.fileName} — ${record.targetLanguage}</title>
-<style>body{font-family:system-ui,sans-serif;max-width:800px;margin:2rem auto;padding:0 1rem;color:#3D2B1F;line-height:1.7}h1,h2,h3{margin-top:1.5rem}p{margin-bottom:1rem}</style>
-</head>
-<body>${htmlContent}</body>
-</html>`;
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${record.fileName.replace(/\.[^.]+$/, '')}-${record.targetLanguage.toLowerCase()}.html`;
-    a.click();
-    URL.revokeObjectURL(url);
+    if (!htmlContent) {
+      setDownloadingRecordId(null);
+      return;
+    }
+
+    try {
+      const exportOptions = {
+        sourceFileName: record.fileName,
+        languageCode: abbreviationLanguageCodeFromTargetLabel(record.targetLanguage),
+      };
+      switch (format) {
+        case 'pdf':
+          await exportPatternPdf(htmlContent, exportOptions);
+          break;
+        case 'doc':
+          await exportPatternDoc(htmlContent, exportOptions);
+          break;
+        case 'html':
+          exportPatternHtml(htmlContent, exportOptions);
+          break;
+        case 'txt':
+          exportPatternText(htmlContent, exportOptions);
+          break;
+      }
+    } catch (err) {
+      console.error('Failed to export pattern:', err);
+      setActionError(err instanceof Error ? err.message : 'Could not export this pattern.');
+    } finally {
+      setDownloadingRecordId(null);
+    }
   };
 
   const handleClear = async () => {
@@ -267,27 +323,20 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
     <>
       <div className="min-h-full bg-background text-on-background font-body selection:bg-primary-fixed selection:text-on-primary-fixed -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-2 sm:py-4 pb-36 sm:pb-40">
         <header className="mb-10 lg:mb-12 relative">
-          {((isAuthenticated && !loadError) || records.length > 0) && (
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-              {isAuthenticated && !loadError && (
-                <p className="text-xs text-on-surface-variant/80 order-2 sm:order-1">
-                  Synced to your account — available on any device.
-                </p>
-              )}
-              {records.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleClear}
-                  onBlur={() => setConfirmClear(false)}
-                  className={`shrink-0 px-4 py-2.5 text-sm font-semibold rounded-xl transition-colors self-start sm:ml-auto order-1 sm:order-2 ${
-                    confirmClear
-                      ? 'bg-error text-on-error hover:opacity-95'
-                      : 'border border-outline-variant/40 text-on-surface-variant hover:bg-surface-container-high'
-                  }`}
-                >
-                  {confirmClear ? 'Confirm clear all?' : 'Clear all'}
-                </button>
-              )}
+          {records.length > 0 && (
+            <div className="flex justify-end mb-8">
+              <button
+                type="button"
+                onClick={handleClear}
+                onBlur={() => setConfirmClear(false)}
+                className={`shrink-0 px-4 py-2.5 text-sm font-semibold rounded-xl transition-colors ${
+                  confirmClear
+                    ? 'bg-error text-on-error hover:opacity-95'
+                    : 'border border-outline-variant/40 text-on-surface-variant hover:bg-surface-container-high'
+                }`}
+              >
+                {confirmClear ? 'Confirm clear all?' : 'Clear all'}
+              </button>
             </div>
           )}
 
@@ -507,13 +556,40 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
                           View pattern
                           <Icon name="arrow_forward" className="text-lg group-hover/btn:translate-x-1 transition-transform" />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDownload(record)}
-                          className="px-3 py-1.5 rounded-lg text-sm font-semibold border border-outline-variant/30 hover:bg-surface-container-high transition-colors"
-                        >
-                          Download
-                        </button>
+                        <div ref={activeDownloadMenuId === record.id ? downloadMenuRef : undefined} className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setActiveDownloadMenuId((current) => (current === record.id ? null : record.id))}
+                            disabled={downloadingRecordId === record.id}
+                            aria-haspopup="menu"
+                            aria-expanded={activeDownloadMenuId === record.id}
+                            className="px-3 py-1.5 rounded-lg text-sm font-semibold border border-outline-variant/30 hover:bg-surface-container-high transition-colors disabled:opacity-60 inline-flex items-center gap-1.5"
+                          >
+                            {downloadingRecordId === record.id ? 'Preparing…' : 'Download'}
+                            {downloadingRecordId !== record.id && (
+                              <Icon name="expand_more" className="text-base" />
+                            )}
+                          </button>
+                          {activeDownloadMenuId === record.id && (
+                            <div
+                              role="menu"
+                              className="absolute left-0 bottom-full mb-2 w-44 bg-surface-container-lowest border border-outline-variant/20 rounded-xl shadow-xl overflow-hidden py-1 z-20 animate-in fade-in zoom-in duration-100 origin-bottom-left"
+                            >
+                              {downloadOptions.map((option) => (
+                                <button
+                                  key={option.id}
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => void handleDownload(record, option.id)}
+                                  className="w-full text-left px-3 py-2.5 hover:bg-surface-container-high transition-colors flex items-center gap-2 text-sm text-on-surface"
+                                >
+                                  <Icon name={option.icon} className="text-lg text-primary" />
+                                  {option.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                         <button
                           type="button"
                           onClick={() => handleToggleExpand(record.id)}
@@ -549,10 +625,13 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
                       <div
                         className={`bg-surface-container-lowest rounded-xl border border-outline-variant/20 flex flex-col min-h-0 overflow-hidden ${referencePatternFrame} w-full shrink-0`}
                       >
-                        <div
-                          className="pattern-rendered flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 text-sm text-on-surface leading-relaxed [scrollbar-gutter:stable]"
-                          dangerouslySetInnerHTML={{ __html: expandedHtml }}
-                        />
+                        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 text-sm text-on-surface leading-relaxed [scrollbar-gutter:stable]">
+                          <PatternViewer
+                            html={expandedHtml}
+                            languageCode={abbreviationLanguageCodeFromTargetLabel(record.targetLanguage)}
+                            tone="studio"
+                          />
+                        </div>
                       </div>
                     ) : (
                       <div
@@ -587,33 +666,6 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
           </div>
         )}
       </div>
-
-      {!isLoadingRecords && !loadError && records.length > 0 && (
-        <div className="fixed bottom-8 left-4 sm:left-8 lg:left-24 z-30 max-w-[calc(100vw-2rem)] pointer-events-none">
-          <div className="pointer-events-auto bg-surface/80 glass-nav backdrop-blur-xl p-4 rounded-2xl shadow-2xl border border-outline-variant/20 flex flex-col gap-3 min-w-[200px]">
-            <div className="flex items-center justify-between border-b border-outline-variant/10 pb-2">
-              <span className="text-[10px] uppercase font-bold tracking-widest text-on-surface-variant">StitchSpeak</span>
-              <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-full text-[10px] font-bold">
-                {filteredRecords.length} saved
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-xs text-outline mb-1 truncate">Translator</div>
-                <div className="text-lg font-bold text-primary font-headline tracking-tight truncate">Upload &amp; translate</div>
-              </div>
-              <button
-                type="button"
-                onClick={goTranslate}
-                className="w-10 h-10 shrink-0 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-lg hover:scale-110 active:scale-95 transition-all"
-                aria-label="Open translator"
-              >
-                <Icon name="add" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {fullViewRecord &&
         createPortal(
@@ -653,23 +705,53 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
               </div>
 
               <div className="px-4 sm:px-5 py-3 border-b border-outline-variant/15 bg-surface-container-lowest">
-                <button
-                  type="button"
-                  onClick={() => handleDownload(fullViewRecord)}
-                  className="w-full sm:w-auto px-4 py-3 text-sm font-semibold rounded-xl border border-outline-variant/30 text-primary hover:bg-surface-container-high transition-colors"
-                >
-                  Download
-                </button>
+                <div ref={activeDownloadMenuId === fullViewRecord.id ? downloadMenuRef : undefined} className="relative w-full sm:w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setActiveDownloadMenuId((current) => (current === fullViewRecord.id ? null : fullViewRecord.id))}
+                    disabled={downloadingRecordId === fullViewRecord.id}
+                    aria-haspopup="menu"
+                    aria-expanded={activeDownloadMenuId === fullViewRecord.id}
+                    className="w-full sm:w-auto px-4 py-3 text-sm font-semibold rounded-xl border border-outline-variant/30 text-primary hover:bg-surface-container-high transition-colors disabled:opacity-60 inline-flex items-center justify-center gap-1.5"
+                  >
+                    {downloadingRecordId === fullViewRecord.id ? 'Preparing…' : 'Download'}
+                    {downloadingRecordId !== fullViewRecord.id && (
+                      <Icon name="expand_more" className="text-base" />
+                    )}
+                  </button>
+                  {activeDownloadMenuId === fullViewRecord.id && (
+                    <div
+                      role="menu"
+                      className="absolute left-0 top-full mt-2 w-48 bg-surface-container-lowest border border-outline-variant/20 rounded-xl shadow-xl overflow-hidden py-1 z-20 animate-in fade-in zoom-in duration-100 origin-top-left"
+                    >
+                      {downloadOptions.map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          role="menuitem"
+                          onClick={() => void handleDownload(fullViewRecord, option.id)}
+                          className="w-full text-left px-3 py-2.5 hover:bg-surface-container-high transition-colors flex items-center gap-2 text-sm text-on-surface"
+                        >
+                          <Icon name={option.icon} className="text-lg text-primary" />
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="p-4 sm:p-6 overflow-y-auto bg-background flex-1">
                 {isFullViewLoading ? (
                   <p className="text-sm text-on-surface-variant italic">Loading pattern…</p>
                 ) : fullViewHtml ? (
-                  <div
-                    className="pattern-rendered bg-surface-container-lowest rounded-xl border border-outline-variant/20 p-4 sm:p-8 text-sm sm:text-base text-on-surface leading-relaxed shadow-sm"
-                    dangerouslySetInnerHTML={{ __html: fullViewHtml }}
-                  />
+                  <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 p-4 sm:p-8 text-sm sm:text-base text-on-surface leading-relaxed shadow-sm min-h-[12rem]">
+                    <PatternViewer
+                      html={fullViewHtml}
+                      languageCode={abbreviationLanguageCodeFromTargetLabel(fullViewRecord.targetLanguage)}
+                      tone="studio"
+                    />
+                  </div>
                 ) : fullViewError ? (
                   <div className="rounded-xl border border-error/30 bg-error-container/30 p-4 text-sm text-on-error-container space-y-3">
                     <p className="font-medium">{fullViewError}</p>

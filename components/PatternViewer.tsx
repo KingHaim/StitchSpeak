@@ -114,7 +114,7 @@ function highlightTextNodes(
       if (match.index > lastIndex) {
         parts.push(text.slice(lastIndex, match.index));
       }
-      const key = match[0].toLowerCase();
+      const key = match[0];
       const entry = map.get(key);
       parts.push({ abbr: match[0], full: entry?.full ?? '' });
       lastIndex = regex.lastIndex;

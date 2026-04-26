@@ -15,7 +15,7 @@ type DownloadFormat = 'pdf' | 'doc' | 'html' | 'txt';
 
 const downloadOptions: { id: DownloadFormat; label: string; description: string }[] = [
   { id: 'pdf', label: 'PDF', description: 'Print-ready document' },
-  { id: 'doc', label: 'Word (.doc)', description: 'Editable in Microsoft Word' },
+  { id: 'doc', label: 'Word (.docx)', description: 'Editable in Pages or Word' },
   { id: 'html', label: 'HTML', description: 'Open in any browser' },
   { id: 'txt', label: 'Plain text', description: 'Unformatted .txt file' },
 ];
@@ -25,6 +25,7 @@ interface TranslatedOutputProps {
   isLoading: boolean;
   error: string | null;
   languageCode?: string;
+  sourceFileName?: string;
   /** Manuscript / Translation Studio panel (no floating toolbar — use page-level actions). */
   variant?: 'card' | 'studio';
 }
@@ -43,6 +44,7 @@ export const TranslatedOutput: React.FC<TranslatedOutputProps> = ({
   isLoading,
   error,
   languageCode = 'en',
+  sourceFileName,
   variant = 'card',
 }) => {
   const [isCopied, setIsCopied] = useState(false);
@@ -124,19 +126,20 @@ export const TranslatedOutput: React.FC<TranslatedOutputProps> = ({
     if (!cleanHtml) return;
     setIsDownloadMenuOpen(false);
     setIsDownloading(true);
+    const exportOptions = { sourceFileName, languageCode };
     try {
       switch (format) {
         case 'pdf':
-          await exportPatternPdf(cleanHtml);
+          await exportPatternPdf(cleanHtml, exportOptions);
           break;
         case 'doc':
-          exportPatternDoc(cleanHtml);
+          await exportPatternDoc(cleanHtml, exportOptions);
           break;
         case 'html':
-          exportPatternHtml(cleanHtml);
+          exportPatternHtml(cleanHtml, exportOptions);
           break;
         case 'txt':
-          exportPatternText(cleanHtml);
+          exportPatternText(cleanHtml, exportOptions);
           break;
       }
     } finally {
@@ -189,7 +192,7 @@ export const TranslatedOutput: React.FC<TranslatedOutputProps> = ({
 
   const shellClassName =
     variant === 'studio'
-      ? 'relative w-full h-full min-h-[min(500px,70vh)] lg:min-h-[500px] flex flex-col rounded-xl overflow-hidden bg-surface-container-lowest border border-outline-variant/10 shadow-[0_32px_64px_-15px_rgba(29,28,23,0.06)]'
+      ? 'relative w-full h-[min(500px,70vh)] lg:h-[500px] flex flex-col rounded-xl overflow-hidden bg-surface-container-lowest border border-outline-variant/10 shadow-[0_32px_64px_-15px_rgba(29,28,23,0.06)]'
       : 'relative w-full h-full min-h-[20rem] lg:min-h-[32rem] bg-white border border-brand-200 rounded-xl overflow-hidden shadow-inner flex flex-col';
 
   const innerPadding = variant === 'studio' ? 'p-6 sm:p-10' : 'p-4 sm:p-8';
@@ -252,7 +255,7 @@ export const TranslatedOutput: React.FC<TranslatedOutputProps> = ({
         </button>
       </div>
       )}
-      <div className={`flex-grow overflow-y-auto ${innerPadding} scroll-smooth`}>
+      <div className={`min-h-0 flex-grow overflow-y-auto ${innerPadding} scroll-smooth`}>
         {renderContent()}
       </div>
     </div>

@@ -9,9 +9,14 @@ import { TranslationLanguageModal } from '../TranslationLanguageModal';
 import { TranslationJobCard } from '../TranslationJobCard';
 import { translatePattern, startChatSession, sendChatMessage } from '../../services/translationService';
 import { analyzeFile } from '../../services/fileAnalyzer';
-import { estimateTranslationCost } from '../../services/pricingService';
+import { estimateBatchTranslationCost, estimateTranslationCost } from '../../services/pricingService';
 import { saveTranslation } from '../../services/historyService';
-import { exportPatternPdf, exportPatternHtml } from '../../services/pdfExport';
+import {
+  exportPatternPdf,
+  exportPatternDoc,
+  exportPatternHtml,
+  exportPatternText,
+} from '../../services/pdfExport';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCredits } from '../../contexts/CreditContext';
 import {
@@ -30,12 +35,46 @@ import type {
   PendingTranslationStart,
 } from '../../types';
 
+type StudioExportFormat = 'pdf' | 'doc' | 'html' | 'txt';
+
+const studioExportOptions: { id: StudioExportFormat; label: string; icon: string }[] = [
+  { id: 'pdf', label: 'PDF', icon: 'picture_as_pdf' },
+  { id: 'doc', label: 'Word (.docx)', icon: 'description' },
+  { id: 'html', label: 'HTML', icon: 'code' },
+  { id: 'txt', label: 'Text (.txt)', icon: 'article' },
+];
+
 function createJobId(): string {
   return crypto.randomUUID();
 }
 
 function stripTranslatedHtml(text: string): string {
   return text ? text.replace(/^```html\n?/, '').replace(/\n?```$/, '') : '';
+}
+
+function aggregatePdfMetrics(metricsList: PdfMetrics[]): PdfMetrics | null {
+  if (metricsList.length === 0) return null;
+
+  return metricsList.reduce<PdfMetrics>(
+    (total, metrics) => ({
+      pages: total.pages + metrics.pages,
+      characters: total.characters + metrics.characters,
+      estimatedInputTokens: total.estimatedInputTokens + metrics.estimatedInputTokens,
+      estimatedOutputTokens: total.estimatedOutputTokens + metrics.estimatedOutputTokens,
+      fileSizeKB: total.fileSizeKB + metrics.fileSizeKB,
+    }),
+    {
+      pages: 0,
+      characters: 0,
+      estimatedInputTokens: 0,
+      estimatedOutputTokens: 0,
+      fileSizeKB: 0,
+    },
+  );
+}
+
+function getPendingStartCost(payloads: PendingTranslationStart[] | null): number {
+  return payloads?.reduce((sum, payload) => sum + payload.priceEstimate.translationCost, 0) ?? 0;
 }
 
 export const DashboardPage: React.FC = () => {
@@ -46,18 +85,20 @@ export const DashboardPage: React.FC = () => {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
 
   const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false);
-  const [modalFile, setModalFile] = useState<File | null>(null);
+  const [modalFiles, setModalFiles] = useState<File[]>([]);
   const [modalSourceLanguage, setModalSourceLanguage] = useState<Language>(AUTO_DETECT_LANGUAGE);
   const [modalTargetLanguage, setModalTargetLanguage] = useState<Language>(LANGUAGES[0]);
   const [modalPdfMetrics, setModalPdfMetrics] = useState<PdfMetrics | null>(null);
+  const [modalFileMetrics, setModalFileMetrics] = useState<PdfMetrics[]>([]);
   const [modalPriceEstimate, setModalPriceEstimate] = useState<PriceEstimate | null>(null);
+  const [modalFilePriceEstimates, setModalFilePriceEstimates] = useState<PriceEstimate[]>([]);
   const [isModalAnalyzing, setIsModalAnalyzing] = useState(false);
   const [modalAnalyzeError, setModalAnalyzeError] = useState<string | null>(null);
 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isBuyCreditsOpen, setIsBuyCreditsOpen] = useState(false);
   const [buyCreditsInitialIdx, setBuyCreditsInitialIdx] = useState<number | undefined>(undefined);
-  const [pendingStart, setPendingStart] = useState<PendingTranslationStart | null>(null);
+  const [pendingStart, setPendingStart] = useState<PendingTranslationStart[] | null>(null);
   const [modalStartError, setModalStartError] = useState<string | null>(null);
   const [isStartingFromModal, setIsStartingFromModal] = useState(false);
 
@@ -65,9 +106,11 @@ export const DashboardPage: React.FC = () => {
   const [chatError, setChatError] = useState<string | null>(null);
 
   const [studioExportBusy, setStudioExportBusy] = useState(false);
+  const [isStudioExportMenuOpen, setIsStudioExportMenuOpen] = useState(false);
 
   const newTranslationRef = useRef<HTMLDivElement>(null);
   const chatSectionRef = useRef<HTMLDivElement>(null);
+  const studioExportMenuRef = useRef<HTMLDivElement>(null);
 
   const selectedJob = useMemo(
     () => (selectedJobId ? jobs.find((j) => j.id === selectedJobId) ?? null : null),
@@ -77,6 +120,24 @@ export const DashboardPage: React.FC = () => {
   useEffect(() => {
     setChatError(null);
   }, [selectedJobId]);
+
+  useEffect(() => {
+    if (!isStudioExportMenuOpen) return;
+    const handleClick = (event: MouseEvent) => {
+      if (studioExportMenuRef.current && !studioExportMenuRef.current.contains(event.target as Node)) {
+        setIsStudioExportMenuOpen(false);
+      }
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsStudioExportMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [isStudioExportMenuOpen]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -105,50 +166,65 @@ export const DashboardPage: React.FC = () => {
     }
   }, [jobs, selectedJobId]);
 
-  const runModalAnalysis = useCallback(async (file: File) => {
+  const runModalAnalysis = useCallback(async (files: File[]) => {
     setIsModalAnalyzing(true);
     setModalAnalyzeError(null);
     setModalPdfMetrics(null);
+    setModalFileMetrics([]);
     setModalPriceEstimate(null);
+    setModalFilePriceEstimates([]);
     try {
-      const metrics = await analyzeFile(file);
-      setModalPdfMetrics(metrics);
-      setModalPriceEstimate(estimateTranslationCost(metrics));
+      const results = await Promise.allSettled(files.map((file) => analyzeFile(file)));
+      const failedIndex = results.findIndex((result) => result.status === 'rejected');
+
+      if (failedIndex !== -1) {
+        throw new Error(`Could not analyze ${files[failedIndex]?.name ?? 'one of the selected files'}.`);
+      }
+
+      const metricsList = results.map((result) => (result as PromiseFulfilledResult<PdfMetrics>).value);
+      setModalFileMetrics(metricsList);
+      setModalPdfMetrics(aggregatePdfMetrics(metricsList));
+      setModalFilePriceEstimates(metricsList.map(estimateTranslationCost));
+      setModalPriceEstimate(estimateBatchTranslationCost(metricsList));
     } catch (err) {
       console.error('Error analyzing file:', err);
-      setModalAnalyzeError('Could not analyze the file. Please try a different file.');
+      setModalAnalyzeError(err instanceof Error ? err.message : 'Could not analyze the files. Please try different files.');
     } finally {
       setIsModalAnalyzing(false);
     }
   }, []);
 
-  const openLanguageModalWithFile = useCallback(
-    (file: File) => {
-      setModalFile(file);
+  const openLanguageModalWithFiles = useCallback(
+    (files: File[]) => {
+      setModalFiles(files);
       setModalSourceLanguage(AUTO_DETECT_LANGUAGE);
       setModalTargetLanguage(LANGUAGES[0]);
       setModalPdfMetrics(null);
+      setModalFileMetrics([]);
       setModalPriceEstimate(null);
+      setModalFilePriceEstimates([]);
       setModalAnalyzeError(null);
       setIsLanguageModalOpen(true);
-      void runModalAnalysis(file);
+      void runModalAnalysis(files);
     },
     [runModalAnalysis],
   );
 
   const handleNewTranslationFile = useCallback(
-    (file: File | null) => {
-      if (!file) return;
-      openLanguageModalWithFile(file);
+    (files: File[]) => {
+      if (files.length === 0) return;
+      openLanguageModalWithFiles(files);
     },
-    [openLanguageModalWithFile],
+    [openLanguageModalWithFiles],
   );
 
   const closeLanguageModal = useCallback(() => {
     setIsLanguageModalOpen(false);
-    setModalFile(null);
+    setModalFiles([]);
     setModalPdfMetrics(null);
+    setModalFileMetrics([]);
     setModalPriceEstimate(null);
+    setModalFilePriceEstimates([]);
     setModalAnalyzeError(null);
     setModalStartError(null);
     setIsStartingFromModal(false);
@@ -232,43 +308,60 @@ export const DashboardPage: React.FC = () => {
     [idToken],
   );
 
-  const tryStartFromModal = useCallback(async () => {
-    if (!modalFile || !modalPriceEstimate || isStartingFromModal) return;
+  const beginTranslationBatch = useCallback(
+    (payloads: PendingTranslationStart[]) => {
+      payloads.forEach((payload) => {
+        void beginTranslationJob(payload);
+      });
+    },
+    [beginTranslationJob],
+  );
 
-    const payload: PendingTranslationStart = {
-      file: modalFile,
+  const tryStartFromModal = useCallback(async () => {
+    if (
+      modalFiles.length === 0 ||
+      !modalPriceEstimate ||
+      modalFileMetrics.length !== modalFiles.length ||
+      modalFilePriceEstimates.length !== modalFiles.length ||
+      isStartingFromModal
+    ) {
+      return;
+    }
+
+    const payloads: PendingTranslationStart[] = modalFiles.map((file, index) => ({
+      file,
       sourceLanguage: modalSourceLanguage,
       targetLanguage: modalTargetLanguage,
-      pdfMetrics: modalPdfMetrics,
-      priceEstimate: modalPriceEstimate,
-    };
+      pdfMetrics: modalFileMetrics[index] ?? null,
+      priceEstimate: modalFilePriceEstimates[index],
+    }));
 
     setModalStartError(null);
     setIsStartingFromModal(true);
 
     try {
       if (!(isAuthenticated && user?.email)) {
-        setPendingStart(payload);
+        setPendingStart(payloads);
         setIsPaymentModalOpen(true);
         return;
       }
 
       const cost = modalPriceEstimate.translationCost;
       if (balance < cost - 0.001) {
-        setPendingStart(payload);
+        setPendingStart(payloads);
         setIsBuyCreditsOpen(true);
         return;
       }
 
       const ok = await deductCredits(cost);
       if (!ok) {
-        setPendingStart(payload);
+        setPendingStart(payloads);
         setIsBuyCreditsOpen(true);
         return;
       }
 
       closeLanguageModal();
-      void beginTranslationJob(payload);
+      beginTranslationBatch(payloads);
     } catch (err) {
       console.error('[DashboardPage] tryStartFromModal failed:', err);
       const status = (err as { status?: number }).status;
@@ -283,44 +376,45 @@ export const DashboardPage: React.FC = () => {
       setIsStartingFromModal(false);
     }
   }, [
-    modalFile,
+    modalFiles,
     modalPriceEstimate,
-    modalPdfMetrics,
+    modalFileMetrics,
+    modalFilePriceEstimates,
     modalSourceLanguage,
     modalTargetLanguage,
     isAuthenticated,
     user,
     balance,
     deductCredits,
-    beginTranslationJob,
+    beginTranslationBatch,
     closeLanguageModal,
     isStartingFromModal,
   ]);
 
   const handlePaymentSuccess = useCallback(() => {
     setIsPaymentModalOpen(false);
-    const p = pendingStart;
+    const payloads = pendingStart;
     setPendingStart(null);
-    if (p) {
+    if (payloads) {
       closeLanguageModal();
-      void beginTranslationJob(p);
+      beginTranslationBatch(payloads);
     }
-  }, [pendingStart, beginTranslationJob, closeLanguageModal]);
+  }, [pendingStart, beginTranslationBatch, closeLanguageModal]);
 
   const handleCreditPurchase = useCallback(
     async (pack: CreditPackage) => {
       if (!user?.email || !pendingStart) return;
       await addCredits(pack.credits);
       setIsBuyCreditsOpen(false);
-      const p = pendingStart;
-      const ok = await deductCredits(p.priceEstimate.translationCost);
+      const payloads = pendingStart;
+      const ok = await deductCredits(getPendingStartCost(payloads));
       if (ok) {
         setPendingStart(null);
         closeLanguageModal();
-        void beginTranslationJob(p);
+        beginTranslationBatch(payloads);
       }
     },
-    [user, pendingStart, addCredits, deductCredits, beginTranslationJob, closeLanguageModal],
+    [user, pendingStart, addCredits, deductCredits, beginTranslationBatch, closeLanguageModal],
   );
 
   const handleSendMessage = useCallback(
@@ -379,12 +473,13 @@ export const DashboardPage: React.FC = () => {
   }, [selectedJobId]);
 
   const modalCreditCost = modalPriceEstimate?.translationCost ?? 0;
+  const modalFileCount = modalFiles.length;
   const modalStartLabel = isAuthenticated
-    ? `Start translation (${modalCreditCost.toFixed(1)} credits)`
-    : 'Start translation';
+    ? `Start ${modalFileCount > 1 ? `${modalFileCount} translations` : 'translation'} (${modalCreditCost.toFixed(1)} credits)`
+    : `Start ${modalFileCount > 1 ? `${modalFileCount} translations` : 'translation'}`;
 
   const modalStartDisabled =
-    !modalFile ||
+    modalFileCount === 0 ||
     isModalAnalyzing ||
     !modalPriceEstimate ||
     !!modalAnalyzeError;
@@ -397,23 +492,34 @@ export const DashboardPage: React.FC = () => {
     chatSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
 
-  const handleStudioExportPdf = useCallback(async () => {
+  const handleStudioExport = useCallback(async (format: StudioExportFormat) => {
     if (!selectedJob?.translatedHtml) return;
     const html = stripTranslatedHtml(selectedJob.translatedHtml);
     if (!html) return;
+    setIsStudioExportMenuOpen(false);
     setStudioExportBusy(true);
+    const exportOptions = {
+      sourceFileName: selectedJob.fileName,
+      languageCode: selectedJob.targetLanguage.code,
+    };
     try {
-      await exportPatternPdf(html);
+      switch (format) {
+        case 'pdf':
+          await exportPatternPdf(html, exportOptions);
+          break;
+        case 'doc':
+          await exportPatternDoc(html, exportOptions);
+          break;
+        case 'html':
+          exportPatternHtml(html, exportOptions);
+          break;
+        case 'txt':
+          exportPatternText(html, exportOptions);
+          break;
+      }
     } finally {
       setStudioExportBusy(false);
     }
-  }, [selectedJob]);
-
-  const handleStudioExportHtml = useCallback(() => {
-    if (!selectedJob?.translatedHtml) return;
-    const html = stripTranslatedHtml(selectedJob.translatedHtml);
-    if (!html) return;
-    exportPatternHtml(html);
   }, [selectedJob]);
 
   const projectInitial =
@@ -508,8 +614,8 @@ export const DashboardPage: React.FC = () => {
               </p>
             </div>
             <PatternUpload
-              selectedFile={null}
-              onFileSelect={handleNewTranslationFile}
+              selectedFiles={[]}
+              onFilesSelect={handleNewTranslationFile}
               disabled={false}
             />
           </div>
@@ -578,6 +684,7 @@ export const DashboardPage: React.FC = () => {
                       isLoading={selectedJob.status === 'translating'}
                       error={selectedJob.error}
                       languageCode={selectedJob.targetLanguage.code}
+                      sourceFileName={selectedJob.fileName}
                       variant="studio"
                     />
                   </div>
@@ -590,30 +697,52 @@ export const DashboardPage: React.FC = () => {
                     }`}
                   >
                     <div className="flex flex-wrap gap-3 justify-center md:justify-start">
-                      <button
-                        type="button"
-                        onClick={() => void handleStudioExportPdf()}
-                        disabled={studioExportBusy}
-                        className="bg-surface-container-high text-on-surface px-6 py-3 rounded-full flex items-center gap-2 hover:bg-surface-variant transition-colors text-sm font-medium disabled:opacity-60"
-                      >
-                        {studioExportBusy ? (
-                          <svg className="animate-spin h-5 w-5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden>
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                          </svg>
-                        ) : (
-                          <span className="material-symbols-outlined text-lg">picture_as_pdf</span>
+                      <div ref={studioExportMenuRef} className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setIsStudioExportMenuOpen((prev) => !prev)}
+                          disabled={studioExportBusy}
+                          aria-haspopup="menu"
+                          aria-expanded={isStudioExportMenuOpen}
+                          className="bg-surface-container-high text-on-surface px-6 py-3 rounded-full flex items-center gap-2 hover:bg-surface-variant transition-colors text-sm font-medium disabled:opacity-60"
+                        >
+                          {studioExportBusy ? (
+                            <svg className="animate-spin h-5 w-5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden>
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                          ) : (
+                            <span className="material-symbols-outlined text-lg">download</span>
+                          )}
+                          {studioExportBusy ? 'Preparing…' : 'Export this file'}
+                          {!studioExportBusy && (
+                            <span className="material-symbols-outlined text-base" aria-hidden>
+                              expand_more
+                            </span>
+                          )}
+                        </button>
+                        {isStudioExportMenuOpen && (
+                          <div
+                            role="menu"
+                            className="absolute left-1/2 md:left-0 bottom-full mb-2 w-48 -translate-x-1/2 md:translate-x-0 bg-surface-container-lowest border border-outline-variant/20 rounded-xl shadow-xl overflow-hidden py-1 z-20 animate-in fade-in zoom-in duration-100 origin-bottom"
+                          >
+                            {studioExportOptions.map((option) => (
+                              <button
+                                key={option.id}
+                                type="button"
+                                role="menuitem"
+                                onClick={() => void handleStudioExport(option.id)}
+                                className="w-full text-left px-3 py-2.5 hover:bg-surface-container-high transition-colors flex items-center gap-2 text-sm text-on-surface"
+                              >
+                                <span className="material-symbols-outlined text-lg text-primary" aria-hidden>
+                                  {option.icon}
+                                </span>
+                                {option.label}
+                              </button>
+                            ))}
+                          </div>
                         )}
-                        {studioExportBusy ? 'Preparing…' : 'Export PDF'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleStudioExportHtml}
-                        className="bg-surface-container-high text-on-surface px-6 py-3 rounded-full flex items-center gap-2 hover:bg-surface-variant transition-colors text-sm font-medium"
-                      >
-                        <span className="material-symbols-outlined text-lg">code</span>
-                        Export HTML
-                      </button>
+                      </div>
                     </div>
                     {selectedJob.chatSessionId && (
                       <button
@@ -656,7 +785,7 @@ export const DashboardPage: React.FC = () => {
 
       <TranslationLanguageModal
         isOpen={isLanguageModalOpen}
-        fileName={modalFile?.name ?? null}
+        fileNames={modalFiles.map((file) => file.name)}
         isAnalyzing={isModalAnalyzing}
         analyzeError={modalAnalyzeError}
         pdfMetrics={modalPdfMetrics}
@@ -680,7 +809,7 @@ export const DashboardPage: React.FC = () => {
           setPendingStart(null);
         }}
         onSuccess={handlePaymentSuccess}
-        price={pendingStart?.priceEstimate.translationCost ?? modalCreditCost}
+        price={getPendingStartCost(pendingStart) || modalCreditCost}
       />
 
       <BuyCreditsModal
