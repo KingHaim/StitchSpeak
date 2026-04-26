@@ -7,9 +7,7 @@ import {
   clearPatterns as remoteClear,
   uploadPatternSource as remoteUploadSource,
   fetchPatternSource as remoteFetchSource,
-  uploadPatternThumbnail as remoteUploadThumbnail,
 } from './patternsService';
-import { generatePdfThumbnail } from './thumbnailService';
 
 const INDEX_KEY = 'ss_translation_history';
 const HTML_PREFIX = 'ss_pattern_html_';
@@ -258,24 +256,19 @@ export async function saveTranslation(
     });
     if (params.sourceFile) {
       try {
+        // The server extracts and stores the cover thumbnail as part of this
+        // upload, so we don't need a separate render-and-upload step on the
+        // client.
         await remoteUploadSource(idToken, record.id, params.sourceFile);
         record.hasSource = true;
+        if (params.sourceFile.type === 'application/pdf') {
+          record.hasThumbnail = true;
+        }
       } catch (err) {
         console.warn(
           '[history] Pattern saved, but source upload failed; "Add translation" will require re-uploading.',
           err,
         );
-      }
-
-      // Best-effort thumbnail render & upload — never block save on failure.
-      try {
-        const thumb = await generatePdfThumbnail(params.sourceFile);
-        if (thumb) {
-          await remoteUploadThumbnail(idToken, record.id, thumb);
-          record.hasThumbnail = true;
-        }
-      } catch (err) {
-        console.warn('[history] Thumbnail generation/upload failed:', err);
       }
     }
     return record;

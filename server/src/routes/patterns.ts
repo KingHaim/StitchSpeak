@@ -15,6 +15,7 @@ import {
   appendChatMessages,
   bumpChatAllowance,
 } from '../services/patternStore.js';
+import { generateCoverThumbnailForPdf } from '../services/coverThumbnail.js';
 
 const router = Router();
 
@@ -96,7 +97,7 @@ router.post('/', (req, res: Response) => {
   }
 });
 
-router.post('/:id/source', uploadPatternSource, (req, res: Response) => {
+router.post('/:id/source', uploadPatternSource, async (req, res: Response) => {
   try {
     const { userSub } = req as AuthenticatedRequest;
     const id = String(req.params.id);
@@ -114,9 +115,28 @@ router.post('/:id/source', uploadPatternSource, (req, res: Response) => {
       res.status(404).json({ error: 'Pattern not found.' });
       return;
     }
+
+    // Best-effort: extract the first embedded image (typically the photo of
+    // the finished knit item) and save it as the gallery thumbnail. We do
+    // this synchronously so the response can confirm whether a thumb is on
+    // file, but we never fail the source save because of it.
+    let hasThumb = false;
+    if (file.mimetype === 'application/pdf') {
+      try {
+        const thumbBuffer = await generateCoverThumbnailForPdf(file.buffer);
+        if (thumbBuffer) {
+          attachThumbnail(userSub, id, thumbBuffer);
+          hasThumb = true;
+        }
+      } catch (err) {
+        console.warn('[patterns] cover thumbnail generation failed:', err);
+      }
+    }
+
     res.json({
       ok: true,
       source: { mime: result.mime, size: result.size, ext: result.ext },
+      hasThumbnail: hasThumb,
     });
   } catch (err) {
     console.error('[patterns] source upload failed:', err);
