@@ -20,6 +20,13 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { useCredits } from '../../contexts/CreditContext';
 import {
+  type AddTranslationHint,
+  clearAddTranslationHint,
+  onAddTranslationHintChange,
+  readAddTranslationHint,
+  takePendingSourceFile,
+} from '../../services/addTranslationHint';
+import {
   LANGUAGES,
   AUTO_DETECT_LANGUAGE,
   PRICING,
@@ -107,6 +114,21 @@ export const DashboardPage: React.FC = () => {
 
   const [studioExportBusy, setStudioExportBusy] = useState(false);
   const [isStudioExportMenuOpen, setIsStudioExportMenuOpen] = useState(false);
+
+  const [addTranslationHint, setAddTranslationHintState] = useState<AddTranslationHint | null>(
+    () => readAddTranslationHint(),
+  );
+
+  useEffect(() => {
+    const sync = () => setAddTranslationHintState(readAddTranslationHint());
+    sync();
+    return onAddTranslationHintChange(sync);
+  }, []);
+
+  const dismissAddTranslationHint = useCallback(() => {
+    clearAddTranslationHint();
+    setAddTranslationHintState(null);
+  }, []);
 
   const newTranslationRef = useRef<HTMLDivElement>(null);
   const chatSectionRef = useRef<HTMLDivElement>(null);
@@ -198,7 +220,13 @@ export const DashboardPage: React.FC = () => {
     (files: File[]) => {
       setModalFiles(files);
       setModalSourceLanguage(AUTO_DETECT_LANGUAGE);
-      setModalTargetLanguage(LANGUAGES[0]);
+
+      const existing = addTranslationHint?.existingLanguages ?? [];
+      const nextLanguage = existing.length
+        ? LANGUAGES.find((l) => !existing.includes(l.name)) ?? LANGUAGES[0]
+        : LANGUAGES[0];
+      setModalTargetLanguage(nextLanguage);
+
       setModalPdfMetrics(null);
       setModalFileMetrics([]);
       setModalPriceEstimate(null);
@@ -207,7 +235,7 @@ export const DashboardPage: React.FC = () => {
       setIsLanguageModalOpen(true);
       void runModalAnalysis(files);
     },
-    [runModalAnalysis],
+    [runModalAnalysis, addTranslationHint],
   );
 
   const handleNewTranslationFile = useCallback(
@@ -217,6 +245,20 @@ export const DashboardPage: React.FC = () => {
     },
     [openLanguageModalWithFiles],
   );
+
+  /**
+   * When the user clicked "Add translation" on a saved pattern AND we managed
+   * to pre-fetch the original source, the language modal should open
+   * immediately with that file ready, skipping the manual upload step.
+   */
+  useEffect(() => {
+    if (!addTranslationHint) return;
+    if (isLanguageModalOpen) return;
+    const pending = takePendingSourceFile();
+    if (!pending) return;
+    handleNewTranslationFile([pending]);
+    newTranslationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [addTranslationHint, isLanguageModalOpen, handleNewTranslationFile]);
 
   const closeLanguageModal = useCallback(() => {
     setIsLanguageModalOpen(false);
@@ -282,9 +324,14 @@ export const DashboardPage: React.FC = () => {
               translatedHtml: result.html,
               pdfMetrics,
               cost: priceEstimate.translationCost,
+              sourceFile: file,
             },
             idToken,
           );
+          if (readAddTranslationHint()) {
+            clearAddTranslationHint();
+            setAddTranslationHintState(null);
+          }
         } catch (saveErr) {
           console.error('Failed to save translated pattern to My Patterns:', saveErr);
         }
@@ -607,6 +654,30 @@ export const DashboardPage: React.FC = () => {
             ref={newTranslationRef}
             className="bg-surface-container-low rounded-xl p-6 sm:p-8 border border-outline-variant/15 shadow-[0_2px_24px_-8px_rgba(29,28,23,0.06)]"
           >
+            {addTranslationHint && (
+              <div className="mb-6 rounded-xl border border-primary/30 bg-primary/8 px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-primary">
+                    Adding another translation for{' '}
+                    <span className="font-headline italic">{addTranslationHint.sourceFileName}</span>
+                  </p>
+                  <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">
+                    {addTranslationHint.existingLanguages.length > 0 ? (
+                      <>Already translated to {addTranslationHint.existingLanguages.join(', ')}. </>
+                    ) : null}
+                    Upload the original file to start the new translation — we&rsquo;ll pre-pick a language
+                    you haven&rsquo;t covered yet.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={dismissAddTranslationHint}
+                  className="shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg border border-primary/40 text-primary hover:bg-primary/10 transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
             <div className="mb-4">
               <h2 className="text-lg font-semibold text-on-surface font-body">Begin a new translation</h2>
               <p className="text-sm text-on-surface-variant mt-1">

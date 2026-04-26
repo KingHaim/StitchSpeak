@@ -5,6 +5,8 @@ import {
   savePattern as remoteSave,
   deletePattern as remoteDelete,
   clearPatterns as remoteClear,
+  uploadPatternSource as remoteUploadSource,
+  fetchPatternSource as remoteFetchSource,
 } from './patternsService';
 
 const INDEX_KEY = 'ss_translation_history';
@@ -131,6 +133,12 @@ export interface SaveTranslationParams {
   translatedHtml: string;
   pdfMetrics: PdfMetrics | null;
   cost: number;
+  /**
+   * Optional original source file. When provided alongside an idToken, the
+   * server keeps a copy on the persistent volume so future "Add translation"
+   * actions can reuse it without asking the user to re-upload.
+   */
+  sourceFile?: File;
 }
 
 export type LoadHistoryResult = {
@@ -237,7 +245,7 @@ export async function saveTranslation(
   idToken: string | null,
 ): Promise<TranslationRecord> {
   if (idToken) {
-    return remoteSave(idToken, {
+    const record = await remoteSave(idToken, {
       fileName: params.fileName,
       fileType: params.fileType,
       sourceLanguage: params.sourceLanguage,
@@ -246,8 +254,37 @@ export async function saveTranslation(
       pdfMetrics: params.pdfMetrics,
       cost: params.cost,
     });
+    if (params.sourceFile) {
+      try {
+        await remoteUploadSource(idToken, record.id, params.sourceFile);
+        record.hasSource = true;
+      } catch (err) {
+        console.warn(
+          '[history] Pattern saved, but source upload failed; "Add translation" will require re-uploading.',
+          err,
+        );
+      }
+    }
+    return record;
   }
   return localSave(params);
+}
+
+/**
+ * Fetch the original source file for a saved pattern. Returns null when the
+ * pattern has no source on file (older saves, guest mode, server error).
+ */
+export async function loadPatternSource(
+  id: string,
+  idToken: string | null,
+): Promise<File | null> {
+  if (!idToken) return null;
+  try {
+    return await remoteFetchSource(idToken, id);
+  } catch (err) {
+    console.warn('[history] Failed to fetch pattern source:', err);
+    return null;
+  }
 }
 
 export async function deleteTranslation(

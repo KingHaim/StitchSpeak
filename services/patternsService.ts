@@ -13,6 +13,10 @@ interface ServerPattern {
   targetLanguage: string;
   pdfMetrics: TranslationRecord['pdfMetrics'] | null;
   cost: number;
+  hasSource?: boolean;
+  sourceMime?: string | null;
+  sourceSize?: number | null;
+  sourceExt?: string | null;
 }
 
 interface ServerPatternWithHtml extends ServerPattern {
@@ -74,6 +78,7 @@ function toRecord(server: ServerPattern): TranslationRecord {
     targetLanguage: server.targetLanguage,
     pdfMetrics: server.pdfMetrics ?? null,
     cost: server.cost,
+    hasSource: server.hasSource ?? false,
   };
 }
 
@@ -127,4 +132,84 @@ export async function deletePattern(idToken: string, id: string): Promise<void> 
 
 export async function clearPatterns(idToken: string): Promise<void> {
   await apiFetch<{ ok: boolean }>('/', idToken, 'DELETE');
+}
+
+/**
+ * Upload the original source file (PDF/DOCX) for an existing pattern row.
+ * Best-effort: callers should swallow errors here so that a save still
+ * succeeds even if the source upload fails.
+ */
+export async function uploadPatternSource(
+  idToken: string,
+  id: string,
+  file: File,
+): Promise<void> {
+  const form = new FormData();
+  form.append('file', file, file.name);
+
+  let res: Response;
+  try {
+    res = await fetch(
+      `${getApiUrl()}/api/patterns/${encodeURIComponent(id)}/source`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${idToken}` },
+        body: form,
+      },
+    );
+  } catch {
+    throw new Error('Could not reach the server. Check your connection and try again.');
+  }
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({} as Record<string, unknown>));
+    const err = new Error(
+      typeof (data as { error?: unknown }).error === 'string'
+        ? (data as { error: string }).error
+        : `Source upload failed (${res.status})`,
+    ) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+}
+
+/**
+ * Fetch the stored original source file as a `File` so it can be fed back into
+ * the translation pipeline (e.g. "Add another translation" on a saved pattern).
+ * Returns null when the pattern has no source on file (older saves, deleted, etc.).
+ */
+export async function fetchPatternSource(
+  idToken: string,
+  id: string,
+): Promise<File | null> {
+  let res: Response;
+  try {
+    res = await fetch(
+      `${getApiUrl()}/api/patterns/${encodeURIComponent(id)}/source`,
+      {
+        headers: { Authorization: `Bearer ${idToken}` },
+      },
+    );
+  } catch {
+    throw new Error('Could not reach the server. Check your connection and try again.');
+  }
+
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({} as Record<string, unknown>));
+    const err = new Error(
+      typeof (data as { error?: unknown }).error === 'string'
+        ? (data as { error: string }).error
+        : `Source fetch failed (${res.status})`,
+    ) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+
+  const disposition = res.headers.get('content-disposition') ?? '';
+  const match = disposition.match(/filename="([^"]+)"/i);
+  const fileName = match?.[1] || `pattern-${id}`;
+  const mime = res.headers.get('content-type') ?? 'application/octet-stream';
+  const buffer = await res.arrayBuffer();
+  return new File([buffer], fileName, { type: mime });
 }

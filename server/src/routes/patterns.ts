@@ -1,11 +1,14 @@
 import { Router, type Response } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { uploadPatternSource } from '../middleware/upload.js';
 import {
   listPatterns,
   getPattern,
   savePattern,
   deletePattern,
   deleteAllPatterns,
+  attachSource,
+  getSourceFile,
 } from '../services/patternStore.js';
 
 const router = Router();
@@ -84,6 +87,61 @@ router.post('/', (req, res: Response) => {
     console.error('[patterns] save failed:', err);
     res.status(500).json({
       error: err instanceof Error ? err.message : 'Could not save pattern.',
+    });
+  }
+});
+
+router.post('/:id/source', uploadPatternSource, (req, res: Response) => {
+  try {
+    const { userSub } = req as AuthenticatedRequest;
+    const id = String(req.params.id);
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: 'No source file provided.' });
+      return;
+    }
+    const result = attachSource(userSub, id, {
+      data: file.buffer,
+      mime: file.mimetype,
+      originalName: file.originalname,
+    });
+    if (!result) {
+      res.status(404).json({ error: 'Pattern not found.' });
+      return;
+    }
+    res.json({
+      ok: true,
+      source: { mime: result.mime, size: result.size, ext: result.ext },
+    });
+  } catch (err) {
+    console.error('[patterns] source upload failed:', err);
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Could not save source file.',
+    });
+  }
+});
+
+router.get('/:id/source', (req, res: Response) => {
+  try {
+    const { userSub } = req as unknown as AuthenticatedRequest;
+    const id = String(req.params.id);
+    const source = getSourceFile(userSub, id);
+    if (!source) {
+      res.status(404).json({ error: 'Source file not found.' });
+      return;
+    }
+    if (source.mime) res.setHeader('Content-Type', source.mime);
+    res.setHeader('Content-Length', source.size.toString());
+    const downloadName = source.fileName || `pattern${source.ext ?? ''}`;
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${downloadName.replace(/"/g, '')}"`,
+    );
+    res.send(source.data);
+  } catch (err) {
+    console.error('[patterns] source fetch failed:', err);
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Could not load source file.',
     });
   }
 });

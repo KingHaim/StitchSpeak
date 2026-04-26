@@ -4,6 +4,14 @@ import path from 'node:path';
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const DB_PATH = path.join(DATA_DIR, 'patterns.db');
+const SOURCES_DIR = path.join(DATA_DIR, 'sources');
+
+/**
+ * Hard cap for the size of a stored original-source file. Patterns are
+ * generally PDF/DOCX in the single-digit-MB range; refuse anything bigger
+ * so a runaway upload can't fill the volume.
+ */
+const MAX_SOURCE_BYTES = 25 * 1024 * 1024;
 
 const MAX_RECORDS_PER_USER = 100;
 // Patterns embed images as base64 data URLs, so a single HTML payload often
@@ -28,6 +36,9 @@ function safeTruncateHtml(html: string, max: number): string {
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+if (!fs.existsSync(SOURCES_DIR)) {
+  fs.mkdirSync(SOURCES_DIR, { recursive: true });
 }
 
 const db = new Database(DB_PATH);
@@ -68,6 +79,9 @@ function ensurePatternsColumns(): void {
   add('source_language', 'ALTER TABLE patterns ADD COLUMN source_language TEXT');
   add('pdf_metrics', 'ALTER TABLE patterns ADD COLUMN pdf_metrics TEXT');
   add('cost', 'ALTER TABLE patterns ADD COLUMN cost REAL NOT NULL DEFAULT 0');
+  add('source_mime', 'ALTER TABLE patterns ADD COLUMN source_mime TEXT');
+  add('source_size', 'ALTER TABLE patterns ADD COLUMN source_size INTEGER');
+  add('source_ext', 'ALTER TABLE patterns ADD COLUMN source_ext TEXT');
 }
 
 ensurePatternsColumns();
@@ -81,6 +95,10 @@ export interface PatternRow {
   targetLanguage: string;
   pdfMetrics: unknown | null;
   cost: number;
+  hasSource: boolean;
+  sourceMime: string | null;
+  sourceSize: number | null;
+  sourceExt: string | null;
 }
 
 export interface PatternRowWithHtml extends PatternRow {
@@ -96,19 +114,34 @@ interface RawRow {
   target_language: string;
   pdf_metrics: string | null;
   cost: number;
+  source_mime: string | null;
+  source_size: number | null;
+  source_ext: string | null;
   html?: string;
 }
 
 const stmts = {
   list: db.prepare<[string]>(`
-    SELECT id, timestamp, file_name, file_type, source_language, target_language, pdf_metrics, cost
+    SELECT id, timestamp, file_name, file_type, source_language, target_language,
+           pdf_metrics, cost, source_mime, source_size, source_ext
     FROM patterns
     WHERE sub = ?
     ORDER BY timestamp DESC
   `),
   getOne: db.prepare<[string, string]>(`
-    SELECT id, timestamp, file_name, file_type, source_language, target_language, pdf_metrics, cost, html
+    SELECT id, timestamp, file_name, file_type, source_language, target_language,
+           pdf_metrics, cost, source_mime, source_size, source_ext, html
     FROM patterns
+    WHERE sub = ? AND id = ?
+  `),
+  getSourceMeta: db.prepare<[string, string]>(`
+    SELECT source_mime, source_size, source_ext
+    FROM patterns
+    WHERE sub = ? AND id = ?
+  `),
+  setSourceMeta: db.prepare<[string | null, number | null, string | null, string, string]>(`
+    UPDATE patterns
+    SET source_mime = ?, source_size = ?, source_ext = ?
     WHERE sub = ? AND id = ?
   `),
   insert: db.prepare<
@@ -152,6 +185,10 @@ function rowToPattern(row: RawRow): PatternRow {
     targetLanguage: row.target_language,
     pdfMetrics: parseMetrics(row.pdf_metrics),
     cost: row.cost,
+    hasSource: row.source_size != null && row.source_size > 0,
+    sourceMime: row.source_mime,
+    sourceSize: row.source_size,
+    sourceExt: row.source_ext,
   };
 }
 
@@ -229,6 +266,10 @@ const saveTx = db.transaction((sub: string, input: SavePatternInput): PatternRow
     pdfMetrics: input.pdfMetrics ?? null,
     cost: typeof input.cost === 'number' ? input.cost : 0,
     html,
+    hasSource: false,
+    sourceMime: null,
+    sourceSize: null,
+    sourceExt: null,
   };
 });
 
@@ -236,12 +277,126 @@ export function savePattern(sub: string, input: SavePatternInput): PatternRowWit
   return saveTx(sub, input);
 }
 
+function sanitizeExtension(value: string | null | undefined): string {
+  if (!value) return '';
+  const trimmed = value.trim().replace(/^\.+/, '');
+  if (!/^[A-Za-z0-9]{1,8}$/.test(trimmed)) return '';
+  return `.${trimmed.toLowerCase()}`;
+}
+
+function deriveSourceExt(originalName: string | undefined, mime: string | undefined): string {
+  const fromName = originalName ? originalName.match(/\.([A-Za-z0-9]{1,8})$/)?.[1] : undefined;
+  if (fromName) return sanitizeExtension(fromName);
+  if (mime === 'application/pdf') return '.pdf';
+  if (mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+    return '.docx';
+  }
+  if (mime === 'application/msword') return '.doc';
+  return '';
+}
+
+function sourceFilePath(id: string, ext: string | null): string {
+  const safeId = id.replace(/[^A-Za-z0-9_-]/g, '');
+  return path.join(SOURCES_DIR, `${safeId}${sanitizeExtension(ext ?? '')}`);
+}
+
+function safeUnlinkSource(id: string, ext: string | null): void {
+  try {
+    const target = sourceFilePath(id, ext);
+    if (fs.existsSync(target)) fs.unlinkSync(target);
+  } catch (err) {
+    console.warn(`[patternStore] could not unlink source for ${id}:`, err);
+  }
+}
+
+export interface AttachSourceInput {
+  data: Buffer;
+  mime?: string | null;
+  originalName?: string | null;
+}
+
+export interface AttachSourceResult {
+  size: number;
+  mime: string | null;
+  ext: string | null;
+}
+
+/**
+ * Persist an original source file alongside an existing pattern row. Replaces
+ * any prior source already on disk for that pattern. Returns the metadata that
+ * was stored (and `null` if the pattern doesn't belong to this user).
+ */
+export function attachSource(
+  sub: string,
+  id: string,
+  input: AttachSourceInput,
+): AttachSourceResult | null {
+  const existing = stmts.getSourceMeta.get(sub, id) as
+    | { source_ext: string | null }
+    | undefined;
+  if (!existing) return null;
+
+  if (input.data.byteLength > MAX_SOURCE_BYTES) {
+    throw new Error(
+      `Source file is too large (${input.data.byteLength} bytes; max ${MAX_SOURCE_BYTES}).`,
+    );
+  }
+
+  if (existing.source_ext) {
+    safeUnlinkSource(id, existing.source_ext);
+  }
+
+  const ext = deriveSourceExt(input.originalName ?? undefined, input.mime ?? undefined);
+  const target = sourceFilePath(id, ext);
+  fs.writeFileSync(target, input.data);
+
+  const mime = input.mime ?? null;
+  stmts.setSourceMeta.run(mime, input.data.byteLength, ext || null, sub, id);
+
+  return { size: input.data.byteLength, mime, ext: ext || null };
+}
+
+export interface PatternSource {
+  data: Buffer;
+  mime: string | null;
+  ext: string | null;
+  size: number;
+  fileName: string;
+}
+
+export function getSourceFile(sub: string, id: string): PatternSource | null {
+  const row = stmts.getOne.get(sub, id) as RawRow | undefined;
+  if (!row) return null;
+  if (!row.source_size || row.source_size <= 0) return null;
+  const ext = row.source_ext ?? '';
+  const target = sourceFilePath(id, ext);
+  if (!fs.existsSync(target)) return null;
+  const data = fs.readFileSync(target);
+  return {
+    data,
+    mime: row.source_mime,
+    ext: ext || null,
+    size: data.byteLength,
+    fileName: row.file_name,
+  };
+}
+
 export function deletePattern(sub: string, id: string): boolean {
+  const meta = stmts.getSourceMeta.get(sub, id) as
+    | { source_ext: string | null }
+    | undefined;
   const result = stmts.deleteOne.run(sub, id);
+  if (result.changes > 0 && meta?.source_ext) {
+    safeUnlinkSource(id, meta.source_ext);
+  }
   return result.changes > 0;
 }
 
 export function deleteAllPatterns(sub: string): number {
+  const rows = stmts.list.all(sub) as RawRow[];
   const result = stmts.deleteAllForUser.run(sub);
+  for (const row of rows) {
+    if (row.source_ext) safeUnlinkSource(row.id, row.source_ext);
+  }
   return result.changes;
 }

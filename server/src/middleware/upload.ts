@@ -13,3 +13,23 @@ const upload = multer({
 });
 
 export const uploadPdf = upload.single('file');
+
+const ACCEPTED_SOURCE_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
+
+const sourceUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (ACCEPTED_SOURCE_MIME_TYPES.has(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Unsupported source file type. Use PDF or Word documents.'));
+    }
+  },
+});
+
+export const uploadPatternSource = sourceUpload.single('file');

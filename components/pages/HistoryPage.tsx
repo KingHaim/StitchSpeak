@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import {
   loadHistory,
   loadTranslationHtml,
+  loadPatternSource,
   deleteTranslation,
   clearHistory,
   PATTERNS_SYNCED_EVENT,
@@ -18,6 +19,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { CloseIcon } from '../icons/CloseIcon';
 import { PatternViewer } from '../PatternViewer';
 import { abbreviationLanguageCodeFromTargetLabel } from '../../services/abbreviationService';
+import { setAddTranslationHint } from '../../services/addTranslationHint';
 
 type DownloadFormat = 'pdf' | 'doc' | 'html' | 'txt';
 
@@ -84,6 +86,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [activeDownloadMenuId, setActiveDownloadMenuId] = useState<string | null>(null);
   const [downloadingRecordId, setDownloadingRecordId] = useState<string | null>(null);
+  const [addingTranslationId, setAddingTranslationId] = useState<string | null>(null);
 
   const downloadMenuRef = useRef<HTMLDivElement>(null);
 
@@ -329,6 +332,64 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
   const hasActiveFilters = searchQuery.trim().length > 0 || languageFilter !== 'all';
 
   const goTranslate = () => onNavigateToTranslate?.();
+
+  /**
+   * Group records by source file so each card on the same pattern can show
+   * "already translated to French + Spanish" and seed the dashboard hint.
+   */
+  const recordsByFileName = useMemo(() => {
+    const map = new Map<string, TranslationRecord[]>();
+    for (const record of records) {
+      const list = map.get(record.fileName) ?? [];
+      list.push(record);
+      map.set(record.fileName, list);
+    }
+    return map;
+  }, [records]);
+
+  const handleAddTranslation = useCallback(
+    async (record: TranslationRecord) => {
+      const sameFileRecords = recordsByFileName.get(record.fileName) ?? [record];
+      const existingLanguages = Array.from(
+        new Set(sameFileRecords.map((r) => r.targetLanguage).filter(Boolean)),
+      );
+
+      const recordWithSource =
+        sameFileRecords.find((r) => r.hasSource) ?? (record.hasSource ? record : null);
+
+      setActionError(null);
+      setAddingTranslationId(record.id);
+      let sourceFile: File | null = null;
+
+      if (recordWithSource) {
+        try {
+          sourceFile = await loadPatternSource(recordWithSource.id, idToken);
+        } catch (err) {
+          console.warn('[history] Could not pre-load source file:', err);
+        }
+      }
+
+      setAddTranslationHint(
+        {
+          sourceFileName: record.fileName,
+          existingLanguages,
+          sourcePatternId: recordWithSource?.id,
+          hasRemoteSource: !!recordWithSource,
+        },
+        sourceFile,
+      );
+      setAddingTranslationId(null);
+
+      if (!sourceFile && recordWithSource) {
+        setActionError(
+          'We could not retrieve the original file from the server. You can still upload it again to add a new translation.',
+        );
+      }
+
+      onNavigateToTranslate?.();
+    },
+    [recordsByFileName, onNavigateToTranslate, idToken],
+  );
 
   const referencePatternFrame =
     viewMode === 'grid'
@@ -629,6 +690,34 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
                           className="px-3 py-1.5 rounded-lg text-sm font-semibold border border-outline-variant/30 hover:bg-surface-container-high transition-colors"
                         >
                           {expandedId === record.id ? 'Hide preview' : 'Preview'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleAddTranslation(record)}
+                          disabled={addingTranslationId === record.id}
+                          className="px-3 py-1.5 rounded-lg text-sm font-semibold text-primary border border-primary/40 hover:bg-primary/10 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
+                          title="Translate the same file into another language"
+                        >
+                          {addingTranslationId === record.id ? (
+                            <>
+                              <svg
+                                className="animate-spin h-4 w-4"
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                aria-hidden
+                              >
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                              </svg>
+                              Loading source…
+                            </>
+                          ) : (
+                            <>
+                              <Icon name="add" className="text-base" />
+                              Add translation
+                            </>
+                          )}
                         </button>
                       </div>
                       <button

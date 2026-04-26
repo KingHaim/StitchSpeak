@@ -61,6 +61,8 @@ export interface TranslationRecord {
   translatedHtml?: string;
   pdfMetrics: PdfMetrics | null;
   cost: number;
+  /** True when the original source file is stored server-side and can be re-fetched. */
+  hasSource?: boolean;
 }
 
 export interface CreditPackage {
