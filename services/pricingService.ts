@@ -1,6 +1,20 @@
 import type { PdfMetrics, PriceEstimate } from '../types';
 import { PRICING } from '../constants';
 
+function roundUpToHalf(amount: number): number {
+  return Math.ceil(amount / 0.5) * 0.5;
+}
+
+function calculatePageSurcharge(pages: number): number {
+  const { includedPages, pageSurcharge, pagesPerSurchargeStep } =
+    PRICING.translation;
+  const extraPages = Math.max(0, pages - includedPages);
+
+  if (extraPages === 0) return 0;
+
+  return Math.ceil(extraPages / pagesPerSurchargeStep) * pageSurcharge;
+}
+
 export function estimateTranslationCost(metrics: PdfMetrics): PriceEstimate {
   const { inputCostPer1MTokens, outputCostPer1MTokens, fixedMargin } =
     PRICING.translation;
@@ -10,8 +24,9 @@ export function estimateTranslationCost(metrics: PdfMetrics): PriceEstimate {
   const outputCost =
     (metrics.estimatedOutputTokens / 1_000_000) * outputCostPer1MTokens;
   const rawCost = inputCost + outputCost;
-  const translationCost =
-    Math.ceil((rawCost + fixedMargin) / 0.5) * 0.5;
+  const baseCost = roundUpToHalf(rawCost + fixedMargin);
+  const pageSurcharge = calculatePageSurcharge(metrics.pages);
+  const translationCost = roundUpToHalf(baseCost + pageSurcharge);
 
   const chatPackageCost = PRICING.chat.packagePrice;
 
@@ -24,6 +39,7 @@ export function estimateTranslationCost(metrics: PdfMetrics): PriceEstimate {
       outputTokens: metrics.estimatedOutputTokens,
       rawCost: Math.round(rawCost * 10000) / 10000,
       margin: fixedMargin,
+      pageSurcharge,
     },
   };
 }
@@ -41,6 +57,7 @@ export function estimateBatchTranslationCost(metricsList: PdfMetrics[]): PriceEs
       outputTokens: estimates.reduce((sum, estimate) => sum + estimate.breakdown.outputTokens, 0),
       rawCost: Math.round(estimates.reduce((sum, estimate) => sum + estimate.breakdown.rawCost, 0) * 10000) / 10000,
       margin: estimates.reduce((sum, estimate) => sum + estimate.breakdown.margin, 0),
+      pageSurcharge: estimates.reduce((sum, estimate) => sum + estimate.breakdown.pageSurcharge, 0),
     },
   };
 }

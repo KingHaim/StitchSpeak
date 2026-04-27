@@ -13,6 +13,7 @@ export const GLOSSARY_LANGUAGES = [
   { code: 'da', name: 'Danish' },
   { code: 'fi', name: 'Finnish' },
   { code: 'ja', name: 'Japanese' },
+  { code: 'ru', name: 'Russian' },
 ];
 
 export const GLOSSARY_TERMS: GlossaryTerm[] = [

@@ -28,6 +28,7 @@ export interface PriceEstimate {
     outputTokens: number;
     rawCost: number;
     margin: number;
+    pageSurcharge: number;
   };
 }
 

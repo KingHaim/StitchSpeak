@@ -14,6 +14,7 @@ export const LANGUAGES: Language[] = [
   { code: 'fi', name: 'Finnish' },
   { code: 'pt', name: 'Portuguese' },
   { code: 'ja', name: 'Japanese' },
+  { code: 'ru', name: 'Russian' },
 ];
 
 export const AUTO_DETECT_LANGUAGE: Language = { code: 'auto', name: 'Auto-Detect' };
@@ -38,6 +39,9 @@ export const PRICING = {
     inputCostPer1MTokens: 1.25,
     outputCostPer1MTokens: 5.00,
     fixedMargin: 6.00,
+    includedPages: 10,
+    pageSurcharge: 1.00,
+    pagesPerSurchargeStep: 5,
   },
   chat: {
     packageSize: 20,

@@ -13,6 +13,9 @@ export const PricePreview: React.FC<PricePreviewProps> = ({ metrics, estimate })
   const costDisplay = isAuthenticated
     ? `${estimate.translationCost.toFixed(1)} credits`
     : formatPrice(estimate.translationCost);
+  const pageSurchargeDisplay = isAuthenticated
+    ? `${estimate.breakdown.pageSurcharge.toFixed(1)} credits`
+    : formatPrice(estimate.breakdown.pageSurcharge);
 
   return (
     <div className="bg-white p-5 rounded-2xl shadow-sm border border-amber-100 mb-8 animate-in fade-in slide-in-from-top-2 duration-300">
@@ -40,8 +43,11 @@ export const PricePreview: React.FC<PricePreviewProps> = ({ metrics, estimate })
         </div>
       </div>
 
-      <div className="text-xs text-slate-400 px-1">
-        File: {metrics.fileSizeKB} KB
+      <div className="text-xs text-slate-400 px-1 space-y-1">
+        <p>File: {metrics.fileSizeKB} KB</p>
+        {estimate.breakdown.pageSurcharge > 0 && (
+          <p>Includes {pageSurchargeDisplay} page surcharge for patterns over 10 pages.</p>
+        )}
       </div>
     </div>
   );
