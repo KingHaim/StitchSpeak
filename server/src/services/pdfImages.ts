@@ -1,5 +1,6 @@
 import { PDFExtract, type PDFExtractImage } from 'pdf.js-extract';
 import sharp from 'sharp';
+import crypto from 'node:crypto';
 
 const MAX_IMAGES = 30;
 const MIN_IMAGE_BYTES = 512;
@@ -282,7 +283,52 @@ function groupRows(pending: PendingImage[]): void {
   }
 }
 
+/**
+ * Cache extraction results so the same PDF buffer doesn't get parsed twice
+ * back-to-back (e.g. once for `translatePattern` and again moments later for
+ * the cover-thumbnail step on `/api/patterns/:id/source`).
+ *
+ * Each entry weighs hundreds of KB to a few MB because the result already
+ * carries the encoded image data URLs, so we keep the cache small and short-
+ * lived. The key is a SHA-256 of the PDF bytes; collisions are effectively
+ * impossible.
+ */
+const extractCache = new Map<
+  string,
+  { images: ExtractedImage[]; expiresAt: number }
+>();
+const EXTRACT_CACHE_TTL_MS = 10 * 60 * 1000;
+const EXTRACT_CACHE_MAX_ENTRIES = 50;
+
+function pruneExtractCache(): void {
+  const now = Date.now();
+  for (const [key, entry] of extractCache) {
+    if (entry.expiresAt <= now) extractCache.delete(key);
+  }
+  if (extractCache.size > EXTRACT_CACHE_MAX_ENTRIES) {
+    const overflow = extractCache.size - EXTRACT_CACHE_MAX_ENTRIES;
+    let i = 0;
+    for (const key of extractCache.keys()) {
+      if (i++ >= overflow) break;
+      extractCache.delete(key);
+    }
+  }
+}
+
+function hashBuffer(buffer: Buffer): string {
+  return crypto.createHash('sha256').update(buffer).digest('hex');
+}
+
 export async function extractImages(pdfBuffer: Buffer): Promise<ExtractedImage[]> {
+  const cacheKey = hashBuffer(pdfBuffer);
+  const cached = extractCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    console.log(
+      `[pdfImages] cache hit (${cached.images.length} images, key ${cacheKey.slice(0, 8)})`,
+    );
+    return cached.images;
+  }
+
   const extractor = new PDFExtract();
   let result;
   try {
@@ -361,6 +407,13 @@ export async function extractImages(pdfBuffer: Buffer): Promise<ExtractedImage[]
 
   const images = pending.map((item) => item.image);
   console.log(`[pdfImages] Extracted ${images.length} images from ${result.pages.length} pages`);
+
+  extractCache.set(cacheKey, {
+    images,
+    expiresAt: Date.now() + EXTRACT_CACHE_TTL_MS,
+  });
+  pruneExtractCache();
+
   return images;
 }
 

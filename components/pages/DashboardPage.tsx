@@ -443,8 +443,24 @@ export const DashboardPage: React.FC = () => {
           );
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'An unexpected error occurred.';
+        const baseMessage = err instanceof Error ? err.message : 'An unexpected error occurred.';
         console.error(err);
+        // Credits were spent up-front in tryStartFromModal; if the translation
+        // never produced output, give them back so the user isn't charged for
+        // a network glitch or a server error.
+        const refund = priceEstimate.translationCost;
+        let refunded = false;
+        if (idToken && refund > 0) {
+          try {
+            await addCredits(refund);
+            refunded = true;
+          } catch (refundErr) {
+            console.warn('[DashboardPage] Could not refund credits after failure:', refundErr);
+          }
+        }
+        const message = refunded
+          ? `${baseMessage} (${refund.toFixed(1)} credits were refunded.)`
+          : baseMessage;
         setJobs((prev) =>
           prev.map((j) =>
             j.id === id ? { ...j, status: 'error' as const, error: message } : j,
@@ -452,7 +468,7 @@ export const DashboardPage: React.FC = () => {
         );
       }
     },
-    [idToken],
+    [idToken, addCredits],
   );
 
   const beginTranslationBatch = useCallback(
