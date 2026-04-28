@@ -1,11 +1,9 @@
 import { jsPDF } from 'jspdf';
 import JSZip from 'jszip';
+import html2canvas from 'html2canvas';
 
 const EXPORT_WIDTH_PX = 816;
 const PAGE_MARGIN_PT = 36;
-const PDF_FONT_FAMILY = 'helvetica';
-const PDF_BODY_FONT_SIZE = 11;
-const PDF_BODY_LINE_HEIGHT = 16;
 const EMU_PER_PIXEL = 9525;
 const MAX_DOCX_IMAGE_WIDTH_PX = 520;
 
@@ -38,7 +36,7 @@ const PATTERN_EXPORT_CSS = `
   .pdf-pattern li { margin-bottom: 0.25em; }
   .pdf-pattern strong { font-weight: 700; color: #5A3E30; }
   .pdf-pattern em { font-style: italic; color: #8B6F5E; }
-  .pdf-pattern img { display: block; height: auto; }
+  .pdf-pattern img { display: block; max-width: 100%; height: auto; }
   .pdf-pattern table {
     width: 100%;
     border-collapse: collapse;
@@ -116,7 +114,6 @@ interface DocxImage {
   widthEmu: number;
   heightEmu: number;
   altText: string;
-  isHeaderImage: boolean;
 }
 
 interface DocxBuildContext {
@@ -160,14 +157,31 @@ function escapeXml(value: string): string {
     .replace(/'/g, '&apos;');
 }
 
-function textRun(text: string, options: { bold?: boolean; italic?: boolean } = {}): string {
-  if (!text) return '';
-  const properties = [
+interface TextRunOptions {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+}
+
+function textRunProperties(options: TextRunOptions = {}): string {
+  return [
     options.bold ? '<w:b/>' : '',
     options.italic ? '<w:i/>' : '',
+    options.underline ? '<w:u w:val="single"/>' : '',
   ].join('');
+}
 
-  return `<w:r>${properties ? `<w:rPr>${properties}</w:rPr>` : ''}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
+function textRun(text: string, options: TextRunOptions = {}): string {
+  if (!text) return '';
+  const properties = textRunProperties(options);
+  const body = text.split(/(\t|\n)/).map((part) => {
+    if (part === '\t') return '<w:tab/>';
+    if (part === '\n') return '<w:br/>';
+    if (!part) return '';
+    return `<w:t xml:space="preserve">${escapeXml(part)}</w:t>`;
+  }).join('');
+
+  return `<w:r>${properties ? `<w:rPr>${properties}</w:rPr>` : ''}${body}</w:r>`;
 }
 
 function paragraph(runs: string, styleId?: string): string {
@@ -250,6 +264,43 @@ async function measureImage(src: string): Promise<{ width: number; height: numbe
   });
 }
 
+function parseStylePixelValue(style: string, property: string): number | null {
+  const escapedProperty = property.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = style.match(new RegExp(`${escapedProperty}\\s*:\\s*([\\d.]+)px`, 'i'));
+  if (!match) return null;
+  const value = Number.parseFloat(match[1]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function getDocxImageSize(
+  image: HTMLImageElement,
+  measured: { width: number; height: number },
+): { width: number; height: number } {
+  const style = image.getAttribute('style') ?? '';
+  const styledWidth = parseStylePixelValue(style, 'width');
+  const styledHeight = parseStylePixelValue(style, 'height');
+  const maxWidth = parseStylePixelValue(style, 'max-width');
+  const maxHeight = parseStylePixelValue(style, 'max-height');
+
+  let width = styledWidth ?? measured.width;
+  let height = styledHeight ?? Math.max(1, Math.round(measured.height * (width / measured.width)));
+
+  if (maxWidth && width > maxWidth) {
+    width = maxWidth;
+    height = Math.max(1, Math.round(measured.height * (width / measured.width)));
+  }
+  if (maxHeight && height > maxHeight) {
+    height = maxHeight;
+    width = Math.max(1, Math.round(measured.width * (height / measured.height)));
+  }
+  if (width > MAX_DOCX_IMAGE_WIDTH_PX) {
+    width = MAX_DOCX_IMAGE_WIDTH_PX;
+    height = Math.max(1, Math.round(measured.height * (width / measured.width)));
+  }
+
+  return { width: Math.max(1, Math.round(width)), height: Math.max(1, Math.round(height)) };
+}
+
 function imageRun(image: DocxImage): string {
   return `<w:r>
   <w:drawing>
@@ -285,7 +336,7 @@ function imageRun(image: DocxImage): string {
 </w:r>`;
 }
 
-function inlineRuns(node: Node, context: DocxBuildContext, options: { bold?: boolean; italic?: boolean } = {}): string {
+function inlineRuns(node: Node, context: DocxBuildContext, options: TextRunOptions = {}): string {
   if (node.nodeType === Node.TEXT_NODE) {
     return textRun(node.textContent ?? '', options);
   }
@@ -301,9 +352,22 @@ function inlineRuns(node: Node, context: DocxBuildContext, options: { bold?: boo
     return image ? imageRun(image) : '';
   }
 
-  const nextOptions = {
-    bold: options.bold || tagName === 'strong' || tagName === 'b',
-    italic: options.italic || tagName === 'em' || tagName === 'i',
+  const inlineStyle = node.getAttribute('style')?.toLowerCase() ?? '';
+  const nextOptions: TextRunOptions = {
+    bold:
+      options.bold ||
+      tagName === 'strong' ||
+      tagName === 'b' ||
+      /font-weight\s*:\s*(bold|[6-9]00)/.test(inlineStyle),
+    italic:
+      options.italic ||
+      tagName === 'em' ||
+      tagName === 'i' ||
+      /font-style\s*:\s*italic/.test(inlineStyle),
+    underline:
+      options.underline ||
+      tagName === 'u' ||
+      /text-decoration[^;]*underline/.test(inlineStyle),
   };
 
   return Array.from(node.childNodes).map((child) => inlineRuns(child, context, nextOptions)).join('');
@@ -346,41 +410,116 @@ function blockToDocx(node: Element, context: DocxBuildContext, listPrefix?: stri
   }
 }
 
-function findHeaderImageElement(root: Element): HTMLImageElement | null {
-  const explicit = root.querySelector<HTMLImageElement>(
-    'img[data-stitchspeak-role="cover-banner"], img[data-cover-banner="true"]',
+const DOCX_TABLE_WIDTH_TWIPS = 9360;
+
+function tableCellColumnSpan(cell: Element): number {
+  const raw = cell.getAttribute('colspan');
+  const span = raw ? Number.parseInt(raw, 10) : 1;
+  return Number.isFinite(span) && span > 1 ? span : 1;
+}
+
+function tableColumnCount(rows: HTMLTableRowElement[]): number {
+  return Math.max(
+    1,
+    ...rows.map((row) =>
+      Array.from(row.children)
+        .filter((cell) => /^(td|th)$/i.test(cell.tagName))
+        .reduce((sum, cell) => sum + tableCellColumnSpan(cell), 0),
+    ),
   );
-  if (explicit) return explicit;
+}
 
-  const firstHeading = root.querySelector('h1, h2');
-  if (!firstHeading) return null;
+function tableCellParagraphs(cell: Element, context: DocxBuildContext): string {
+  const directBlocks = Array.from(cell.children).filter((child) => isBlockElement(child));
+  if (directBlocks.length === 0) {
+    const runs = inlineRuns(cell, context);
+    return paragraph(runs || textRun(' '));
+  }
 
-  return Array.from(root.querySelectorAll<HTMLImageElement>('img')).find((image) => {
-    return Boolean(image.compareDocumentPosition(firstHeading) & Node.DOCUMENT_POSITION_FOLLOWING);
-  }) ?? null;
+  const blocks = directBlocks
+    .filter((child) => child.tagName.toLowerCase() !== 'table')
+    .map((child) => blockToDocx(child, context))
+    .filter(Boolean);
+
+  return blocks.length > 0 ? blocks.join('') : paragraph(inlineRuns(cell, context) || textRun(' '));
+}
+
+function tableCellToDocx(
+  cell: Element,
+  context: DocxBuildContext,
+  columnWidth: number,
+  isHeader: boolean,
+): string {
+  const span = tableCellColumnSpan(cell);
+  const width = Math.round(columnWidth * span);
+  const gridSpan = span > 1 ? `<w:gridSpan w:val="${span}"/>` : '';
+  const shading = isHeader ? '<w:shd w:fill="FAF6F1"/>' : '';
+
+  return `<w:tc>
+    <w:tcPr>
+      <w:tcW w:w="${width}" w:type="dxa"/>
+      ${gridSpan}
+      ${shading}
+      <w:tcBorders>
+        <w:top w:val="single" w:sz="4" w:color="E8DDD3"/>
+        <w:left w:val="single" w:sz="4" w:color="E8DDD3"/>
+        <w:bottom w:val="single" w:sz="4" w:color="E8DDD3"/>
+        <w:right w:val="single" w:sz="4" w:color="E8DDD3"/>
+      </w:tcBorders>
+    </w:tcPr>
+    ${tableCellParagraphs(cell, context)}
+  </w:tc>`;
+}
+
+function tableToDocx(table: Element, context: DocxBuildContext): string {
+  const rows = Array.from(table.querySelectorAll('tr')) as HTMLTableRowElement[];
+  if (rows.length === 0) return '';
+
+  const columnCount = tableColumnCount(rows);
+  const columnWidth = DOCX_TABLE_WIDTH_TWIPS / columnCount;
+  const grid = Array.from({ length: columnCount }, () => `<w:gridCol w:w="${Math.round(columnWidth)}"/>`).join('');
+  const body = rows.map((row) => {
+    const cells = Array.from(row.children).filter((cell) => /^(td|th)$/i.test(cell.tagName));
+    if (cells.length === 0) return '';
+    return `<w:tr>${cells.map((cell) =>
+      tableCellToDocx(cell, context, columnWidth, cell.tagName.toLowerCase() === 'th'),
+    ).join('')}</w:tr>`;
+  }).join('');
+
+  return `<w:tbl>
+    <w:tblPr>
+      <w:tblW w:w="${DOCX_TABLE_WIDTH_TWIPS}" w:type="dxa"/>
+      <w:tblLayout w:type="autofit"/>
+      <w:tblBorders>
+        <w:top w:val="single" w:sz="4" w:color="E8DDD3"/>
+        <w:left w:val="single" w:sz="4" w:color="E8DDD3"/>
+        <w:bottom w:val="single" w:sz="4" w:color="E8DDD3"/>
+        <w:right w:val="single" w:sz="4" w:color="E8DDD3"/>
+        <w:insideH w:val="single" w:sz="4" w:color="E8DDD3"/>
+        <w:insideV w:val="single" w:sz="4" w:color="E8DDD3"/>
+      </w:tblBorders>
+    </w:tblPr>
+    <w:tblGrid>${grid}</w:tblGrid>
+    ${body}
+  </w:tbl>`;
 }
 
 async function collectDocxImages(root: Element): Promise<DocxImage[]> {
   const images = Array.from(root.querySelectorAll('img'));
-  const embeddedImages: DocxImage[] = [];
-  const headerImageElement = findHeaderImageElement(root);
-
-  await Promise.all(images.map(async (image, index) => {
+  const embeddedImages = await Promise.all(images.map(async (image, index): Promise<DocxImage | null> => {
     const src = image.getAttribute('src') ?? '';
-    if (!src) return;
+    if (!src) return null;
 
     const imageBytes = await sourceToImageBytes(src);
-    if (!imageBytes) return;
+    if (!imageBytes) return null;
 
     const extension = getImageExtension(imageBytes.contentType);
-    if (!extension) return;
+    if (!extension) return null;
 
     const measured = await measureImage(src);
-    const width = Math.min(measured.width, MAX_DOCX_IMAGE_WIDTH_PX);
-    const height = Math.max(1, Math.round(measured.height * (width / measured.width)));
-    const isHeaderImage = image === headerImageElement;
+    const { width, height } = getDocxImageSize(image, measured);
 
-    embeddedImages.push({
+    return {
       relationshipId: `rId${index + 2}`,
       fileName: `image${index + 1}.${extension}`,
       contentType: imageBytes.contentType,
@@ -388,11 +527,10 @@ async function collectDocxImages(root: Element): Promise<DocxImage[]> {
       widthEmu: Math.round(width * EMU_PER_PIXEL),
       heightEmu: Math.round(height * EMU_PER_PIXEL),
       altText: image.getAttribute('alt') || `Pattern image ${index + 1}`,
-      isHeaderImage,
-    });
+    };
   }));
 
-  return embeddedImages;
+  return embeddedImages.filter((image): image is DocxImage => image !== null);
 }
 
 async function htmlToDocxBody(html: string): Promise<{ bodyXml: string; images: DocxImage[] }> {
@@ -405,7 +543,7 @@ async function htmlToDocxBody(html: string): Promise<{ bodyXml: string; images: 
   const imageMap = new WeakMap<HTMLImageElement, DocxImage>();
   Array.from(root.querySelectorAll('img')).forEach((image, index) => {
     const embeddedImage = images.find((candidate) => candidate.fileName === `image${index + 1}.${getImageExtension(candidate.contentType)}`);
-    if (embeddedImage && !embeddedImage.isHeaderImage) imageMap.set(image, embeddedImage);
+    if (embeddedImage) imageMap.set(image, embeddedImage);
   });
   const context: DocxBuildContext = { imageMap };
 
@@ -425,7 +563,13 @@ async function htmlToDocxBody(html: string): Promise<{ bodyXml: string; images: 
       return;
     }
 
-    if (tagName === 'table' || tagName === 'tbody' || tagName === 'thead' || tagName === 'tfoot') {
+    if (tagName === 'table') {
+      const block = tableToDocx(element, context);
+      if (block) blocks.push(block);
+      return;
+    }
+
+    if (tagName === 'tbody' || tagName === 'thead' || tagName === 'tfoot') {
       Array.from(element.children).forEach((child) => walk(child, listType));
       return;
     }
@@ -461,41 +605,12 @@ async function buildDocxDocumentXml(html: string): Promise<{ documentXml: string
   <w:body>
     ${bodyXml}
     <w:sectPr>
-      <w:headerReference w:type="default" r:id="rId1"/>
       <w:pgSz w:w="12240" w:h="15840"/>
       <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
     </w:sectPr>
   </w:body>
 </w:document>`;
   return { documentXml, images };
-}
-
-function buildDocxHeaderXml(html: string, headerImage?: DocxImage): string {
-  const title = getPatternTitle(html);
-  const headerContent = headerImage
-    ? imageRun({ ...headerImage, relationshipId: 'rId1' })
-    : `<w:r>
-      <w:rPr>
-        <w:b/>
-        <w:sz w:val="20"/>
-      </w:rPr>
-      <w:t>${escapeXml(title)}</w:t>
-    </w:r>`;
-
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:hdr
-  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-  xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
-  xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
-  xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
-  <w:p>
-    <w:pPr>
-      <w:jc w:val="center"/>
-    </w:pPr>
-    ${headerContent}
-  </w:p>
-</w:hdr>`;
 }
 
 async function waitForImages(container: HTMLElement): Promise<void> {
@@ -520,222 +635,75 @@ async function waitForImages(container: HTMLElement): Promise<void> {
   );
 }
 
-interface PdfRenderState {
-  pdf: jsPDF;
-  usableWidth: number;
-  bottomY: number;
-  cursorY: number;
-}
-
-interface PdfTextOptions {
-  fontSize?: number;
-  lineHeight?: number;
-  fontStyle?: 'normal' | 'bold' | 'italic' | 'bolditalic';
-  indent?: number;
-  spacingBefore?: number;
-  spacingAfter?: number;
-}
-
-function ensurePdfSpace(state: PdfRenderState, height: number): void {
-  if (state.cursorY + height <= state.bottomY) return;
-  state.pdf.addPage();
-  state.cursorY = PAGE_MARGIN_PT;
-}
-
-function addPdfSpace(state: PdfRenderState, height: number): void {
-  ensurePdfSpace(state, height);
-  state.cursorY += height;
-}
-
-function normalizePdfText(value: string): string {
-  return value
-    .replace(/\u00a0/g, ' ')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/[ \t]*\n[ \t]*/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
-function getInlinePdfText(node: Node): string {
-  if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
-  if (!(node instanceof HTMLElement)) return '';
-
-  const tagName = node.tagName.toLowerCase();
-  if (tagName === 'br') return '\n';
-  if (tagName === 'img') return '';
-  return Array.from(node.childNodes).map(getInlinePdfText).join('');
-}
-
-function elementPdfText(element: Element): string {
-  return normalizePdfText(Array.from(element.childNodes).map(getInlinePdfText).join(''));
-}
-
-function addPdfText(state: PdfRenderState, text: string, options: PdfTextOptions = {}): void {
-  const normalized = normalizePdfText(text);
-  if (!normalized) return;
-
-  const fontSize = options.fontSize ?? PDF_BODY_FONT_SIZE;
-  const lineHeight = options.lineHeight ?? PDF_BODY_LINE_HEIGHT;
-  const indent = options.indent ?? 0;
-  const x = PAGE_MARGIN_PT + indent;
-  const maxWidth = state.usableWidth - indent;
-
-  addPdfSpace(state, options.spacingBefore ?? 0);
-  state.pdf.setFont(PDF_FONT_FAMILY, options.fontStyle ?? 'normal');
-  state.pdf.setFontSize(fontSize);
-  state.pdf.setTextColor(61, 43, 31);
-
-  const paragraphs = normalized.split(/\n{2,}/);
-  paragraphs.forEach((paragraphText, paragraphIndex) => {
-    if (paragraphIndex > 0) addPdfSpace(state, lineHeight * 0.5);
-    const lines = state.pdf.splitTextToSize(paragraphText, maxWidth) as string[];
-    for (const line of lines) {
-      ensurePdfSpace(state, lineHeight);
-      state.pdf.text(line, x, state.cursorY + fontSize);
-      state.cursorY += lineHeight;
-    }
-  });
-
-  addPdfSpace(state, options.spacingAfter ?? 0);
-}
-
-function imageMimeToPdfType(src: string): 'PNG' | 'JPEG' | 'WEBP' {
-  if (/^data:image\/jpe?g/i.test(src)) return 'JPEG';
-  if (/^data:image\/webp/i.test(src)) return 'WEBP';
-  return 'PNG';
-}
-
-async function renderPdfImage(state: PdfRenderState, image: HTMLImageElement): Promise<void> {
-  const src = image.getAttribute('src');
-  if (!src) return;
-
-  const measured = await measureImage(src);
-  const maxHeight = state.bottomY - PAGE_MARGIN_PT;
-  const scale = Math.min(state.usableWidth / measured.width, maxHeight / measured.height, 1);
-  const width = Math.max(1, Math.round(measured.width * scale));
-  const height = Math.max(1, Math.round(measured.height * scale));
-  const x = PAGE_MARGIN_PT + (state.usableWidth - width) / 2;
-
-  addPdfSpace(state, PDF_BODY_LINE_HEIGHT * 0.5);
-  ensurePdfSpace(state, height);
-  state.pdf.addImage(src, imageMimeToPdfType(src), x, state.cursorY, width, height);
-  state.cursorY += height;
-  addPdfSpace(state, PDF_BODY_LINE_HEIGHT * 0.5);
-}
-
-function headingOptions(tagName: string): PdfTextOptions {
-  switch (tagName) {
-    case 'h1':
-      return { fontSize: 20, lineHeight: 27, fontStyle: 'bold', spacingAfter: 8 };
-    case 'h2':
-      return { fontSize: 16, lineHeight: 22, fontStyle: 'bold', spacingBefore: 10, spacingAfter: 6 };
-    case 'h3':
-      return { fontSize: 13, lineHeight: 18, fontStyle: 'bold', spacingBefore: 8, spacingAfter: 4 };
-    default:
-      return { fontSize: 12, lineHeight: 17, fontStyle: 'bold', spacingBefore: 6, spacingAfter: 3 };
-  }
-}
-
-async function renderPdfElement(
-  state: PdfRenderState,
-  element: Element,
-  listType?: 'ol' | 'ul',
-): Promise<void> {
-  const tagName = element.tagName.toLowerCase();
-  if (tagName === 'script' || tagName === 'style') return;
-
-  if (tagName === 'img' && element instanceof HTMLImageElement) {
-    await renderPdfImage(state, element);
-    return;
-  }
-
-  if (tagName === 'ul' || tagName === 'ol') {
-    for (const child of Array.from(element.children)) {
-      await renderPdfElement(state, child, tagName);
-    }
-    addPdfSpace(state, 4);
-    return;
-  }
-
-  if (tagName === 'li') {
-    const index = Array.from(element.parentElement?.children ?? []).indexOf(element) + 1;
-    const prefix = listType === 'ol' ? `${index}. ` : '- ';
-    addPdfText(state, `${prefix}${elementPdfText(element)}`, { indent: 18, spacingAfter: 2 });
-    return;
-  }
-
-  if (tagName === 'table' || tagName === 'tbody' || tagName === 'thead' || tagName === 'tfoot') {
-    for (const child of Array.from(element.children)) {
-      await renderPdfElement(state, child, listType);
-    }
-    addPdfSpace(state, 6);
-    return;
-  }
-
-  if (tagName === 'tr') {
-    const cellText = Array.from(element.querySelectorAll('th, td'))
-      .map((cell) => normalizePdfText(cell.textContent ?? ''))
-      .filter(Boolean)
-      .join(' | ');
-    addPdfText(state, cellText, { fontSize: 10, lineHeight: 14, fontStyle: 'normal', spacingAfter: 2 });
-    return;
-  }
-
-  if (/^h[1-6]$/.test(tagName)) {
-    addPdfText(state, elementPdfText(element), headingOptions(tagName));
-    return;
-  }
-
-  if ((tagName === 'div' || tagName === 'section' || tagName === 'article' || tagName === 'main') && hasBlockChildren(element)) {
-    for (const child of Array.from(element.children)) {
-      await renderPdfElement(state, child, listType);
-    }
-    return;
-  }
-
-  if (/^(p|div|section|article)$/.test(tagName)) {
-    addPdfText(state, elementPdfText(element), { spacingAfter: 5 });
-    return;
-  }
-
-  for (const child of Array.from(element.children)) {
-    await renderPdfElement(state, child, listType);
-  }
-}
-
 export async function exportPatternPdf(html: string, options?: PatternExportOptions): Promise<void> {
+  const style = document.createElement('style');
+  style.textContent = PATTERN_EXPORT_CSS;
   const container = document.createElement('div');
   container.style.position = 'fixed';
-  container.style.left = '0';
+  container.style.left = '-10000px';
   container.style.top = '0';
   container.style.width = `${EXPORT_WIDTH_PX}px`;
   container.style.pointerEvents = 'none';
-  container.style.transform = 'translateX(-200vw)';
   container.style.zIndex = '-1';
-  container.innerHTML = html;
+  const wrapper = document.createElement('div');
+  wrapper.className = 'pdf-pattern';
+  wrapper.innerHTML = html;
+  container.appendChild(wrapper);
+  document.head.appendChild(style);
   document.body.appendChild(container);
 
   try {
     await document.fonts.ready;
     await waitForImages(container);
 
+    const canvas = await html2canvas(wrapper, {
+      backgroundColor: '#ffffff',
+      logging: false,
+      scale: 2,
+      useCORS: true,
+      windowWidth: EXPORT_WIDTH_PX,
+    });
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
-    const state: PdfRenderState = {
-      pdf,
-      usableWidth: pageWidth - PAGE_MARGIN_PT * 2,
-      bottomY: pageHeight - PAGE_MARGIN_PT,
-      cursorY: PAGE_MARGIN_PT,
-    };
+    const contentWidthPt = pageWidth - PAGE_MARGIN_PT * 2;
+    const contentHeightPt = pageHeight - PAGE_MARGIN_PT * 2;
+    const pixelsPerPoint = canvas.width / contentWidthPt;
+    const pageSliceHeightPx = Math.max(1, Math.floor(contentHeightPt * pixelsPerPoint));
 
-    for (const child of Array.from(container.children)) {
-      await renderPdfElement(state, child);
+    let sourceY = 0;
+    let pageIndex = 0;
+    while (sourceY < canvas.height) {
+      const sliceHeight = Math.min(pageSliceHeightPx, canvas.height - sourceY);
+      const pageCanvas = document.createElement('canvas');
+      pageCanvas.width = canvas.width;
+      pageCanvas.height = sliceHeight;
+      const context = pageCanvas.getContext('2d');
+      if (!context) break;
+
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+      context.drawImage(canvas, 0, sourceY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+
+      if (pageIndex > 0) pdf.addPage();
+      const sliceHeightPt = sliceHeight / pixelsPerPoint;
+      pdf.addImage(
+        pageCanvas.toDataURL('image/png'),
+        'PNG',
+        PAGE_MARGIN_PT,
+        PAGE_MARGIN_PT,
+        contentWidthPt,
+        sliceHeightPt,
+      );
+
+      sourceY += sliceHeight;
+      pageIndex += 1;
     }
 
     pdf.save(getExportFileName(html, 'pdf', options));
   } finally {
     container.remove();
+    style.remove();
   }
 }
 
@@ -766,8 +734,6 @@ export function exportPatternText(html: string, options?: PatternExportOptions):
 export async function exportPatternDoc(html: string, options?: PatternExportOptions): Promise<void> {
   const zip = new JSZip();
   const { documentXml, images } = await buildDocxDocumentXml(html);
-  const headerImage = images.find((image) => image.isHeaderImage);
-  const bodyImages = images.filter((image) => !image.isHeaderImage);
   const imageContentTypes = Array.from(new Set(images.map((image) => image.contentType)))
     .map((contentType) => {
       const extension = getImageExtension(contentType);
@@ -784,7 +750,6 @@ export async function exportPatternDoc(html: string, options?: PatternExportOpti
   <Default Extension="xml" ContentType="application/xml"/>
 ${imageContentTypes ? `${imageContentTypes}\n` : ''}
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-  <Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
   <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
 </Types>`);
   zip.folder('_rels')?.file('.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -793,7 +758,6 @@ ${imageContentTypes ? `${imageContentTypes}\n` : ''}
 </Relationships>`);
   const wordFolder = zip.folder('word');
   wordFolder?.file('document.xml', documentXml);
-  wordFolder?.file('header1.xml', buildDocxHeaderXml(html, headerImage));
   wordFolder?.file('styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:style w:type="paragraph" w:default="1" w:styleId="Normal">
@@ -815,14 +779,8 @@ ${imageContentTypes ? `${imageContentTypes}\n` : ''}
 </w:styles>`);
   wordFolder?.folder('_rels')?.file('document.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>
-${bodyImages.map((image) => `  <Relationship Id="${image.relationshipId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${image.fileName}"/>`).join('\n')}
+${images.map((image) => `  <Relationship Id="${image.relationshipId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${image.fileName}"/>`).join('\n')}
 </Relationships>`);
-  wordFolder?.folder('_rels')?.file('header1.xml.rels', headerImage ? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${headerImage.fileName}"/>
-</Relationships>` : `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`);
 
   const mediaFolder = wordFolder?.folder('media');
   images.forEach((image) => {
