@@ -451,10 +451,14 @@ export const DashboardPage: React.FC = () => {
         }
 
         if (idToken) {
-          const sessionId = await startChatSession(result.html, idToken);
-          setJobs((prev) =>
-            prev.map((j) => (j.id === id ? { ...j, chatSessionId: sessionId } : j)),
-          );
+          try {
+            const sessionId = await startChatSession(result.html, idToken);
+            setJobs((prev) =>
+              prev.map((j) => (j.id === id ? { ...j, chatSessionId: sessionId } : j)),
+            );
+          } catch (chatErr) {
+            console.warn('[chat] Translation completed, but chat session could not be started:', chatErr);
+          }
         }
       } catch (err) {
         const baseMessage = err instanceof Error ? err.message : 'An unexpected error occurred.';
