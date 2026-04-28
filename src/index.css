@@ -150,6 +150,26 @@ h1, h2, h3, h4, h5, h6 {
   margin: 1.5em 0;
 }
 
+/* Stitch-chart legend symbols: keep the original PDF image at a sensible
+ * inline size when it sits inside a <td> cell of a 2-column legend table.
+ * The server already emits inline styles, but this guarantees the look
+ * even when the model nests extra wrappers around the marker. */
+.pattern-rendered img[data-stitchspeak-role="legend-symbol"] {
+  display: inline-block;
+  max-width: 48px;
+  max-height: 48px;
+  width: auto;
+  height: auto;
+  margin: 0 auto;
+  vertical-align: middle;
+}
+.pattern-rendered td:has(img[data-stitchspeak-role="legend-symbol"]) {
+  text-align: center;
+  vertical-align: middle;
+  width: 56px;
+  background: transparent !important;
+}
+
 /* Translation Studio: deciphered panel (Newsreader / manuscript) */
 .pattern-rendered--studio {
   font-family: var(--font-headline);

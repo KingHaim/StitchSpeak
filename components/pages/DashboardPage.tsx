@@ -7,7 +7,7 @@ import { PaymentModal } from '../PaymentModal';
 import { BuyCreditsModal } from '../BuyCreditsModal';
 import { TranslationLanguageModal } from '../TranslationLanguageModal';
 import { TranslationJobCard } from '../TranslationJobCard';
-import { translatePattern, startChatSession, sendChatMessage } from '../../services/translationService';
+import { translatePatternStream, startChatSession, sendChatMessage } from '../../services/translationService';
 import { analyzeFile } from '../../services/fileAnalyzer';
 import { estimateBatchTranslationCost, estimateTranslationCost } from '../../services/pricingService';
 import { saveTranslation, loadPatternSource } from '../../services/historyService';
@@ -397,7 +397,21 @@ export const DashboardPage: React.FC = () => {
 
       try {
         const sourceLangParam = sourceLanguage.code === 'auto' ? undefined : sourceLanguage.name;
-        const result = await translatePattern(file, targetLanguage.name, idToken, sourceLangParam);
+        const result = await translatePatternStream(
+          file,
+          targetLanguage.name,
+          idToken,
+          sourceLangParam,
+          {
+            onDelta: (_delta, accumulated) => {
+              setJobs((prev) =>
+                prev.map((j) =>
+                  j.id === id ? { ...j, translatedHtml: accumulated } : j,
+                ),
+              );
+            },
+          },
+        );
 
         setJobs((prev) =>
           prev.map((j) =>

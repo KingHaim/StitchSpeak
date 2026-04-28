@@ -95,6 +95,7 @@ export const TranslatedOutput: React.FC<TranslatedOutputProps> = ({
   }, [isLoading]);
   
   const cleanHtml = text ? text.replace(/^```html\n?/, '').replace(/\n?```$/, '') : '';
+  const isStreaming = isLoading && cleanHtml.length > 0;
 
   const handleCopy = async () => {
     if (!cleanHtml) return;
@@ -148,7 +149,7 @@ export const TranslatedOutput: React.FC<TranslatedOutputProps> = ({
   };
 
   const renderContent = () => {
-    if (isLoading) {
+    if (isLoading && !cleanHtml) {
       return (
           <div className="flex flex-col items-center justify-center h-full text-center px-4 min-h-[16rem]">
             <YarnBallSpinner className={`w-16 h-16 ${variant === 'studio' ? 'text-primary' : 'text-brand-600'}`} />
@@ -199,6 +200,18 @@ export const TranslatedOutput: React.FC<TranslatedOutputProps> = ({
 
   return (
     <div className={shellClassName}>
+      {isStreaming && !error && (
+        <div
+          aria-live="polite"
+          className="absolute top-2 left-2 z-10 flex items-center gap-2 rounded-full bg-white/85 backdrop-blur-sm border border-brand-200 px-3 py-1 text-xs font-medium text-brand-600 shadow-sm"
+        >
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-brand-500 opacity-75 animate-ping" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-brand-600" />
+          </span>
+          <span>Streaming translation…</span>
+        </div>
+      )}
       {variant === 'card' && (
       <div className="absolute top-2 right-2 z-10 flex gap-2">
         <div ref={downloadMenuRef} className="relative">

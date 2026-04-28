@@ -575,15 +575,23 @@ function logMarkerDiff(html: string, images: ExtractedImage[], rows: RowSummary[
   }
 }
 
-function buildImageHtml(img: ExtractedImage, options: { inline?: boolean } = {}): string {
-  const roleAttr = img.isCoverBanner ? ' data-stitchspeak-role="cover-banner"' : '';
+function buildImageHtml(
+  img: ExtractedImage,
+  options: { inline?: boolean; legendCell?: boolean } = {},
+): string {
+  const baseRoleAttr = img.isCoverBanner ? ' data-stitchspeak-role="cover-banner"' : '';
+  if (options.legendCell) {
+    return `<img src="${img.dataUrl}" data-stitchspeak-role="legend-symbol" style="display:inline-block;max-width:48px;max-height:48px;width:auto;height:auto;margin:0;vertical-align:middle;" alt="${img.id}" />`;
+  }
   if (options.inline) {
     const grow = Math.max(0.05, img.flexWeight || 1 / Math.max(img.rowSize, 1));
-    return `<img src="${img.dataUrl}"${roleAttr} style="flex:${grow.toFixed(3)} 1 0;min-width:0;max-width:100%;height:auto;display:block;" alt="${img.id}" />`;
+    return `<img src="${img.dataUrl}"${baseRoleAttr} style="flex:${grow.toFixed(3)} 1 0;min-width:0;max-width:100%;height:auto;display:block;" alt="${img.id}" />`;
   }
   const widthPct = Math.round(Math.min(1, Math.max(0.15, img.widthRatio || 1)) * 100);
-  return `<img src="${img.dataUrl}"${roleAttr} style="display:block;max-width:${widthPct}%;height:auto;margin:1em auto;" alt="${img.id}" />`;
+  return `<img src="${img.dataUrl}"${baseRoleAttr} style="display:block;max-width:${widthPct}%;height:auto;margin:1em auto;" alt="${img.id}" />`;
 }
+
+const TD_CELL_REGEX = /<td\b[^>]*>([\s\S]*?)<\/td>/gi;
 
 function buildRowHtml(row: RowSummary): string {
   const inner = row.members.map((img) => buildImageHtml(img, { inline: true })).join('');
@@ -663,6 +671,23 @@ export function replaceImageMarkers(
       consumedIds.add(member.id);
     }
     return buildRowHtml(row);
+  });
+
+  // Legend-cell pass: any [IMG_N] marker that the model placed inside a <td>
+  // is treated as a stitch-chart-legend symbol and rendered as a compact
+  // inline image, then marked as consumed so the global pass below skips it.
+  output = output.replace(TD_CELL_REGEX, (cell) => {
+    return cell.replace(IMAGE_MARKER_REGEX, (_, num: string) => {
+      const id = `IMG_${num}`;
+      if (consumedIds.has(id)) return '';
+      const img = imageMap.get(id);
+      if (!img) {
+        console.warn(`[pdfImages] No extracted image found for ${id} in legend cell; removing marker.`);
+        return '';
+      }
+      consumedIds.add(id);
+      return buildImageHtml(img, { legendCell: true });
+    });
   });
 
   output = output.replace(IMAGE_MARKER_REGEX, (_, num: string) => {

@@ -113,6 +113,176 @@ export const translatePattern = async (
   return response.json();
 };
 
+export interface TranslatePatternStreamCallbacks {
+  /**
+   * Called for every text delta received from the server. The accumulated
+   * string is the live, raw HTML coming from Gemini. Image markers like
+   * `[IMG_5]` will be visible until the final result arrives.
+   */
+  onDelta?: (delta: string, accumulated: string) => void;
+}
+
+interface NdjsonDeltaEvent {
+  type: 'delta';
+  text: string;
+}
+
+interface NdjsonDoneEvent {
+  type: 'done';
+  html: string;
+  usage: TranslationResult['usage'];
+}
+
+interface NdjsonErrorEvent {
+  type: 'error';
+  message: string;
+}
+
+type NdjsonEvent = NdjsonDeltaEvent | NdjsonDoneEvent | NdjsonErrorEvent;
+
+/**
+ * Streaming variant of translatePattern. Sends `Accept: application/x-ndjson`
+ * and consumes NDJSON events from the server, invoking `onDelta` as raw text
+ * arrives and resolving with the final marker-replaced HTML + usage totals.
+ */
+export const translatePatternStream = async (
+  file: File,
+  language: string,
+  idToken: string | null,
+  sourceLanguage: string | undefined,
+  callbacks: TranslatePatternStreamCallbacks = {},
+): Promise<TranslationResult> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('language', language);
+  if (sourceLanguage) {
+    formData.append('sourceLanguage', sourceLanguage);
+  }
+
+  const response = await checkedFetch(
+    `${getApiUrl()}/api/translate`,
+    {
+      method: 'POST',
+      headers: {
+        ...authHeaders(idToken),
+        Accept: 'application/x-ndjson',
+      },
+      body: formData,
+    },
+    'Translation',
+  );
+
+  // If the server fell back to plain JSON (e.g. an old deployment that doesn't
+  // know how to stream), just consume it as a normal response.
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/x-ndjson')) {
+    const data = (await response.json()) as TranslationResult;
+    callbacks.onDelta?.(data.html, data.html);
+    return data;
+  }
+
+  const body = response.body;
+  if (!body) {
+    throw new TranslationError(
+      'The server response was empty. Please try again.',
+      'server',
+    );
+  }
+
+  const reader = body.getReader();
+  const decoder = new TextDecoder('utf-8');
+
+  let buffer = '';
+  let accumulated = '';
+  let finalResult: TranslationResult | null = null;
+  let streamError: string | null = null;
+
+  const handleEvent = (event: NdjsonEvent): void => {
+    switch (event.type) {
+      case 'delta': {
+        const text = event.text;
+        if (typeof text !== 'string' || text.length === 0) return;
+        accumulated += text;
+        callbacks.onDelta?.(text, accumulated);
+        return;
+      }
+      case 'done': {
+        finalResult = { html: event.html, usage: event.usage ?? null };
+        return;
+      }
+      case 'error': {
+        streamError = event.message || 'Translation failed.';
+        return;
+      }
+    }
+  };
+
+  const flushBuffer = (final: boolean): void => {
+    let newlineIdx: number;
+    while ((newlineIdx = buffer.indexOf('\n')) >= 0) {
+      const rawLine = buffer.slice(0, newlineIdx).trim();
+      buffer = buffer.slice(newlineIdx + 1);
+      if (!rawLine) continue;
+      try {
+        handleEvent(JSON.parse(rawLine) as NdjsonEvent);
+      } catch (parseErr) {
+        console.warn('[translatePatternStream] Skipping malformed NDJSON line:', parseErr);
+      }
+    }
+    if (final && buffer.trim().length > 0) {
+      try {
+        handleEvent(JSON.parse(buffer.trim()) as NdjsonEvent);
+      } catch (parseErr) {
+        console.warn('[translatePatternStream] Skipping malformed trailing line:', parseErr);
+      }
+      buffer = '';
+    }
+  };
+
+  try {
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      flushBuffer(false);
+    }
+    buffer += decoder.decode();
+    flushBuffer(true);
+  } catch (err) {
+    if (err instanceof TypeError) {
+      throw new TranslationError(
+        'The connection to the server was interrupted while streaming the translation.',
+        'network',
+      );
+    }
+    throw err;
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (streamError) {
+    throw new TranslationError(streamError, 'server');
+  }
+
+  if (!finalResult) {
+    // Server closed without a `done` event. Salvage what we have if anything.
+    if (accumulated.length > 0) {
+      return { html: accumulated, usage: null };
+    }
+    throw new TranslationError(
+      'Translation ended unexpectedly. Please try again.',
+      'server',
+    );
+  }
+
+  return finalResult;
+};
+
 export interface PriorChatMessage {
   role: 'user' | 'model';
   content: string;

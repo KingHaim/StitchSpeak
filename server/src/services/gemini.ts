@@ -16,9 +16,42 @@ function getAI(): GoogleGenAI {
   return aiClient;
 }
 
-const RETRYABLE_STATUS = new Set([429, 500, 503]);
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+const RETRYABLE_UNDICI_CODES = new Set([
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_SOCKET',
+  'ECONNRESET',
+  'ETIMEDOUT',
+  'EAI_AGAIN',
+]);
 const MAX_RETRIES = 2;
 const BASE_DELAY_MS = 1000;
+
+function isRetryableError(err: any): boolean {
+  const status = err?.status ?? err?.httpStatusCode;
+  if (RETRYABLE_STATUS.has(Number(status))) return true;
+
+  // Walk the error chain to inspect the underlying undici cause (TypeError: fetch failed
+  // wraps a HeadersTimeoutError / BodyTimeoutError / etc. via `cause`).
+  for (let current: any = err; current; current = current.cause) {
+    const code = current?.code;
+    if (typeof code === 'string' && RETRYABLE_UNDICI_CODES.has(code)) return true;
+  }
+
+  const msg = String(err?.message ?? '');
+  return (
+    msg.includes('429') ||
+    msg.includes('503') ||
+    msg.includes('overloaded') ||
+    msg.includes('RESOURCE_EXHAUSTED') ||
+    msg.includes('UNAVAILABLE') ||
+    msg.includes('fetch failed') ||
+    msg.includes('Headers Timeout') ||
+    msg.includes('Body Timeout')
+  );
+}
 
 async function withRetry<T>(fn: () => T | Promise<T>): Promise<T> {
   let lastError: unknown;
@@ -27,21 +60,15 @@ async function withRetry<T>(fn: () => T | Promise<T>): Promise<T> {
       return await fn();
     } catch (err: any) {
       lastError = err;
-      const status = err?.status ?? err?.httpStatusCode ?? err?.code;
+      if (!isRetryableError(err) || attempt === MAX_RETRIES) throw err;
+
+      const status = err?.status ?? err?.httpStatusCode ?? err?.code ?? err?.cause?.code;
       const msg = String(err?.message ?? '');
-      const isRetryable =
-        RETRYABLE_STATUS.has(Number(status)) ||
-        msg.includes('429') ||
-        msg.includes('503') ||
-        msg.includes('overloaded') ||
-        msg.includes('RESOURCE_EXHAUSTED') ||
-        msg.includes('UNAVAILABLE');
-
-      if (!isRetryable || attempt === MAX_RETRIES) throw err;
-
       const delay = BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 500;
-      console.log(`[gemini] Retrying after ${Math.round(delay)}ms (attempt ${attempt + 1}/${MAX_RETRIES}, status: ${status || msg.slice(0, 60)})`);
-      await new Promise(resolve => setTimeout(resolve, delay));
+      console.log(
+        `[gemini] Retrying after ${Math.round(delay)}ms (attempt ${attempt + 1}/${MAX_RETRIES}, ${status || msg.slice(0, 80)})`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
   throw lastError;
@@ -77,6 +104,25 @@ const createSystemInstruction = (language: string, sourceLanguage?: string) => {
 - **STITCH CHARTS**: If the PDF contains a grid/chart representing a stitch pattern, you MUST reconstruct it as an HTML table. Each cell in the table should represent one square of the chart. Translate any symbols in the chart legend accurately.
 - **NO SKIPPING**: Do not summarize tables or skip charts. Every piece of technical data in the PDF must be present in the HTML output.
 
+### 1b. STITCH CHART LEGENDS (CRITICAL):
+A "chart legend" (a.k.a. symbol key / leyenda de símbolos) is the small key, usually adjacent to or below a stitch chart, where each row pairs a tiny symbol image (a square or rectangle showing one stitch icon) with a short text description of what that symbol means.
+
+Whenever you detect this pattern in the source — i.e. an image catalog item that is a small, square-ish, low-aspect-ratio symbol image accompanied by a short stitch description in the surrounding text — you MUST reconstruct the legend as a dedicated HTML <table> with EXACTLY 2 columns and one row per legend entry:
+  1. **First column (the symbol)**: contains ONLY the bare \`[IMG_N]\` marker for that symbol image (no <p> wrapper, no caption, no translation, no extra text). The original image must be preserved AS-IS — do NOT try to translate or describe it inside the cell.
+  2. **Second column (the meaning)**: contains ONLY the TRANSLATED ${language} description of that stitch (full term and/or localized abbreviation). Do NOT keep any source-language text in this column.
+
+Use this exact table structure for legends:
+\`\`\`
+<table style="width: auto; border-collapse: collapse; margin: 1em 0; border: 1px solid #ccc;">
+  <thead><tr><th style="padding: 0.4em 0.75em; text-align: center;">Símbolo</th><th style="padding: 0.4em 0.75em; text-align: left;">Significado</th></tr></thead>
+  <tbody>
+    <tr><td style="padding: 0.3em 0.5em; text-align: center; vertical-align: middle; width: 56px;">[IMG_5]</td><td style="padding: 0.3em 0.75em; vertical-align: middle;">Translated description here</td></tr>
+    <tr><td style="padding: 0.3em 0.5em; text-align: center; vertical-align: middle; width: 56px;">[IMG_6]</td><td style="padding: 0.3em 0.75em; vertical-align: middle;">Translated description here</td></tr>
+  </tbody>
+</table>
+\`\`\`
+The header labels themselves ("Símbolo" / "Significado") must be translated into ${language} (e.g. for English: "Symbol" / "Meaning"; French: "Symbole" / "Signification"; etc.). Each legend symbol image must appear EXACTLY ONCE — inside its legend cell. Do NOT also emit a separate \`<p>[IMG_N]</p>\` block for that same symbol.
+
 ### 2. THE ZEBRA BOLDING ALGORITHM:
 - Multi-size instructions (e.g., 2 (4, 6, 8, 10)) must follow a STRICT alternating pattern across the ENTIRE sequence.
 - **Example**: "**2** (4, **6**, 8, **10**)".
@@ -101,11 +147,12 @@ const createSystemInstruction = (language: string, sourceLanguage?: string) => {
 - The catalog may also list "IMAGE ROW GROUPS" with IDs like ROW_1. A row group means those images sat side-by-side on the same horizontal row in the original document.
 - Some images may be marked as small top-of-page banners or logos. Those must remain above the page title/heading they precede in the original layout.
 - You MUST place each image in the translated HTML at the position corresponding to where it appeared in the original document, preserving the original reading order.
-- Markers MUST be one of two exact shapes and nothing else:
-    1. <p>[IMG_1]</p>  — for a single image.
+- Markers MUST be one of these exact shapes and nothing else:
+    1. <p>[IMG_1]</p>  — for a standalone single image (default block-level placement).
     2. <p>[ROW_1]</p>  — for an entire side-by-side row of images. The server expands this into a horizontal flex container with all member images in left-to-right order.
+    3. <td ...>[IMG_1]</td>  — bare marker (no <p> wrapper) inside a stitch-chart-legend table cell. The server detects markers inside <td> and renders the image small/inline so it fits the legend row.
 - When a ROW group is listed in the catalog, you MUST use the [ROW_N] marker once and you MUST NOT also emit individual [IMG_N] markers for any of that row's members. Choosing the row marker is REQUIRED whenever it exists.
-- Each marker (whether IMG or ROW) may appear at most once. Cover every catalog item exactly once via either its row marker or its individual marker. Logos and small banners are NOT optional and must always be emitted via their [IMG_N] markers in their original document position.
+- Each marker (whether IMG or ROW) may appear at most once. Cover every catalog item exactly once via its row marker, its block <p>[IMG_N]</p> marker, OR its legend <td>[IMG_N]</td> cell — never combine forms for the same image. Logos and small banners are NOT optional and must always be emitted via their [IMG_N] markers in their original document position.
 - The marker text MUST match this exact structure: opening "[", literal "IMG_" or "ROW_", the integer ID, closing "]". No spaces, no hyphens, no quotes, no markdown, no <code>, and no raw <img> tags.
 - Do NOT invent IDs that are not in the catalog. The server will inject the actual images for every valid marker.
 - If no IMAGE CATALOG is provided, ignore this section.
@@ -129,11 +176,22 @@ interface TranslationUsage {
   totalTokens: number;
 }
 
+export interface TranslatePatternOptions {
+  /**
+   * Called for every text delta received from Gemini's streaming response.
+   * Use this to forward progress to a downstream client (e.g. NDJSON over HTTP).
+   * The text contains raw model output; image markers like `[IMG_5]` are NOT
+   * yet replaced. The fully marker-replaced HTML is the resolved `html` value.
+   */
+  onDelta?: (text: string) => void;
+}
+
 export async function translatePattern(
   fileBuffer: Buffer,
   mimeType: string,
   language: string,
   sourceLanguage?: string,
+  options: TranslatePatternOptions = {},
 ): Promise<{ html: string; usage: TranslationUsage | null }> {
   const base64Data = fileBuffer.toString('base64');
   const systemInstruction = createSystemInstruction(language, sourceLanguage);
@@ -156,8 +214,11 @@ export async function translatePattern(
     ? `The following typography hints were extracted from this PDF. Preserve their heading hierarchy, font family, and relative scale in your translated HTML.\n${typographyCatalog}`
     : '';
 
-  const response = await withRetry(() =>
-    getAI().models.generateContent({
+  // Streaming so the response headers arrive almost immediately. Otherwise large patterns
+  // can take longer to generate than undici's default 5-minute headersTimeout, producing
+  // `TypeError: fetch failed` / `UND_ERR_HEADERS_TIMEOUT` from the underlying Node fetch.
+  const { html: rawHtml, usage } = await withRetry(async () => {
+    const stream = await getAI().models.generateContentStream({
       model: 'gemini-3-pro-preview',
       config: {
         systemInstruction,
@@ -169,18 +230,10 @@ export async function translatePattern(
             {
               text: `${sourcePromptClause} and visually reconstruct this knitting pattern into ${language}. Pay special attention to TABLES and STITCH CHARTS; convert all of them into HTML <table> structures. Use the "Zebra Bolding" rule for all multi-size instructions. Ensure every technical term is correctly localized and all source language text is removed. Return raw HTML.`,
             },
-            ...(catalogInstruction
-              ? [{
-                  text: catalogInstruction,
-                }]
-              : []),
-            ...(typographyInstruction
-              ? [{
-                  text: typographyInstruction,
-                }]
-              : []),
+            ...(catalogInstruction ? [{ text: catalogInstruction }] : []),
+            ...(typographyInstruction ? [{ text: typographyInstruction }] : []),
             {
-              text: 'Remember: use the bracketed [ROW_N] marker for any catalog row group (the server will render its images side-by-side), and the [IMG_N] marker only for images that are not part of any row. Never emit raw <img> tags.',
+              text: 'Remember: use the bracketed [ROW_N] marker for any catalog row group (the server will render its images side-by-side), and the [IMG_N] marker only for images that are not part of any row. For stitch-chart legends (small symbol images paired with descriptive text), build a 2-column <table> where column 1 is a <td> containing the bare [IMG_N] marker (no <p>) for the original symbol AS-IS and column 2 is a <td> containing only the TRANSLATED meaning text. Never emit raw <img> tags.',
             },
             {
               inlineData: { data: base64Data, mimeType },
@@ -188,19 +241,35 @@ export async function translatePattern(
           ],
         },
       ],
-    }),
-  );
+    });
 
-  const usage = response.usageMetadata
-    ? {
-        promptTokens: response.usageMetadata.promptTokenCount ?? 0,
-        candidateTokens: response.usageMetadata.candidatesTokenCount ?? 0,
-        totalTokens: response.usageMetadata.totalTokenCount ?? 0,
+    let aggregatedHtml = '';
+    let lastUsage: TranslationUsage | null = null;
+    for await (const chunk of stream) {
+      const delta = chunk.text;
+      if (typeof delta === 'string' && delta.length > 0) {
+        aggregatedHtml += delta;
+        if (options.onDelta) {
+          try {
+            options.onDelta(delta);
+          } catch (cbErr) {
+            console.warn('[gemini] onDelta callback threw:', cbErr);
+          }
+        }
       }
-    : null;
+      if (chunk.usageMetadata) {
+        lastUsage = {
+          promptTokens: chunk.usageMetadata.promptTokenCount ?? 0,
+          candidateTokens: chunk.usageMetadata.candidatesTokenCount ?? 0,
+          totalTokens: chunk.usageMetadata.totalTokenCount ?? 0,
+        };
+      }
+    }
 
-  let html = response.text || '';
-  html = replaceImageMarkers(html, images);
+    return { html: aggregatedHtml, usage: lastUsage };
+  });
+
+  const html = replaceImageMarkers(rawHtml, images);
 
   return { html, usage };
 }
