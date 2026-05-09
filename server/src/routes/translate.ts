@@ -51,14 +51,21 @@ router.post('/', optionalAuth, uploadPdf, async (req: Request, res: Response) =>
   res.flushHeaders?.();
 
   const writeEvent = (event: Record<string, unknown>): void => {
-    if (res.writableEnded) return;
+    if (res.writableEnded || res.destroyed) return;
     res.write(`${JSON.stringify(event)}\n`);
   };
 
-  // Best-effort: detect a client disconnect so we can stop pushing deltas.
+  // Best-effort: detect a real client disconnect so we can stop pushing deltas.
+  // Do not use `req.close` here: for multipart uploads it can fire once the
+  // request body has been consumed, long before the streaming response is done.
   let clientGone = false;
-  req.on('close', () => {
-    if (!res.writableEnded) clientGone = true;
+  req.on('aborted', () => {
+    clientGone = true;
+  });
+  res.on('close', () => {
+    if (!res.writableEnded) {
+      clientGone = true;
+    }
   });
 
   try {
