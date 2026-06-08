@@ -175,6 +175,14 @@ The header labels themselves ("Símbolo" / "Significado") must be translated int
 - If no hint matches a section, still choose the correct semantic heading tag from the rules above, but omit the inline style.
 - If a BODY font hint is provided, use it as a guide for paragraph text unless the document clearly uses a different body style.
 
+### 7. BILINGUAL ALIGNMENT (CRITICAL):
+- On EVERY block-level text element you output — specifically <h1>, <h2>, <h3>, <h4>, <p>, and <li> — add TWO attributes:
+  1. data-seg="N": a sequential integer starting at 1 and increasing by exactly 1 for each such block in document order. Never skip or repeat a number.
+  2. data-o="...": the ORIGINAL, UNTRANSLATED source-language text of that exact block, as PLAIN TEXT (no HTML tags inside). HTML-escape it by replacing & with &amp;, " with &quot;, < with &lt;, and > with &gt;.
+- The data-o text must correspond 1:1 to the translated content of the SAME element, so a reader can see which source sentence produced which translation.
+- Do NOT add data-seg or data-o to <img> elements, to <table>/<thead>/<tbody>/<tr>/<th>/<td> elements, or to image/row marker paragraphs such as <p>[IMG_1]</p> or <p>[ROW_1]</p>. Only the textual blocks listed above.
+- Example: <p data-seg="4" data-o="Cast on 20 (24, 28) stitches.">Monta 20 (24, 28) puntos.</p>
+
 ${specificRules}
 
 The priority is a high-fidelity reconstruction. A pattern is useless without its charts and tables. Ensure they are perfectly translated and formatted as HTML tables.`;
@@ -316,6 +324,14 @@ const createDocumentSystemInstruction = (language: string, sourceLanguage?: stri
 - THERE MUST BE EXACTLY ONE <h1> (the pattern title). Never promote ordinary section headings to <h1>; major sections are always <h2>.
 - Use <strong> ONLY for Zebra Bolding and true inline emphasis — never as a section header.
 - For tables, use <table style="width: 100%; border-collapse: collapse; margin: 1em 0; border: 1px solid #ccc;"> with padded cells.
+
+### 6. BILINGUAL ALIGNMENT (CRITICAL):
+- On EVERY block-level text element you output — specifically <h1>, <h2>, <h3>, <h4>, <p>, and <li> — add TWO attributes:
+  1. data-seg="N": a sequential integer starting at 1 and increasing by exactly 1 for each such block in document order. Never skip or repeat a number.
+  2. data-o="...": the ORIGINAL, UNTRANSLATED source-language text of that exact block, as PLAIN TEXT (no HTML tags inside). HTML-escape it by replacing & with &amp;, " with &quot;, < with &lt;, and > with &gt;.
+- The data-o text must correspond 1:1 to the translated content of the SAME element, so a reader can see which source sentence produced which translation.
+- Do NOT add data-seg or data-o to <img> elements, to <table>/<thead>/<tbody>/<tr>/<th>/<td> elements, or to image marker paragraphs such as <p>[IMG_1]</p>. Only the textual blocks listed above.
+- Example: <p data-seg="4" data-o="Cast on 20 (24, 28) stitches.">Monta 20 (24, 28) puntos.</p>
 
 ${specificRules}
 

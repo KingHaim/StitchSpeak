@@ -219,6 +219,24 @@ h1, h2, h3, h4, h5, h6 {
   background: #E8DDD3;
 }
 
+/* ── Bilingual viewer (original ↔ translation hover sync) ── */
+
+.bilingual-pane [data-seg] {
+  border-radius: 6px;
+  box-decoration-break: clone;
+  transition: background-color 120ms ease, box-shadow 120ms ease;
+  cursor: default;
+}
+.bilingual-pane [data-seg]:hover {
+  background-color: color-mix(in srgb, var(--color-primary) 7%, transparent);
+}
+.bilingual-pane [data-seg].seg-active {
+  background-color: color-mix(in srgb, var(--color-primary) 16%, transparent);
+  box-shadow: inset 3px 0 0 0 var(--color-primary);
+  padding-left: 0.5em;
+  margin-left: -0.5em;
+}
+
 /* ── Enter animations (used by modals & slide-ins) ── */
 
 @keyframes enter {

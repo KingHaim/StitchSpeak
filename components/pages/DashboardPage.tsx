@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { PatternUpload } from '../PatternUpload';
 import { TranslatedOutput } from '../TranslatedOutput';
 import { OriginalPreview } from '../OriginalPreview';
+import { BilingualViewer } from '../BilingualViewer';
 import { Chatbot } from '../Chatbot';
 import { PaymentModal } from '../PaymentModal';
 import { BuyCreditsModal } from '../BuyCreditsModal';
@@ -20,6 +21,7 @@ import {
   onOpenPatternHintChange,
   takeOpenPatternHint,
 } from '../../services/openPatternHint';
+import { stripCodeFences, stripAlignmentAttributes, hasAlignment } from '../../services/alignment';
 import {
   exportPatternPdf,
   exportPatternDoc,
@@ -67,7 +69,7 @@ function createJobId(): string {
 }
 
 function stripTranslatedHtml(text: string): string {
-  return text ? text.replace(/^```html\n?/, '').replace(/\n?```$/, '') : '';
+  return stripAlignmentAttributes(stripCodeFences(text));
 }
 
 function aggregatePdfMetrics(metricsList: PdfMetrics[]): PdfMetrics | null {
@@ -429,7 +431,7 @@ export const DashboardPage: React.FC = () => {
               fileType: file.type || 'unknown',
               sourceLanguage: sourceLanguage.name,
               targetLanguage: targetLanguage.name,
-              translatedHtml: result.html,
+              translatedHtml: stripTranslatedHtml(result.html),
               pdfMetrics,
               cost: priceEstimate.translationCost,
               sourceFile: file,
@@ -452,7 +454,7 @@ export const DashboardPage: React.FC = () => {
 
         if (idToken) {
           try {
-            const sessionId = await startChatSession(result.html, idToken);
+            const sessionId = await startChatSession(stripTranslatedHtml(result.html), idToken);
             setJobs((prev) =>
               prev.map((j) => (j.id === id ? { ...j, chatSessionId: sessionId } : j)),
             );
@@ -735,6 +737,9 @@ export const DashboardPage: React.FC = () => {
   const canStudioExport =
     selectedJob?.status === 'complete' && !!stripTranslatedHtml(selectedJob.translatedHtml ?? '');
 
+  const showBilingual =
+    selectedJob?.status === 'complete' && hasAlignment(selectedJob.translatedHtml ?? '');
+
   return (
     <>
       <div className="max-w-6xl mx-auto text-on-background antialiased pb-8">
@@ -865,33 +870,16 @@ export const DashboardPage: React.FC = () => {
               selectedJob.status === 'translating' ||
               selectedJob.status === 'error') && (
               <>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-start">
-                  <div className="space-y-4 min-w-0">
+                {showBilingual ? (
+                  <div className="space-y-4">
                     <div className="flex items-center justify-between px-2 gap-3 flex-wrap">
                       <h4 className="font-body font-semibold text-xs uppercase tracking-widest text-on-surface-variant">
-                        Original pattern
+                        Original &amp; translation
                       </h4>
-                      <span className="text-xs text-on-surface-variant/60 italic truncate max-w-[55%]">
-                        Source: {selectedJob.sourceLanguage.name}
-                      </span>
-                    </div>
-                    <div className="bg-surface-container-highest/40 rounded-xl p-8 sm:p-10 min-h-[min(500px,70vh)] lg:min-h-[500px] shadow-inner relative overflow-hidden">
-                      <div
-                        className="absolute inset-0 opacity-[0.12] pointer-events-none bg-[radial-gradient(#50604a_0.5px,transparent_0.5px)] [background-size:16px_16px]"
-                        aria-hidden
-                      />
-                      <div className="relative min-h-0 space-y-4">
-                        <OriginalPreview file={selectedJob.file} variant="studio" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4 min-w-0">
-                    <div className="flex items-center justify-between px-2 gap-3 flex-wrap">
-                      <h4 className="font-body font-semibold text-xs uppercase tracking-widest text-primary">
-                        Deciphered instructions
-                      </h4>
-                      <div className="flex gap-2 shrink-0">
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="hidden sm:inline text-xs text-on-surface-variant/60 italic">
+                          Hover a paragraph to highlight its match
+                        </span>
                         <button
                           type="button"
                           onClick={scrollToNewTranslation}
@@ -901,16 +889,60 @@ export const DashboardPage: React.FC = () => {
                         </button>
                       </div>
                     </div>
-                    <TranslatedOutput
-                      text={selectedJob.translatedHtml}
-                      isLoading={selectedJob.status === 'translating'}
-                      error={selectedJob.error}
-                      languageCode={selectedJob.targetLanguage.code}
-                      sourceFileName={selectedJob.fileName}
-                      variant="studio"
+                    <BilingualViewer
+                      html={selectedJob.translatedHtml}
+                      sourceLabel={selectedJob.sourceLanguage.name}
+                      targetLabel={selectedJob.targetLanguage.name}
                     />
                   </div>
-                </div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-start">
+                    <div className="space-y-4 min-w-0">
+                      <div className="flex items-center justify-between px-2 gap-3 flex-wrap">
+                        <h4 className="font-body font-semibold text-xs uppercase tracking-widest text-on-surface-variant">
+                          Original pattern
+                        </h4>
+                        <span className="text-xs text-on-surface-variant/60 italic truncate max-w-[55%]">
+                          Source: {selectedJob.sourceLanguage.name}
+                        </span>
+                      </div>
+                      <div className="bg-surface-container-highest/40 rounded-xl p-8 sm:p-10 min-h-[min(500px,70vh)] lg:min-h-[500px] shadow-inner relative overflow-hidden">
+                        <div
+                          className="absolute inset-0 opacity-[0.12] pointer-events-none bg-[radial-gradient(#50604a_0.5px,transparent_0.5px)] [background-size:16px_16px]"
+                          aria-hidden
+                        />
+                        <div className="relative min-h-0 space-y-4">
+                          <OriginalPreview file={selectedJob.file} variant="studio" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4 min-w-0">
+                      <div className="flex items-center justify-between px-2 gap-3 flex-wrap">
+                        <h4 className="font-body font-semibold text-xs uppercase tracking-widest text-primary">
+                          Deciphered instructions
+                        </h4>
+                        <div className="flex gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={scrollToNewTranslation}
+                            className="text-xs text-primary font-medium hover:underline"
+                          >
+                            New file
+                          </button>
+                        </div>
+                      </div>
+                      <TranslatedOutput
+                        text={selectedJob.translatedHtml}
+                        isLoading={selectedJob.status === 'translating'}
+                        error={selectedJob.error}
+                        languageCode={selectedJob.targetLanguage.code}
+                        sourceFileName={selectedJob.fileName}
+                        variant="studio"
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {canStudioExport && (
                   <div
