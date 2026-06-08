@@ -2,6 +2,7 @@ import { GoogleGenAI, type Chat } from '@google/genai';
 import crypto from 'node:crypto';
 import { extractImages, buildImageCatalog, replaceImageMarkers } from './pdfImages.js';
 import { extractTypographyHints, buildTypographyCatalog } from './pdfTypography.js';
+import { detectSourceKind, extractDocumentHtml } from './documentExtract.js';
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -74,11 +75,13 @@ async function withRetry<T>(fn: () => T | Promise<T>): Promise<T> {
   throw lastError;
 }
 
-const createSystemInstruction = (language: string, sourceLanguage?: string) => {
-  let specificRules = '';
+// Centralized model id so the translation pipeline (PDF + document paths) stays
+// in sync when Gemini model names change.
+const TRANSLATION_MODEL = 'gemini-3.1-pro-preview';
 
+function getLanguageSpecificRules(language: string): string {
   if (language.toLowerCase() === 'spanish') {
-    specificRules = `
+    return `
     ### STRICT TERMINOLOGY MAPPINGS FOR SPANISH:
     - Cast On (CO) -> MO (Montar puntos)
     - Bind Off (BO) -> Rem (Rematar puntos)
@@ -92,6 +95,11 @@ const createSystemInstruction = (language: string, sourceLanguage?: string) => {
     - RH needle -> Ag-d (Aguja derecha)
     `;
   }
+  return '';
+}
+
+const createSystemInstruction = (language: string, sourceLanguage?: string) => {
+  const specificRules = getLanguageSpecificRules(language);
 
   const sourceClause = sourceLanguage
     ? `The source pattern is written in ${sourceLanguage}. `
@@ -188,7 +196,7 @@ export interface TranslatePatternOptions {
   onDelta?: (text: string) => void;
 }
 
-export async function translatePattern(
+async function translatePdf(
   fileBuffer: Buffer,
   mimeType: string,
   language: string,
@@ -221,7 +229,7 @@ export async function translatePattern(
   // `TypeError: fetch failed` / `UND_ERR_HEADERS_TIMEOUT` from the underlying Node fetch.
   const { html: rawHtml, usage } = await withRetry(async () => {
     const stream = await getAI().models.generateContentStream({
-      model: 'gemini-3.1-pro-preview',
+      model: TRANSLATION_MODEL,
       config: {
         systemInstruction,
         temperature: 0.1,
@@ -274,6 +282,162 @@ export async function translatePattern(
   const html = replaceImageMarkers(rawHtml, images);
 
   return { html, usage };
+}
+
+const createDocumentSystemInstruction = (language: string, sourceLanguage?: string) => {
+  const specificRules = getLanguageSpecificRules(language);
+  const sourceClause = sourceLanguage
+    ? `The source pattern is written in ${sourceLanguage}. `
+    : 'Auto-detect the source language of the pattern. ';
+
+  return `You are a world-class senior knitting pattern translator and technical document designer. ${sourceClause}You will be given a knitting pattern as HTML that was extracted from a Word/RTF/plain-text document. Translate it into ${language} with extreme technical precision while faithfully preserving the document's structure.
+
+### 1. STRUCTURE PRESERVATION (CRITICAL):
+- Preserve ALL existing structure: headings, paragraphs, ordered/unordered lists, and especially <table> elements. Keep every row and column of every table intact.
+- Do NOT drop, summarize, merge, or skip any content. Every instruction, note, table, and chart that exists in the source must exist in your output.
+- If the source uses tables for measurement/stitch-count data or stitch charts, keep them as HTML <table> structures.
+
+### 2. IMAGES (STRICT):
+- The source HTML may contain bracketed markers like [IMG_1], [IMG_2] that stand in for images. Keep EVERY marker exactly where it appears, with the SAME number.
+- Do NOT remove, reorder, duplicate, renumber, or invent markers. Do NOT emit <img> tags or any image data — only the [IMG_n] markers. The server re-inserts the real images afterward.
+
+### 3. THE ZEBRA BOLDING ALGORITHM:
+- Multi-size instructions (e.g., 2 (4, 6, 8, 10)) must follow a STRICT alternating bold pattern across the ENTIRE sequence: "**2** (4, **6**, 8, **10**)".
+- Do not reset the bolding state at parentheses. The alternation is continuous across all punctuation.
+
+### 4. LANGUAGE & TECHNICAL RULES:
+- **NO SOURCE LANGUAGE**: Remove all source-language abbreviations and text. The output must be fully ${language}.
+- **100% LOCALIZED**: Use the specific localized abbreviations for ${language}.
+- **PUNCTUATION**: Maintain the exact punctuation (brackets, colons, slashes) used in the original for sizing.
+
+### 5. OUTPUT FORMAT:
+- Output raw semantic HTML5 wrapped in a single <div>. DO NOT use markdown code blocks (\`\`\`html).
+- Use real semantic headings: <h1> for the pattern title, <h2> for major sections (Materials, Gauge, Abbreviations, Pattern, Finishing, etc.), <h3> for sub-sections, <h4> for sub-sub-sections.
+- THERE MUST BE EXACTLY ONE <h1> (the pattern title). Never promote ordinary section headings to <h1>; major sections are always <h2>.
+- Use <strong> ONLY for Zebra Bolding and true inline emphasis — never as a section header.
+- For tables, use <table style="width: 100%; border-collapse: collapse; margin: 1em 0; border: 1px solid #ccc;"> with padded cells.
+
+${specificRules}
+
+The priority is a complete, high-fidelity, fully-${language} reconstruction with all structure and tables preserved.`;
+};
+
+// Pulls <img> tags out of source HTML, replacing each with a sequential
+// [IMG_n] marker, and returns the marker-ified HTML plus the ordered list of
+// original `src` values. This keeps token-heavy base64 data URIs out of the
+// model request and protects images from being altered during translation.
+function protectImages(html: string): { marked: string; srcs: string[] } {
+  const srcs: string[] = [];
+  const marked = html.replace(/<img\b[^>]*>/gi, (tag) => {
+    const match = tag.match(/\bsrc\s*=\s*"([^"]*)"/i) || tag.match(/\bsrc\s*=\s*'([^']*)'/i);
+    const src = match ? match[1] : '';
+    if (!src) return '';
+    srcs.push(src);
+    return `<p>[IMG_${srcs.length}]</p>`;
+  });
+  return { marked, srcs };
+}
+
+function reinsertImages(html: string, srcs: string[]): string {
+  const render = (n: number): string => {
+    const src = srcs[n - 1];
+    if (!src) return '';
+    return `<img src="${src}" style="display:block;max-width:100%;height:auto;margin:1em auto;" alt="IMG_${n}" />`;
+  };
+
+  return html
+    .replace(/<code>\s*(\[\s*IMG[_\s-]?\d+\s*\])\s*<\/code>/gi, '$1')
+    .replace(/<p>\s*\[\s*IMG[_\s-]?(\d+)\s*\]\s*<\/p>/gi, (_m, n) => render(Number(n)))
+    .replace(/\[\s*IMG[_\s-]?(\d+)\s*\]/gi, (_m, n) => render(Number(n)));
+}
+
+async function translateDocumentHtml(
+  sourceHtml: string,
+  language: string,
+  sourceLanguage?: string,
+  options: TranslatePatternOptions = {},
+): Promise<{ html: string; usage: TranslationUsage | null }> {
+  const { marked, srcs } = protectImages(sourceHtml);
+  const systemInstruction = createDocumentSystemInstruction(language, sourceLanguage);
+
+  const sourcePromptClause = sourceLanguage
+    ? `The pattern is in ${sourceLanguage}. Translate`
+    : 'Detect the source language and translate';
+
+  const { html: rawHtml, usage } = await withRetry(async () => {
+    const stream = await getAI().models.generateContentStream({
+      model: TRANSLATION_MODEL,
+      config: {
+        systemInstruction,
+        temperature: 0.1,
+      },
+      contents: [
+        {
+          parts: [
+            {
+              text: `${sourcePromptClause} and faithfully reconstruct the following knitting pattern into ${language}. The pattern is provided as HTML extracted from a word-processor document. Preserve all structure and TABLES, keep every [IMG_n] marker exactly in place, apply the "Zebra Bolding" rule for multi-size instructions, localize every technical term, and remove all source-language text. Return raw HTML.\n\n--- SOURCE PATTERN (HTML) ---\n${marked}\n--- END SOURCE PATTERN ---`,
+            },
+          ],
+        },
+      ],
+    });
+
+    let aggregatedHtml = '';
+    let lastUsage: TranslationUsage | null = null;
+    for await (const chunk of stream) {
+      const delta = chunk.text;
+      if (typeof delta === 'string' && delta.length > 0) {
+        aggregatedHtml += delta;
+        if (options.onDelta) {
+          try {
+            options.onDelta(delta);
+          } catch (cbErr) {
+            console.warn('[gemini] onDelta callback threw:', cbErr);
+          }
+        }
+      }
+      if (chunk.usageMetadata) {
+        lastUsage = {
+          promptTokens: chunk.usageMetadata.promptTokenCount ?? 0,
+          candidateTokens: chunk.usageMetadata.candidatesTokenCount ?? 0,
+          totalTokens: chunk.usageMetadata.totalTokenCount ?? 0,
+        };
+      }
+    }
+
+    return { html: aggregatedHtml, usage: lastUsage };
+  });
+
+  return { html: reinsertImages(rawHtml, srcs), usage };
+}
+
+/**
+ * Translate a pattern from any supported source file. PDFs use the multimodal
+ * visual-reconstruction pipeline; Word (.docx), RTF, and plain-text files are
+ * converted to HTML and translated via a text-based pass.
+ */
+export async function translatePattern(
+  fileBuffer: Buffer,
+  mimeType: string,
+  language: string,
+  sourceLanguage?: string,
+  options: TranslatePatternOptions = {},
+  fileName?: string,
+): Promise<{ html: string; usage: TranslationUsage | null }> {
+  const kind = detectSourceKind(fileBuffer, mimeType, fileName);
+
+  if (kind === 'pdf') {
+    return translatePdf(fileBuffer, mimeType, language, sourceLanguage, options);
+  }
+
+  const sourceHtml = await extractDocumentHtml(fileBuffer, kind);
+  if (!sourceHtml.replace(/<[^>]+>/g, '').trim()) {
+    throw new Error(
+      'Could not read any text from this document. Please try exporting it as a PDF.',
+    );
+  }
+
+  return translateDocumentHtml(sourceHtml, language, sourceLanguage, options);
 }
 
 // --- Chat session management ---

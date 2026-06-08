@@ -1,6 +1,6 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type NextFunction, type Request, type Response } from 'express';
 import { optionalAuth } from '../middleware/auth.js';
-import { uploadPdf } from '../middleware/upload.js';
+import { uploadPattern } from '../middleware/upload.js';
 import { translatePattern } from '../services/gemini.js';
 
 const router = Router();
@@ -13,13 +13,26 @@ function clientWantsStream(req: Request): boolean {
   return accept.toLowerCase().includes(NDJSON_CONTENT_TYPE);
 }
 
-router.post('/', optionalAuth, uploadPdf, async (req: Request, res: Response) => {
+// Run the multer upload but turn its errors (unsupported type, file too large)
+// into clean 400 responses instead of bubbling up as generic 500s.
+function uploadPatternSafe(req: Request, res: Response, next: NextFunction): void {
+  uploadPattern(req, res, (err: unknown) => {
+    if (err) {
+      const message = err instanceof Error ? err.message : 'File upload failed.';
+      res.status(400).json({ error: message });
+      return;
+    }
+    next();
+  });
+}
+
+router.post('/', optionalAuth, uploadPatternSafe, async (req: Request, res: Response) => {
   const file = req.file;
   const language = req.body?.language;
   const sourceLanguage: string | undefined = req.body?.sourceLanguage || undefined;
 
   if (!file) {
-    res.status(400).json({ error: 'No PDF file provided.' });
+    res.status(400).json({ error: 'No file provided.' });
     return;
   }
   if (!language || typeof language !== 'string') {
@@ -29,7 +42,14 @@ router.post('/', optionalAuth, uploadPdf, async (req: Request, res: Response) =>
 
   if (!clientWantsStream(req)) {
     try {
-      const result = await translatePattern(file.buffer, file.mimetype, language, sourceLanguage);
+      const result = await translatePattern(
+        file.buffer,
+        file.mimetype,
+        language,
+        sourceLanguage,
+        {},
+        file.originalname,
+      );
       res.json(result);
     } catch (err: any) {
       console.error('[translate] Error:', err);
@@ -80,6 +100,7 @@ router.post('/', optionalAuth, uploadPdf, async (req: Request, res: Response) =>
           writeEvent({ type: 'delta', text });
         },
       },
+      file.originalname,
     );
     if (!clientGone) {
       writeEvent({ type: 'done', html: result.html, usage: result.usage });
