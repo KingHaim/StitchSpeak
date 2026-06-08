@@ -1,10 +1,32 @@
 import mammoth from 'mammoth';
+import sharp from 'sharp';
 // @iarna/rtf-to-html ships no type declarations; it exposes { fromString, fromStream }.
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-expect-error - no bundled types
 import rtfToHTML from '@iarna/rtf-to-html';
 
 export type SourceKind = 'pdf' | 'docx' | 'rtf' | 'text';
+
+// Word documents frequently embed full-resolution photos (several MB each).
+// Inlining them verbatim as base64 multiplies memory use across the pipeline
+// and can OOM the server. Downscale + recompress every embedded image so each
+// one stays small.
+const MAX_IMAGE_WIDTH = 1200;
+const JPEG_QUALITY = 78;
+
+async function downscaleToDataUri(buffer: Buffer, contentType: string): Promise<string> {
+  try {
+    const resized = await sharp(buffer)
+      .rotate()
+      .resize({ width: MAX_IMAGE_WIDTH, withoutEnlargement: true })
+      .jpeg({ quality: JPEG_QUALITY })
+      .toBuffer();
+    return `data:image/jpeg;base64,${resized.toString('base64')}`;
+  } catch (err) {
+    console.warn('[documentExtract] image downscale failed, inlining original:', err);
+    return `data:${contentType};base64,${buffer.toString('base64')}`;
+  }
+}
 
 function extByName(fileName?: string): string {
   if (!fileName) return '';
@@ -100,7 +122,12 @@ export async function extractDocumentHtml(
     case 'docx': {
       const result = await mammoth.convertToHtml(
         { buffer },
-        { convertImage: mammoth.images.dataUri },
+        {
+          convertImage: mammoth.images.imgElement(async (image) => {
+            const imageBuffer = await image.readAsBuffer();
+            return { src: await downscaleToDataUri(imageBuffer, image.contentType) };
+          }),
+        },
       );
       return (result.value || '').trim();
     }

@@ -88,6 +88,16 @@ router.post('/', optionalAuth, uploadPatternSafe, async (req: Request, res: Resp
     }
   });
 
+  // Keep-alive heartbeat: some proxies (Railway edge, Cloudflare, etc.) drop a
+  // streaming response if no bytes flow for a while. There can be a sizeable gap
+  // before the first token (document parsing + model time-to-first-token) and
+  // occasional stalls mid-generation, so emit a tiny ping the client ignores.
+  const HEARTBEAT_MS = 12000;
+  const heartbeat = setInterval(() => {
+    if (clientGone || res.writableEnded || res.destroyed) return;
+    writeEvent({ type: 'ping', t: Date.now() });
+  }, HEARTBEAT_MS);
+
   try {
     const result = await translatePattern(
       file.buffer,
@@ -119,6 +129,8 @@ router.post('/', optionalAuth, uploadPatternSafe, async (req: Request, res: Resp
       message: err?.message || 'Translation failed.',
     });
     res.end();
+  } finally {
+    clearInterval(heartbeat);
   }
 });
 
