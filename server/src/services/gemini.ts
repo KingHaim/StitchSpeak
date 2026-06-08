@@ -219,7 +219,7 @@ export async function translatePattern(
   // `TypeError: fetch failed` / `UND_ERR_HEADERS_TIMEOUT` from the underlying Node fetch.
   const { html: rawHtml, usage } = await withRetry(async () => {
     const stream = await getAI().models.generateContentStream({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3.1-pro-preview',
       config: {
         systemInstruction,
         temperature: 0.1,
@@ -332,7 +332,7 @@ export async function createChatSession(
 
   const chat = await withRetry(() =>
     getAI().chats.create({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3.5-flash',
       config: {
         systemInstruction: `You are a friendly and expert knitting assistant. All your answers must be based *only* on the knitting pattern provided by the user (which is in HTML format). If a question is not related to the pattern, politely decline to answer. Be helpful and encouraging. Use the correct localized terminology.`,
       },
