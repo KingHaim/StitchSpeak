@@ -197,6 +197,60 @@ function inferHeadingTag(sizeRatio: number): HeadingTag {
   return 'h4';
 }
 
+// Per-tier semantic tag + a clamped on-screen size ratio (em). The raw ratios
+// extracted from the PDF are measured against the *median* body font, which is
+// often dragged down by small captions/size-chart numbers, inflating heading
+// ratios well past what reads well on screen (e.g. 2.73x). We therefore discard
+// the raw magnitude for sizing and assign a sane, gently-scaled value per tier.
+const HEADING_TIERS: { tag: HeadingTag; ratio: number }[] = [
+  { tag: 'h1', ratio: 2.0 },
+  { tag: 'h2', ratio: 1.5 },
+  { tag: 'h3', ratio: 1.25 },
+  { tag: 'h4', ratio: 1.1 },
+];
+
+// Sizes within this fraction of each other are treated as the same heading tier.
+const TIER_CLUSTER_TOLERANCE = 0.3;
+
+/**
+ * Reassigns each hint's tag and size ratio based on the *relative* ranking of
+ * heading sizes across the whole document. The largest distinct size becomes
+ * the title (h1), the next tier the major sections (h2), and so on. This avoids
+ * the failure mode where every section heading shares one large size and they
+ * all collapse into <h1> at an oversized em.
+ */
+function normalizeHeadingTiers(hints: TypographyHint[]): void {
+  if (hints.length === 0) return;
+
+  const uniqueSorted = [...new Set(hints.map((h) => h.sizeRatio))].sort((a, b) => b - a);
+
+  const clusterReps: number[] = [];
+  for (const ratio of uniqueSorted) {
+    const last = clusterReps.at(-1);
+    if (last === undefined || last - ratio > TIER_CLUSTER_TOLERANCE) {
+      clusterReps.push(ratio);
+    }
+  }
+
+  const rankForRatio = (ratio: number): number => {
+    let bestRank = clusterReps.length - 1;
+    for (let i = 0; i < clusterReps.length; i++) {
+      if (ratio >= clusterReps[i] - TIER_CLUSTER_TOLERANCE) {
+        bestRank = i;
+        break;
+      }
+    }
+    return bestRank;
+  };
+
+  for (const hint of hints) {
+    const rank = Math.min(rankForRatio(hint.sizeRatio), HEADING_TIERS.length - 1);
+    const tier = HEADING_TIERS[rank];
+    hint.tag = tier.tag;
+    hint.sizeRatio = tier.ratio;
+  }
+}
+
 function shouldKeepHeading(text: string): boolean {
   if (text.length < 2 || text.length > 140) return false;
   if (/^[\d\s./-]+$/.test(text)) return false;
@@ -298,6 +352,8 @@ export async function extractTypographyHints(
 
     if (hints.length >= MAX_HINTS) break;
   }
+
+  normalizeHeadingTiers(hints);
 
   return {
     bodyFamily: getDominantBodyFamily(result.pages),

@@ -136,6 +136,7 @@ The header labels themselves ("Símbolo" / "Significado") must be translated int
 ### 4. OUTPUT FORMAT:
 - Output raw semantic HTML5 wrapped in a single <div>.
 - Use real semantic headings: <h1> for the pattern title, <h2> for major sections (Materials, Gauge, Abbreviations, Pattern, Finishing, etc.), <h3> for sub-sections, and <h4> for sub-sub-sections.
+- THERE MUST BE EXACTLY ONE <h1> IN THE ENTIRE DOCUMENT: the cover/pattern title. Every major section heading (e.g. Sizes, Materials, Gauge, Glossary, Body, Neck, Finishing, Charts) MUST be <h2> — never <h1> — even if it appears large in the source. Do not promote section headings to <h1> just because their font is big.
 - Use <strong> ONLY for Zebra Bolding inside multi-size instructions and for true inline emphasis. NEVER use <strong> as a section header.
 - For tables, use <table> with styles: "width: 100%; border-collapse: collapse; margin: 10px 0; border: 1px solid #ccc;".
 - For table cells, use padding and center-alignment where appropriate.
@@ -160,6 +161,7 @@ The header labels themselves ("Símbolo" / "Significado") must be translated int
 ### 6. HEADING STYLING (PRESERVE ORIGINAL APPEARANCE):
 - A TYPOGRAPHY HINTS list may be provided.
 - For each hint, when you emit the equivalent translated heading text, use the suggested tag (h1/h2/h3/h4) and add an inline style in this exact pattern: style="font-family: <family>, serif; font-size: <ratio>em;"
+- Use the exact tag given in each hint. Never emit an inline font-size larger than 2em for any heading. If a hint's family is already a generic keyword (serif or sans-serif), use it alone without appending a second ", serif".
 - Use the same tag and ratio for translated text whose role or position matches the source heading even if the wording changes during translation.
 - Preserve obvious decorative styling from the source heading when it is visually clear, especially centered cover titles, underlines, and title placement directly beneath a small top banner/logo image.
 - If no hint matches a section, still choose the correct semantic heading tag from the rules above, but omit the inline style.
