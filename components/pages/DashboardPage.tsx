@@ -4,7 +4,6 @@ import { TranslatedOutput } from '../TranslatedOutput';
 import { OriginalPreview } from '../OriginalPreview';
 import { BilingualViewer } from '../BilingualViewer';
 import { Chatbot } from '../Chatbot';
-import { PaymentModal } from '../PaymentModal';
 import { BuyCreditsModal } from '../BuyCreditsModal';
 import { TranslationLanguageModal } from '../TranslationLanguageModal';
 import { TranslationJobCard } from '../TranslationJobCard';
@@ -93,13 +92,9 @@ function aggregatePdfMetrics(metricsList: PdfMetrics[]): PdfMetrics | null {
   );
 }
 
-function getPendingStartCost(payloads: PendingTranslationStart[] | null): number {
-  return payloads?.reduce((sum, payload) => sum + payload.priceEstimate.translationCost, 0) ?? 0;
-}
-
 export const DashboardPage: React.FC = () => {
   const { user, idToken, isAuthenticated } = useAuth();
-  const { balance, addCredits, deductCredits } = useCredits();
+  const { balance, applyBalance, refreshBalance, startCheckout } = useCredits();
 
   const [jobs, setJobs] = useState<TranslationJob[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -115,10 +110,8 @@ export const DashboardPage: React.FC = () => {
   const [isModalAnalyzing, setIsModalAnalyzing] = useState(false);
   const [modalAnalyzeError, setModalAnalyzeError] = useState<string | null>(null);
 
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isBuyCreditsOpen, setIsBuyCreditsOpen] = useState(false);
   const [buyCreditsInitialIdx, setBuyCreditsInitialIdx] = useState<number | undefined>(undefined);
-  const [pendingStart, setPendingStart] = useState<PendingTranslationStart[] | null>(null);
   const [modalStartError, setModalStartError] = useState<string | null>(null);
   const [isStartingFromModal, setIsStartingFromModal] = useState(false);
 
@@ -423,6 +416,10 @@ export const DashboardPage: React.FC = () => {
           ),
         );
 
+        // The server is authoritative for billing: it charged `result.cost` and
+        // returned the new balance. Reflect that in the UI.
+        if (typeof result.balance === 'number') applyBalance(result.balance);
+
         let serverPatternId: string | null = null;
         try {
           const savedRecord = await saveTranslation(
@@ -433,7 +430,7 @@ export const DashboardPage: React.FC = () => {
               targetLanguage: targetLanguage.name,
               translatedHtml: stripTranslatedHtml(result.html),
               pdfMetrics,
-              cost: priceEstimate.translationCost,
+              cost: result.cost ?? priceEstimate.translationCost,
               sourceFile: file,
             },
             idToken,
@@ -463,24 +460,23 @@ export const DashboardPage: React.FC = () => {
           }
         }
       } catch (err) {
+        const status = (err as { status?: number }).status;
         const baseMessage = err instanceof Error ? err.message : 'An unexpected error occurred.';
         console.error(err);
-        // Credits were spent up-front in tryStartFromModal; if the translation
-        // never produced output, give them back so the user isn't charged for
-        // a network glitch or a server error.
-        const refund = priceEstimate.translationCost;
-        let refunded = false;
-        if (idToken && refund > 0) {
-          try {
-            await addCredits(refund);
-            refunded = true;
-          } catch (refundErr) {
-            console.warn('[DashboardPage] Could not refund credits after failure:', refundErr);
-          }
+
+        // The server deducts credits and automatically refunds them if the
+        // translation fails, so we just re-sync the balance here.
+        void refreshBalance();
+
+        if (status === 402) {
+          // Server-computed cost exceeded the balance — prompt a top-up.
+          setIsBuyCreditsOpen(true);
         }
-        const message = refunded
-          ? `${baseMessage} (${refund.toFixed(1)} credits were refunded.)`
-          : baseMessage;
+
+        const message =
+          status === 402
+            ? "You don't have enough credits for this translation. Add credits and try again."
+            : baseMessage;
         setJobs((prev) =>
           prev.map((j) =>
             j.id === id ? { ...j, status: 'error' as const, error: message } : j,
@@ -488,7 +484,7 @@ export const DashboardPage: React.FC = () => {
         );
       }
     },
-    [idToken, addCredits],
+    [idToken, applyBalance, refreshBalance],
   );
 
   const beginTranslationBatch = useCallback(
@@ -524,21 +520,14 @@ export const DashboardPage: React.FC = () => {
 
     try {
       if (!(isAuthenticated && user?.email)) {
-        setPendingStart(payloads);
-        setIsPaymentModalOpen(true);
+        setModalStartError('Please sign in to translate patterns.');
         return;
       }
 
+      // Client-side estimate is only a pre-check to surface a top-up prompt
+      // early; the server computes and charges the authoritative amount.
       const cost = modalPriceEstimate.translationCost;
       if (balance < cost - 0.001) {
-        setPendingStart(payloads);
-        setIsBuyCreditsOpen(true);
-        return;
-      }
-
-      const ok = await deductCredits(cost);
-      if (!ok) {
-        setPendingStart(payloads);
         setIsBuyCreditsOpen(true);
         return;
       }
@@ -568,36 +557,18 @@ export const DashboardPage: React.FC = () => {
     isAuthenticated,
     user,
     balance,
-    deductCredits,
     beginTranslationBatch,
     closeLanguageModal,
     isStartingFromModal,
   ]);
 
-  const handlePaymentSuccess = useCallback(() => {
-    setIsPaymentModalOpen(false);
-    const payloads = pendingStart;
-    setPendingStart(null);
-    if (payloads) {
-      closeLanguageModal();
-      beginTranslationBatch(payloads);
-    }
-  }, [pendingStart, beginTranslationBatch, closeLanguageModal]);
-
   const handleCreditPurchase = useCallback(
     async (pack: CreditPackage) => {
-      if (!user?.email || !pendingStart) return;
-      await addCredits(pack.credits);
-      setIsBuyCreditsOpen(false);
-      const payloads = pendingStart;
-      const ok = await deductCredits(getPendingStartCost(payloads));
-      if (ok) {
-        setPendingStart(null);
-        closeLanguageModal();
-        beginTranslationBatch(payloads);
-      }
+      // Redirects to Stripe Checkout. Credits are granted by the server webhook
+      // after payment; on return the user can re-initiate their translation.
+      await startCheckout(pack.id);
     },
-    [user, pendingStart, addCredits, deductCredits, beginTranslationBatch, closeLanguageModal],
+    [startCheckout],
   );
 
   const handleSendMessage = useCallback(
@@ -655,22 +626,45 @@ export const DashboardPage: React.FC = () => {
     [selectedJobId, jobs, idToken],
   );
 
-  const handleUnlockChat = useCallback(() => {
+  const handleUnlockChat = useCallback(async () => {
     if (!selectedJobId) return;
     const job = jobs.find((j) => j.id === selectedJobId);
-    setJobs((prev) =>
-      prev.map((j) =>
-        j.id === selectedJobId
-          ? { ...j, chatMessagesAllowed: j.chatMessagesAllowed + PRICING.chat.packageSize }
-          : j,
-      ),
-    );
-    if (job?.serverPatternId && idToken) {
-      void unlockPatternChatAllowance(idToken, job.serverPatternId, PRICING.chat.packageSize).catch(
-        (err) => console.warn('[chat] Failed to persist unlock:', err),
+
+    // Unsaved jobs have no server-side pattern to bill against; allow locally.
+    if (!job?.serverPatternId || !idToken) {
+      setJobs((prev) =>
+        prev.map((j) =>
+          j.id === selectedJobId
+            ? { ...j, chatMessagesAllowed: j.chatMessagesAllowed + PRICING.chat.packageSize }
+            : j,
+        ),
       );
+      return;
     }
-  }, [selectedJobId, jobs, idToken]);
+
+    // Server charges credits for the extra allowance and is authoritative.
+    try {
+      const extraAllowance = await unlockPatternChatAllowance(
+        idToken,
+        job.serverPatternId,
+        PRICING.chat.packageSize,
+      );
+      setJobs((prev) =>
+        prev.map((j) =>
+          j.id === selectedJobId
+            ? { ...j, chatMessagesAllowed: PRICING.chat.freeMessages + extraAllowance }
+            : j,
+        ),
+      );
+      void refreshBalance();
+    } catch (err) {
+      if ((err as { status?: number }).status === 402) {
+        setIsBuyCreditsOpen(true);
+      } else {
+        console.warn('[chat] Failed to unlock chat allowance:', err);
+      }
+    }
+  }, [selectedJobId, jobs, idToken, refreshBalance]);
 
   const modalCreditCost = modalPriceEstimate?.translationCost ?? 0;
   const modalFileCount = modalFiles.length;
@@ -1056,16 +1050,6 @@ export const DashboardPage: React.FC = () => {
         startError={modalStartError}
       />
 
-      <PaymentModal
-        isOpen={isPaymentModalOpen}
-        onClose={() => {
-          setIsPaymentModalOpen(false);
-          setPendingStart(null);
-        }}
-        onSuccess={handlePaymentSuccess}
-        price={getPendingStartCost(pendingStart) || modalCreditCost}
-      />
-
       <BuyCreditsModal
         isOpen={isBuyCreditsOpen}
         initialSelectedIndex={buyCreditsInitialIdx}
@@ -1077,7 +1061,6 @@ export const DashboardPage: React.FC = () => {
           }
           setIsBuyCreditsOpen(false);
           setBuyCreditsInitialIdx(undefined);
-          setPendingStart(null);
         }}
         onPurchase={handleCreditPurchase}
       />

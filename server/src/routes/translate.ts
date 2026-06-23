@@ -1,9 +1,16 @@
 import { Router, type NextFunction, type Request, type Response } from 'express';
-import { optionalAuth } from '../middleware/auth.js';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { uploadPattern } from '../middleware/upload.js';
+import { rateLimit } from '../middleware/rateLimit.js';
 import { translatePattern } from '../services/gemini.js';
+import { addCredits, deductCredits } from '../services/creditStore.js';
+import { computeDocumentMetrics, translationCostFromMetrics } from '../services/pricing.js';
 
 const router = Router();
+
+// Translation invokes Gemini on uploaded documents — the most expensive call in
+// the app. Cap per user/IP to contain cost and quota-exhaustion abuse.
+const translateRateLimit = rateLimit({ windowMs: 60_000, max: 20, name: 'translate' });
 
 const NDJSON_CONTENT_TYPE = 'application/x-ndjson';
 
@@ -26,7 +33,8 @@ function uploadPatternSafe(req: Request, res: Response, next: NextFunction): voi
   });
 }
 
-router.post('/', optionalAuth, uploadPatternSafe, async (req: Request, res: Response) => {
+router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req: Request, res: Response) => {
+  const { userSub } = req as AuthenticatedRequest;
   const file = req.file;
   const language = req.body?.language;
   const sourceLanguage: string | undefined = req.body?.sourceLanguage || undefined;
@@ -40,6 +48,28 @@ router.post('/', optionalAuth, uploadPatternSafe, async (req: Request, res: Resp
     return;
   }
 
+  // Server-authoritative billing: compute the price from the uploaded bytes and
+  // deduct credits BEFORE doing any expensive Gemini work. The client never
+  // decides the amount, and a request without enough credits is rejected here.
+  let cost: number;
+  try {
+    const metrics = await computeDocumentMetrics(file.buffer, file.mimetype, file.originalname);
+    cost = translationCostFromMetrics(metrics);
+  } catch (err) {
+    console.error('[translate] Failed to analyze document for pricing:', err);
+    res.status(400).json({ error: 'Could not read the document.' });
+    return;
+  }
+
+  const { ok, balance } = deductCredits(userSub, cost);
+  if (!ok) {
+    res.status(402).json({ error: 'Insufficient credits.', balance, cost });
+    return;
+  }
+
+  // If the translation fails to produce output, give the credits back.
+  const refund = (): number => addCredits(userSub, cost);
+
   if (!clientWantsStream(req)) {
     try {
       const result = await translatePattern(
@@ -50,10 +80,11 @@ router.post('/', optionalAuth, uploadPatternSafe, async (req: Request, res: Resp
         {},
         file.originalname,
       );
-      res.json(result);
+      res.json({ ...result, cost, balance });
     } catch (err: any) {
       console.error('[translate] Error:', err);
-      res.status(500).json({ error: err.message || 'Translation failed.' });
+      const newBalance = refund();
+      res.status(500).json({ error: err.message || 'Translation failed.', balance: newBalance });
     }
     return;
   }
@@ -113,20 +144,22 @@ router.post('/', optionalAuth, uploadPatternSafe, async (req: Request, res: Resp
       file.originalname,
     );
     if (!clientGone) {
-      writeEvent({ type: 'done', html: result.html, usage: result.usage });
+      writeEvent({ type: 'done', html: result.html, usage: result.usage, cost, balance });
     }
     res.end();
   } catch (err: any) {
     console.error('[translate] Error:', err);
+    const newBalance = refund();
     if (!res.headersSent) {
       // Headers weren't flushed yet (rare — flushHeaders above runs before
       // translatePattern). Fall back to a regular JSON error.
-      res.status(500).json({ error: err.message || 'Translation failed.' });
+      res.status(500).json({ error: err.message || 'Translation failed.', balance: newBalance });
       return;
     }
     writeEvent({
       type: 'error',
       message: err?.message || 'Translation failed.',
+      balance: newBalance,
     });
     res.end();
   } finally {

@@ -131,6 +131,8 @@ interface NdjsonDoneEvent {
   type: 'done';
   html: string;
   usage: TranslationResult['usage'];
+  cost?: number;
+  balance?: number;
 }
 
 interface NdjsonErrorEvent {
@@ -207,7 +209,12 @@ export const translatePatternStream = async (
         return;
       }
       case 'done': {
-        finalResult = { html: event.html, usage: event.usage ?? null };
+        finalResult = {
+          html: event.html,
+          usage: event.usage ?? null,
+          cost: event.cost,
+          balance: event.balance,
+        };
         return;
       }
       case 'error': {

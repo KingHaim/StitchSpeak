@@ -24,11 +24,13 @@ export const SOURCE_LANGUAGES: Language[] = [
   ...LANGUAGES,
 ];
 
+// Display catalogue mirroring the server's source of truth (server/src/services/pricing.ts).
+// `id` must match the server pack ids so Stripe checkout charges the right amount.
 export const CREDIT_PACKAGES: CreditPackage[] = [
-  { credits: 5, price: 5.00, label: '5 credits' },
-  { credits: 10, price: 8.50, label: '10 credits' },
-  { credits: 25, price: 19.00, label: '25 credits' },
-  { credits: 50, price: 35.00, label: '50 credits' },
+  { id: 'credits_5', credits: 5, price: 5.00, label: '5 credits' },
+  { id: 'credits_10', credits: 10, price: 8.50, label: '10 credits' },
+  { id: 'credits_25', credits: 25, price: 19.00, label: '25 credits' },
+  { id: 'credits_50', credits: 50, price: 35.00, label: '50 credits' },
 ];
 
 /** Landing pricing → sign in: `DashboardPage` opens Buy Credits for this package index. Cleared when that modal closes. */

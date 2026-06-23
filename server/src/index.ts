@@ -5,9 +5,28 @@ import chatRouter from './routes/chat.js';
 import creditsRouter from './routes/credits.js';
 import glossaryRouter from './routes/glossary.js';
 import patternsRouter from './routes/patterns.js';
+import stripeWebhookRouter from './routes/stripeWebhook.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
+const IS_PROD = process.env.NODE_ENV === 'production';
+
+// Behind Railway/Vercel/Cloudflare there is a single proxy hop, so trust it to
+// get the real client IP from X-Forwarded-For (used by the rate limiter).
+app.set('trust proxy', 1);
+
+// Don't advertise the server stack (removes the default `X-Powered-By: Express`).
+app.disable('x-powered-by');
+
+// Baseline security headers on every response. The API only ever returns JSON,
+// so it can use a fully locked-down CSP and deny framing outright.
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
+  next();
+});
 
 /**
  * Strip a trailing slash so origin comparisons stay tolerant: browsers send the
@@ -59,6 +78,10 @@ app.use(
   }),
 );
 
+// The Stripe webhook must see the raw, unparsed body for signature verification,
+// so mount it BEFORE express.json(). (The router applies its own raw parser.)
+app.use('/api/stripe/webhook', stripeWebhookRouter);
+
 app.use(express.json({ limit: '50mb' }));
 
 app.get('/health', (_req, res) => {
@@ -76,8 +99,14 @@ app.use(
   (err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (res.headersSent) return;
     console.error('[StitchSpeak Server] Unhandled error:', err);
+    // Don't leak internal error details (stack traces, library messages) to
+    // clients in production; the full error is still logged above.
     res.status(500).json({
-      error: err instanceof Error ? err.message : 'Internal server error.',
+      error: IS_PROD
+        ? 'Internal server error.'
+        : err instanceof Error
+          ? err.message
+          : 'Internal server error.',
     });
   },
 );

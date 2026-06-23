@@ -16,10 +16,15 @@ import {
   bumpChatAllowance,
 } from '../services/patternStore.js';
 import { generateCoverThumbnailForPdf } from '../services/coverThumbnail.js';
+import { rateLimit } from '../middleware/rateLimit.js';
+import { deductCredits, addCredits } from '../services/creditStore.js';
+import { chatUnlockCost } from '../services/pricing.js';
 
 const router = Router();
 
 router.use(requireAuth);
+
+const unlockRateLimit = rateLimit({ windowMs: 60_000, max: 30, name: 'pattern-unlock' });
 
 router.get('/', (req, res: Response) => {
   try {
@@ -266,7 +271,7 @@ router.post('/:id/chat', (req, res: Response) => {
   }
 });
 
-router.post('/:id/chat/unlock', (req, res: Response) => {
+router.post('/:id/chat/unlock', unlockRateLimit, (req, res: Response) => {
   try {
     const { userSub } = req as unknown as AuthenticatedRequest;
     const id = String(req.params.id);
@@ -275,12 +280,23 @@ router.post('/:id/chat/unlock', (req, res: Response) => {
       res.status(400).json({ error: 'by must be a positive integer.' });
       return;
     }
+
+    // Charge for the extra chat allowance server-side before granting it.
+    const cost = chatUnlockCost(by);
+    const { ok, balance } = deductCredits(userSub, cost);
+    if (!ok) {
+      res.status(402).json({ error: 'Insufficient credits.', balance, cost });
+      return;
+    }
+
     const state = bumpChatAllowance(userSub, id, by);
     if (!state) {
+      // Refund: the pattern didn't exist, so nothing was unlocked.
+      addCredits(userSub, cost);
       res.status(404).json({ error: 'Pattern not found.' });
       return;
     }
-    res.json({ ok: true, extraAllowance: state.extraAllowance });
+    res.json({ ok: true, extraAllowance: state.extraAllowance, cost, balance });
   } catch (err) {
     console.error('[patterns] chat unlock failed:', err);
     res.status(500).json({
