@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { getAbbreviationMap, buildAbbreviationRegex } from '../services/abbreviationService';
 import type { AbbreviationMatch } from '../services/abbreviationService';
+import { sanitizePatternHtml } from '../services/sanitizePatternHtml';
 
 interface PatternViewerProps {
   html: string;
@@ -14,7 +15,7 @@ export const PatternViewer: React.FC<PatternViewerProps> = ({ html, languageCode
   const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
 
   const processedHtml = useMemo(() => {
-    const clean = html.replace(/^```html\n?/, '').replace(/\n?```$/, '');
+    const clean = sanitizePatternHtml(html);
     const regex = buildAbbreviationRegex(languageCode);
     if (!regex) return clean;
 

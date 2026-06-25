@@ -1,23 +1,15 @@
-import React, { useState } from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import { GoogleLogin, type CredentialResponse } from '@react-oauth/google';
 import { useAuth } from '../../contexts/AuthContext';
 import { getGoogleOAuthClientId } from '../../auth/googleConfig';
-import { CREDIT_PACKAGES, LANGUAGES, PENDING_BUY_CREDITS_PACK_INDEX_KEY } from '../../constants';
+import { CREDIT_PACKAGES, PENDING_BUY_CREDITS_PACK_INDEX_KEY } from '../../constants';
 import { CloseIcon } from '../icons/CloseIcon';
-import { DashboardPage } from './DashboardPage';
+
+const DashboardPage = lazy(() =>
+  import('./DashboardPage').then((module) => ({ default: module.DashboardPage })),
+);
 
 type LandingView = 'home' | 'translate';
-type PatternSampleId = 'cables' | 'lace' | 'chart' | 'glossary' | 'heel';
-
-interface PatternSample {
-  id: PatternSampleId;
-  title: string;
-  subtitle: string;
-  icon: string;
-  accent: string;
-  source: string[];
-  translations: Record<string, string[]>;
-}
 
 const scrollToId = (id: string) => {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
@@ -28,265 +20,6 @@ const Icon: React.FC<{ name: string; className?: string }> = ({ name, className 
     {name}
   </span>
 );
-
-const LANGUAGE_FLAGS: Record<string, string> = {
-  en: '🇺🇸',
-  de: '🇩🇪',
-  fr: '🇫🇷',
-  es: '🇪🇸',
-  it: '🇮🇹',
-  nl: '🇳🇱',
-  sv: '🇸🇪',
-  no: '🇳🇴',
-  da: '🇩🇰',
-  fi: '🇫🇮',
-  pt: '🇵🇹',
-  ja: '🇯🇵',
-  ru: '🇷🇺',
-};
-
-const PATTERN_SAMPLES: PatternSample[] = [
-  {
-    id: 'cables',
-    title: 'Complex cables',
-    subtitle: 'Abbreviations stay precise while the instruction becomes readable.',
-    icon: 'cable',
-    accent: 'from-primary/20 via-secondary-container/40 to-surface-container',
-    source: [
-      'Row 12 (RS): P2, C6F, k4, C6B, p2; rep from * to end.',
-      'Row 13 (WS): K2, p16, k2.',
-      'Continue in cable panel until piece measures 18 cm from CO edge.',
-    ],
-    translations: {
-      en: [
-        'Row 12 (RS): P2, C6F, k4, C6B, p2; rep from * to end.',
-        'Row 13 (WS): K2, p16, k2.',
-        'Continue in cable panel until piece measures 18 cm from CO edge.',
-      ],
-      de: [
-        'R 12 (VS): 2 li, Z6V, 4 re, Z6H, 2 li; ab * bis Reihenende wdh.',
-        'R 13 (RS): 2 re, 16 li, 2 re.',
-        'Im Zopfmuster weiterstricken, bis das Teil ab Anschlagkante 18 cm misst.',
-      ],
-      fr: [
-        'Rang 12 (end): 2 m env, T6AV, 4 m end, T6AR, 2 m env; rep depuis * jusqu\'a la fin.',
-        'Rang 13 (env): 2 m end, 16 m env, 2 m end.',
-        'Continuer le panneau de torsades jusqu\'a 18 cm depuis le montage.',
-      ],
-      es: [
-        'Fila 12 (LD): 2 rev, Tr6D, 4 der, Tr6Det, 2 rev; rep desde * hasta el final.',
-        'Fila 13 (LR): 2 der, 16 rev, 2 der.',
-        'Continuar el panel de trenzas hasta que mida 18 cm desde el montaje.',
-      ],
-      it: [
-        'Ferro 12 (LD): 2 rov, T6D, 4 dir, T6R, 2 rov; rip da * fino alla fine.',
-        'Ferro 13 (LR): 2 dir, 16 rov, 2 dir.',
-        'Continuare il pannello a trecce finche misura 18 cm dal bordo di avvio.',
-      ],
-      nl: [
-        'Naald 12 (GK): 2 av, K6V, 4 r, K6A, 2 av; herh vanaf * tot einde.',
-        'Naald 13 (VK): 2 r, 16 av, 2 r.',
-        'Ga verder in het kabelpaneel tot het werk 18 cm vanaf de opzet meet.',
-      ],
-      sv: [
-        'Varv 12 (RS): 2 am, F6F, 4 rm, F6B, 2 am; upprepa från * varvet ut.',
-        'Varv 13 (AS): 2 rm, 16 am, 2 rm.',
-        'Fortsätt med flätpanelen tills arbetet mäter 18 cm från uppläggningskanten.',
-      ],
-      no: [
-        'Pinne 12 (RS): 2 vr, F6F, 4 r, F6B, 2 vr; gjenta fra * ut pinnen.',
-        'Pinne 13 (VS): 2 r, 16 vr, 2 r.',
-        'Fortsett med flettepanelet til arbeidet måler 18 cm fra oppleggskanten.',
-      ],
-      da: [
-        'Pind 12 (RS): 2 vr, F6F, 4 r, F6B, 2 vr; gentag fra * pinden ud.',
-        'Pind 13 (VS): 2 r, 16 vr, 2 r.',
-        'Fortsæt i snoningspanelet til arbejdet måler 18 cm fra opslagningen.',
-      ],
-      fi: [
-        'Kerros 12 (OP): 2 n, P6E, 4 o, P6T, 2 n; toista *:sta kerroksen loppuun.',
-        'Kerros 13 (NP): 2 o, 16 n, 2 o.',
-        'Jatka palmikkopaneelia, kunnes kappaleen pituus on 18 cm luontireunasta.',
-      ],
-      pt: [
-        'Carr 12 (LD): 2 t, Tr6F, 4 m, Tr6A, 2 t; rep a partir de * ate o fim.',
-        'Carr 13 (LA): 2 m, 16 t, 2 m.',
-        'Continue no painel de trancas ate a peca medir 18 cm desde a montagem.',
-      ],
-      ja: [
-        '12段目（表）: 裏2目、C6F、表4目、C6B、裏2目。*から段の終わりまで繰り返す。',
-        '13段目（裏）: 表2目、裏16目、表2目。',
-        '作り目から18cmになるまでケーブル模様を続ける。',
-      ],
-      ru: [
-        'Ряд 12 (ЛС): 2 изн, C6F, 4 лиц, C6B, 2 изн; повт. от * до конца.',
-        'Ряд 13 (ИС): 2 лиц, 16 изн, 2 лиц.',
-        'Продолжайте панель с косами, пока деталь не достигнет 18 см от наборного края.',
-      ],
-    },
-  },
-  {
-    id: 'lace',
-    title: 'Lace repeat',
-    subtitle: 'Yarn overs, decreases, and repeat language remain easy to follow.',
-    icon: 'filter_vintage',
-    accent: 'from-secondary-container/70 via-surface-container-low to-tertiary-fixed/50',
-    source: [
-      'Row 1 (RS): K1, *yo, ssk, k3, k2tog, yo, k1; rep from *.',
-      'Row 2 and all WS rows: Purl.',
-      'Work Rows 1-8 twice before beginning the border.',
-    ],
-    translations: {
-      en: [
-        'Row 1 (RS): K1, *yo, ssk, k3, k2tog, yo, k1; rep from *.',
-        'Row 2 and all WS rows: Purl.',
-        'Work Rows 1-8 twice before beginning the border.',
-      ],
-      de: [
-        'R 1 (VS): 1 re, *U, 2 re überz zus, 3 re, 2 re zus, U, 1 re; ab * wdh.',
-        'R 2 und alle Rückreihen: links stricken.',
-        'Reihen 1-8 zweimal arbeiten, dann mit der Blende beginnen.',
-      ],
-      fr: [
-        'Rang 1 (end): 1 m end, *jete, GGT, 3 m end, 2 m ens end, jete, 1 m end; rep depuis *.',
-        'Rang 2 et tous les rangs env: tricoter a l\'envers.',
-        'Travailler les rangs 1-8 deux fois avant de commencer la bordure.',
-      ],
-      es: [
-        'Fila 1 (LD): 1 der, *hebra, DDR, 3 der, 2pjD, hebra, 1 der; rep desde *.',
-        'Fila 2 y todas las filas LR: tejer del reves.',
-        'Trabajar las filas 1-8 dos veces antes de comenzar el borde.',
-      ],
-      it: [
-        'Ferro 1 (LD): 1 dir, *gett, acc, 3 dir, 2 ins dir, gett, 1 dir; rip da *.',
-        'Ferro 2 e tutti i ferri LR: lavorare a rovescio.',
-        'Lavorare i ferri 1-8 due volte prima di iniziare il bordo.',
-      ],
-      nl: [
-        'Naald 1 (GK): 1 r, *omslag, afh-afh-r, 3 r, 2 r samen, omslag, 1 r; herh vanaf *.',
-        'Naald 2 en alle VK-naalden: averecht breien.',
-        'Brei naalden 1-8 twee keer voor je aan de rand begint.',
-      ],
-      sv: [
-        'Varv 1 (RS): 1 rm, *omsl, lyft-lyft-sticka, 3 rm, 2 rm tills, omsl, 1 rm; upprepa från *.',
-        'Varv 2 och alla AS-varv: aviga maskor.',
-        'Sticka varv 1-8 två gånger innan kanten påbörjas.',
-      ],
-      no: [
-        'Pinne 1 (RS): 1 r, *kast, ssk, 3 r, 2 r sm, kast, 1 r; gjenta fra *.',
-        'Pinne 2 og alle VS-pinner: strikk vrangt.',
-        'Strikk pinne 1-8 to ganger før kanten begynnes.',
-      ],
-      da: [
-        'Pind 1 (RS): 1 r, *slå om, ssk, 3 r, 2 r sm, slå om, 1 r; gentag fra *.',
-        'Pind 2 og alle VS-pinde: strik vrang.',
-        'Strik pind 1-8 to gange før kanten begyndes.',
-      ],
-      fi: [
-        'Kerros 1 (OP): 1 o, *lk, ylivetokavennus, 3 o, 2 o yht, lk, 1 o; toista *:sta.',
-        'Kerros 2 ja kaikki NP-kerrokset: neulo nurin.',
-        'Neulo kerrokset 1-8 kahdesti ennen reunuksen aloittamista.',
-      ],
-      pt: [
-        'Carr 1 (LD): 1 m, *lac, dde, 3 m, 2pjm, lac, 1 m; rep a partir de *.',
-        'Carr 2 e todas as carr LA: tricotar em ponto t.',
-        'Trabalhe as carr 1-8 duas vezes antes de iniciar a borda.',
-      ],
-      ja: [
-        '1段目（表）: 表1目、*かけ目、SSK、表3目、左上2目一度、かけ目、表1目。*から繰り返す。',
-        '2段目とすべての裏段: 裏編み。',
-        '縁編みに入る前に1-8段を2回編む。',
-      ],
-      ru: [
-        'Ряд 1 (ЛС): 1 лиц, *накид, SSK, 3 лиц, 2 лиц вместе, накид, 1 лиц; повт. от *.',
-        'Ряд 2 и все ряды ИС: вязать изнаночными.',
-        'Провяжите ряды 1-8 два раза перед началом каймы.',
-      ],
-    },
-  },
-  {
-    id: 'chart',
-    title: 'Chart legend',
-    subtitle: 'A compact symbol key becomes searchable, local terminology.',
-    icon: 'grid_on',
-    accent: 'from-tertiary-fixed/80 via-surface-container to-primary-fixed/60',
-    source: [
-      '□ = knit on RS, purl on WS',
-      '○ = yarn over',
-      '/ = k2tog',
-      '\\ = ssk',
-    ],
-    translations: {
-      en: ['□ = knit on RS, purl on WS', '○ = yarn over', '/ = k2tog', '\\ = ssk'],
-      de: ['□ = rechts auf VS, links auf RS', '○ = Umschlag', '/ = 2 re zusammen', '\\ = 2 re überzogen zusammen'],
-      fr: ['□ = endroit sur l\'end, envers sur l\'env', '○ = jete', '/ = 2 m ens end', '\\ = GGT'],
-      es: ['□ = derecho en LD, reves en LR', '○ = hebra / lazada', '/ = 2pjD', '\\ = DDR'],
-      it: ['□ = diritto su LD, rovescio su LR', '○ = gettato', '/ = 2 ins dir', '\\ = accavallata semplice'],
-      nl: ['□ = recht op GK, averecht op VK', '○ = omslag', '/ = 2 recht samen', '\\ = ssk'],
-      sv: ['□ = rät på RS, avig på AS', '○ = omslag', '/ = 2 rm tillsammans', '\\ = ssk'],
-      no: ['□ = rett på RS, vrang på VS', '○ = kast', '/ = 2 r sammen', '\\ = ssk'],
-      da: ['□ = ret på RS, vrang på VS', '○ = slå om', '/ = 2 ret sammen', '\\ = ssk'],
-      fi: ['□ = oikein OP:lla, nurin NP:lla', '○ = langankierto', '/ = 2 oikein yhteen', '\\ = ylivetokavennus'],
-      pt: ['□ = meia no LD, tricô no LA', '○ = laçada', '/ = 2 pontos juntos em meia', '\\ = dde'],
-      ja: ['□ = 表側は表目、裏側は裏目', '○ = かけ目', '/ = 左上2目一度', '\\ = SSK'],
-      ru: ['□ = лиц. на ЛС, изн. на ИС', '○ = накид', '/ = 2 лиц вместе', '\\ = SSK'],
-    },
-  },
-  {
-    id: 'glossary',
-    title: 'Glossary terms',
-    subtitle: 'Abbreviation-heavy notes keep both shorthand and meaning.',
-    icon: 'menu_book',
-    accent: 'from-primary-fixed/80 via-surface-container-low to-secondary-container/50',
-    source: [
-      'CO 48 sts using the long-tail method.',
-      'PM for BOR and join to work in the rnd.',
-      'Work k2, p2 rib for 12 rnds.',
-    ],
-    translations: {
-      en: ['CO 48 sts using the long-tail method.', 'PM for BOR and join to work in the rnd.', 'Work k2, p2 rib for 12 rnds.'],
-      de: ['48 M mit Kreuzanschlag anschlagen.', 'MM für Rd-Anfang setzen und zur Runde schließen.', '12 Rd im Bündchenmuster 2 re, 2 li arbeiten.'],
-      fr: ['Monter 48 m avec la methode long-tail.', 'Placer un marqueur pour le debut du tour et joindre en rond.', 'Travailler 12 tours en cotes 2 end, 2 env.'],
-      es: ['Montar 48 p con el metodo long-tail.', 'Colocar marcador para el inicio de vuelta y unir para tejer en circular.', 'Tejer elastico 2 der, 2 rev durante 12 vueltas.'],
-      it: ['Avviare 48 m con il metodo long-tail.', 'Mettere un marcapunti per l\'inizio giro e unire in tondo.', 'Lavorare coste 2 dir, 2 rov per 12 giri.'],
-      nl: ['Zet 48 st op met de long-tail methode.', 'Plaats markeerder voor begin ronde en sluit tot een ronde.', 'Brei 12 rondes boordsteek 2 r, 2 av.'],
-      sv: ['Lägg upp 48 m med long-tail-uppläggning.', 'Placera markör för varvets början och slut till rundstickning.', 'Sticka resår 2 rm, 2 am i 12 varv.'],
-      no: ['Legg opp 48 m med long-tail-opplegg.', 'Sett markør for omgangens begynnelse og samle til rundstrikk.', 'Strikk 2 r, 2 vr vrangbord i 12 omg.'],
-      da: ['Slå 48 m op med long-tail opslagning.', 'Sæt markør for omgangens begyndelse og saml til rundstrik.', 'Strik 2 r, 2 vr rib i 12 omgange.'],
-      fi: ['Luo 48 s long-tail-menetelmällä.', 'Aseta merkki kerroksen alkuun ja yhdistä suljetuksi neuleeksi.', 'Neulo 2 o, 2 n joustinneuletta 12 kerrosta.'],
-      pt: ['Monte 48 pts usando o metodo long-tail.', 'Coloque marcador para o inicio da volta e una para trabalhar em circular.', 'Trabalhe barra 2 m, 2 t por 12 voltas.'],
-      ja: ['ロングテール式で48目作り目する。', '段の始まりにマーカーを置き、輪にして編む。', '表2目、裏2目のゴム編みを12周編む。'],
-      ru: ['Наберите 48 п. способом long-tail.', 'Поставьте маркер начала ряда и соедините вязание в круг.', 'Вяжите резинку 2 лиц, 2 изн в течение 12 круг. рядов.'],
-    },
-  },
-  {
-    id: 'heel',
-    title: 'Sock heel section',
-    subtitle: 'Construction instructions keep their shape across languages.',
-    icon: 'steps',
-    accent: 'from-surface-container-high via-primary-fixed/60 to-tertiary-fixed/50',
-    source: [
-      'Heel flap: Sl1, k1 across 28 sts. Turn.',
-      'Next row: Sl1, purl to end. Rep these 2 rows 14 times.',
-      'Turn heel: Sl1, p15, p2tog, p1, turn.',
-    ],
-    translations: {
-      en: ['Heel flap: Sl1, k1 across 28 sts. Turn.', 'Next row: Sl1, purl to end. Rep these 2 rows 14 times.', 'Turn heel: Sl1, p15, p2tog, p1, turn.'],
-      de: ['Fersenwand: 1 M abh, 1 re über 28 M. Wenden.', 'Nächste R: 1 M abh, links bis Ende. Diese 2 R 14-mal wdh.', 'Ferse formen: 1 M abh, 15 li, 2 li zus, 1 li, wenden.'],
-      fr: ['Rabat de talon: gl 1, 1 m end sur 28 m. Tourner.', 'Rang suiv: gl 1, tricoter a l\'envers jusqu\'a la fin. Rep ces 2 rangs 14 fois.', 'Tourner le talon: gl 1, 15 m env, 2 m ens env, 1 m env, tourner.'],
-      es: ['Talón: desl1, 1 der a lo largo de 28 p. Girar.', 'Fila sig: desl1, tejer reves hasta el final. Rep estas 2 filas 14 veces.', 'Dar forma al talon: desl1, 15 rev, 2pjR, 1 rev, girar.'],
-      it: ['Patta del tallone: pass 1, 1 dir su 28 m. Girare.', 'Ferro succ: pass 1, rov fino alla fine. Rip questi 2 ferri 14 volte.', 'Sagomare il tallone: pass 1, 15 rov, 2 rov ins, 1 rov, girare.'],
-      nl: ['Hielflap: haal 1 af, 1 r over 28 st. Keer.', 'Volgende naald: haal 1 af, averecht tot einde. Herh deze 2 naalden 14 keer.', 'Hiel keren: haal 1 af, 15 av, 2 av samen, 1 av, keer.'],
-      sv: ['Hällapp: lyft 1, 1 rm över 28 m. Vänd.', 'Nästa varv: lyft 1, sticka avigt varvet ut. Upprepa dessa 2 varv 14 gånger.', 'Vänd hälen: lyft 1, 15 am, 2 am tills, 1 am, vänd.'],
-      no: ['Hælkappe: ta 1 løs av, 1 r over 28 m. Snu.', 'Neste pinne: ta 1 løs av, strikk vrangt ut pinnen. Gjenta disse 2 pinnene 14 ganger.', 'Snu hælen: ta 1 løs av, 15 vr, 2 vr sm, 1 vr, snu.'],
-      da: ['Hælkappe: tag 1 løst af, 1 r over 28 m. Vend.', 'Næste pind: tag 1 løst af, strik vrang pinden ud. Gentag disse 2 pinde 14 gange.', 'Vend hælen: tag 1 løst af, 15 vr, 2 vr sm, 1 vr, vend.'],
-      fi: ['Kantalappu: nosta 1 s, 1 o yhteensä 28 s. Käännä.', 'Seuraava kerros: nosta 1 s, neulo nurin loppuun. Toista näitä 2 kerrosta 14 kertaa.', 'Kantapään käännös: nosta 1 s, 15 n, 2 n yht, 1 n, käännä.'],
-      pt: ['Aba do calcanhar: desl1, 1 m por 28 pts. Vire.', 'Carr seg: desl1, tricote em t ate o fim. Rep estas 2 carr 14 vezes.', 'Virar o calcanhar: desl1, 15 t, 2pjT, 1 t, vire.'],
-      ja: ['かかとフラップ: 1目すべり、表1目を28目分編む。返す。', '次の段: 1目すべり、段の終わりまで裏編み。この2段を14回繰り返す。', 'かかとの返し: 1目すべり、裏15目、裏2目一度、裏1目、返す。'],
-      ru: ['Стенка пятки: снять 1 п., 1 лиц на 28 п. Повернуть.', 'След. ряд: снять 1 п., вязать изн. до конца. Повт. эти 2 ряда 14 раз.', 'Поворот пятки: снять 1 п., 15 изн, 2 изн вместе, 1 изн, повернуть.'],
-    },
-  },
-];
 
 interface LandingGoogleSignInProps {
   layout: 'header' | 'hero' | 'modal';
@@ -368,11 +101,6 @@ export const LandingPage: React.FC = () => {
   const clientId = getGoogleOAuthClientId();
   const [view, setView] = useState<LandingView>('home');
   const [showCreditPurchaseModal, setShowCreditPurchaseModal] = useState(false);
-  const [selectedSampleId, setSelectedSampleId] = useState<PatternSampleId>('cables');
-  const [selectedLanguageCode, setSelectedLanguageCode] = useState('de');
-  const selectedSample = PATTERN_SAMPLES.find((sample) => sample.id === selectedSampleId) ?? PATTERN_SAMPLES[0];
-  const selectedLanguage = LANGUAGES.find((language) => language.code === selectedLanguageCode) ?? LANGUAGES[0];
-  const translatedLines = selectedSample.translations[selectedLanguage.code] ?? selectedSample.source;
 
   const clearPendingCreditPack = () => {
     try {
@@ -423,7 +151,15 @@ export const LandingPage: React.FC = () => {
           </div>
         </header>
         <div className="px-6 sm:px-8 py-8 max-w-7xl mx-auto">
-          <DashboardPage />
+          <Suspense
+            fallback={
+              <div className="flex min-h-[50vh] items-center justify-center text-sm text-on-surface-variant">
+                Loading...
+              </div>
+            }
+          >
+            <DashboardPage />
+          </Suspense>
         </div>
       </div>
     );
@@ -464,13 +200,24 @@ export const LandingPage: React.FC = () => {
                 >
                   Start Your First Project
                 </button>
-                <button
-                  type="button"
-                  onClick={() => scrollToId('community')}
-                  className="px-8 py-4 bg-secondary-container text-on-secondary-container rounded-xl font-semibold text-lg hover:opacity-90 transition-all"
-                >
-                  Explore Community
-                </button>
+	                <button
+	                  type="button"
+	                  onClick={() => scrollToId('community')}
+	                  className="px-8 py-4 bg-secondary-container text-on-secondary-container rounded-xl font-semibold text-lg hover:opacity-90 transition-all"
+	                >
+                  See an Example
+	                </button>
+              </div>
+              <div className="mt-6 flex flex-wrap gap-2 text-sm text-on-surface-variant">
+                {['No card required', 'Private files', 'Layout preserved', 'PDF, DOCX, TXT, RTF'].map((item) => (
+                  <span
+                    key={item}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-surface-container-low px-3 py-1.5"
+                  >
+                    <Icon name="check_circle" className="text-sm text-primary" />
+                    {item}
+                  </span>
+                ))}
               </div>
               <div className="mt-6 sm:hidden">
                 <LandingGoogleSignIn layout="hero" clientId={clientId} onSuccess={handleGoogleSuccess} />
@@ -478,11 +225,11 @@ export const LandingPage: React.FC = () => {
             </div>
             <div className="lg:col-span-5 relative">
               <div className="aspect-[4/5] rounded-[2rem] overflow-hidden shadow-ambient rotate-3 hover:rotate-0 transition-transform duration-700 bg-surface-container max-w-md mx-auto lg:max-w-none">
-                <img
-                  className="w-full h-full object-cover"
-                  alt=""
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuBKjpz8e8CWhwuwK3UBS6aDNv--m1kBuSJO0NF7uDVdoKgDLaOKP1TzJPH8K40-fZfKJUmlmvFvgqXemcq4Lh4w7EfZIPJ_GE2WeHqnCFLyMKCboUGF5v7UPtKBIbHHghUnmx3_Ki8SHJ6GFI9T8b4eQvBt7X7dUn8i1A67AAEn6eZ95S4OkDRfhbKTT8RsCoSyKZ6MpgwqRw4VBO7QsAkg_tCw4RFSIKPvls_w0FJqfgMHTjPFiAdDHNH_4K-HkdYNXpmKSfVPsm0"
-                />
+	                <img
+	                  className="w-full h-full object-cover"
+	                  alt=""
+	                  src="/landing-hero.jpg"
+	                />
               </div>
               <div className="absolute -bottom-8 -left-4 sm:-left-8 p-6 bg-surface/60 glass-nav rounded-xl shadow-ambient max-w-[200px]">
                 <Icon name="auto_awesome" className="text-primary mb-2 text-2xl" />
@@ -520,13 +267,25 @@ export const LandingPage: React.FC = () => {
               </div>
               <div
                 id="journal"
-                className="bg-primary-container p-8 rounded-xl text-on-primary-container flex flex-col justify-center text-center scroll-mt-28"
+                className="bg-primary-container rounded-xl text-on-primary-container flex flex-col overflow-hidden scroll-mt-28"
               >
-                <div className="mb-6 mx-auto w-24 h-24 bg-primary rounded-full flex items-center justify-center shadow-ambient">
-                  <Icon name="history_edu" className="text-4xl text-on-primary" />
+                <div className="relative h-40 overflow-hidden">
+                  <img
+                    className="h-full w-full object-cover opacity-85"
+                    alt=""
+                    src="/landing-library.jpg"
+                  />
+                  <div className="absolute inset-0 bg-primary/35" aria-hidden />
+                  <div className="absolute bottom-4 left-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-surface/90 text-primary shadow-ambient">
+                    <Icon name="folder_special" className="text-3xl" />
+                  </div>
                 </div>
-                <h3 className="text-2xl font-headline font-bold mb-2">Digital Stitch Journal</h3>
-                <p className="opacity-80">Document every skein and swatching session in a tactile digital interface.</p>
+                <div className="flex flex-1 flex-col justify-center p-8 text-center">
+                  <h3 className="text-2xl font-headline font-bold mb-2">Saved Pattern Library</h3>
+                  <p className="opacity-85">
+                    Keep translated patterns in one place, reopen them later, and export when you are ready to cast on.
+                  </p>
+                </div>
               </div>
               <div className="bg-surface-container-highest p-8 rounded-xl flex flex-col items-center justify-center text-center">
                 <h3 className="text-lg sm:text-xl font-headline font-bold mb-4 italic">
@@ -534,160 +293,144 @@ export const LandingPage: React.FC = () => {
                 </h3>
                 <p className="text-sm font-label text-on-surface-variant">— Eleanor R., Fiber Artist</p>
               </div>
-              <div id="community" className="md:col-span-2 relative h-[260px] sm:h-[300px] rounded-xl overflow-hidden group scroll-mt-28">
-                <img
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                  alt=""
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuDhYed6LmejxktNgT_fctJwoEujKVVdYCPK5oVVhQ6EM9rcUYal7_6OiqxwZS36BKlcmdbWKxwE2qzov-8hH0Tdb1amGT0rE0owGFLUOBfB5L0nPYzN8Ugh9ZhKe1yjftxmq2KlzNgkfo1v0V39iBOdPfAm225iUjTCQNUt7b6m9GYyDq48ZFcBlRcB_zFkTkMZvzOOdWZsZa97Ah5qVRZa8gJD7PtNFJeMs3zgo1VUgYCGjlz6beVQSB6z3mHGs4IatFLUts3I5Mo"
-                />
+	              <div id="community" className="md:col-span-2 relative h-[260px] sm:h-[300px] rounded-xl overflow-hidden group scroll-mt-28">
+	                <img
+	                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+	                  alt=""
+	                  src="/landing-community.jpg"
+	                />
               </div>
             </div>
           </div>
         </section>
 
         <section className="px-6 sm:px-8 py-16 sm:py-24 max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
-            <div className="lg:col-span-4 lg:sticky lg:top-28">
-              <p className="text-xs font-bold uppercase tracking-[0.28em] text-primary mb-4">Pattern playground</p>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+            <div className="lg:col-span-4">
+              <p className="text-xs font-bold uppercase tracking-[0.28em] text-primary mb-4">Inside the app</p>
               <h2 className="text-3xl sm:text-5xl font-headline font-bold italic leading-tight mb-5">
-                Test the feel before you upload.
+                What you actually use.
               </h2>
               <p className="text-on-surface-variant leading-relaxed mb-8">
-                Pick a sample, choose any app language, and see how StitchSpeak keeps the craft structure intact.
+                Upload a pattern, confirm the language and credit estimate, then review the translated file in your saved library.
               </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3">
-                {PATTERN_SAMPLES.map((sample) => {
-                  const isSelected = sample.id === selectedSample.id;
-                  return (
-                    <button
-                      key={sample.id}
-                      type="button"
-                      onClick={() => setSelectedSampleId(sample.id)}
-                      className={`group text-left rounded-2xl p-4 border transition-all ${
-                        isSelected
-                          ? 'bg-primary text-on-primary border-primary shadow-ambient'
-                          : 'bg-surface border-outline-variant/25 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-ambient'
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <span
-                          className={`mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                            isSelected ? 'bg-on-primary/15' : 'bg-primary-fixed text-on-primary-fixed'
-                          }`}
-                        >
-                          <Icon name={sample.icon} className="text-2xl" />
-                        </span>
-                        <span>
-                          <span className="block font-headline text-lg font-bold">{sample.title}</span>
-                          <span className={`mt-1 block text-sm leading-relaxed ${isSelected ? 'text-on-primary/80' : 'text-on-surface-variant'}`}>
-                            {sample.subtitle}
-                          </span>
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
+              <div className="space-y-3">
+                {[
+                  { icon: 'upload_file', title: 'Upload PDF, DOCX, TXT, or RTF', body: 'The real flow starts with your own pattern file.' },
+                  { icon: 'payments', title: 'See credits before starting', body: 'The estimate is shown before translation begins.' },
+                  { icon: 'folder_special', title: 'Saved after completion', body: 'Finished translations live in My Patterns for export or chat.' },
+                ].map((item) => (
+                  <div key={item.title} className="flex items-start gap-3">
+                    <span className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-fixed text-on-primary-fixed">
+                      <Icon name={item.icon} className="text-xl" />
+                    </span>
+                    <span>
+                      <span className="block text-sm font-bold text-on-surface">{item.title}</span>
+                      <span className="mt-0.5 block text-sm leading-relaxed text-on-surface-variant">{item.body}</span>
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
 
             <div className="lg:col-span-8">
-              <div className={`relative overflow-hidden rounded-[2rem] bg-gradient-to-br ${selectedSample.accent} p-1 shadow-ambient`}>
-                <div className="absolute -right-20 -top-24 h-64 w-64 rounded-full bg-surface/50 blur-3xl" aria-hidden />
-                <div className="absolute -bottom-24 left-10 h-48 w-48 rounded-full bg-secondary-container/50 blur-3xl" aria-hidden />
-                <div className="relative rounded-[1.75rem] bg-surface/80 glass-panel border border-white/40 p-5 sm:p-8">
-                  <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between mb-6">
-                    <div>
-                      <div className="inline-flex items-center gap-2 rounded-full bg-surface-container-low px-3 py-1 text-xs font-bold uppercase tracking-widest text-primary mb-3">
-                        <Icon name="auto_awesome" className="text-base" />
-                        Static preview
-                      </div>
-                      <h3 className="text-2xl sm:text-3xl font-headline font-bold">{selectedSample.title}</h3>
-                      <p className="text-sm text-on-surface-variant mt-2">
-                        Showing {LANGUAGE_FLAGS[selectedLanguage.code]} {selectedLanguage.name}
-                      </p>
-                    </div>
-                    <div className="shrink-0 rounded-2xl bg-[#1a1a1a] px-5 py-3.5 text-left shadow-lg">
-                      <p className="font-body text-[0.65rem] font-medium tracking-[0.2em] text-zinc-400">SAMPLE ONLY</p>
-                      <p className="mt-0.5 font-headline text-lg font-bold leading-tight text-white">No live AI call</p>
-                    </div>
+              <div className="overflow-hidden rounded-2xl border border-outline-variant/20 bg-surface-container-lowest shadow-ambient">
+                <div className="flex items-center justify-between gap-4 border-b border-outline-variant/15 bg-surface-container-low px-5 py-4">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold uppercase tracking-[0.22em] text-primary">Translation studio</p>
+                    <h3 className="mt-1 truncate font-headline text-2xl font-bold text-on-surface">cable-cardigan.pdf</h3>
                   </div>
+                  <span className="shrink-0 rounded-full bg-primary text-on-primary px-3 py-1 text-xs font-bold uppercase tracking-widest">
+                    Saved
+                  </span>
+                </div>
 
-                  <div className="mb-7">
-                    <p className="text-xs font-bold uppercase tracking-[0.22em] text-on-surface-variant mb-3">
-                      Translate into
-                    </p>
-                    <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1">
-                      {LANGUAGES.map((language) => {
-                        const isSelected = language.code === selectedLanguage.code;
-                        return (
-                          <button
-                            key={language.code}
-                            type="button"
-                            onClick={() => setSelectedLanguageCode(language.code)}
-                            className={`shrink-0 rounded-full border px-3 py-2 text-sm font-semibold transition-all ${
-                              isSelected
-                                ? 'border-primary bg-primary text-on-primary shadow-ambient'
-                                : 'border-outline-variant/30 bg-surface/80 text-on-surface hover:border-primary/40 hover:bg-primary-fixed'
-                            }`}
-                            aria-pressed={isSelected}
-                          >
-                            <span className="mr-2" aria-hidden>
-                              {LANGUAGE_FLAGS[language.code]}
-                            </span>
-                            {language.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                    <div className="rounded-2xl bg-surface-container-lowest/85 border border-outline-variant/20 p-5">
-                      <div className="flex items-center justify-between gap-3 mb-4">
-                        <p className="text-xs font-bold uppercase tracking-[0.22em] text-on-surface-variant">Original</p>
-                        <span className="rounded-full bg-surface-container px-3 py-1 text-xs font-semibold text-on-surface-variant">
-                          English
+                <div className="grid grid-cols-1 xl:grid-cols-[0.88fr_1.12fr]">
+                  <div className="border-b border-outline-variant/15 p-5 xl:border-b-0 xl:border-r">
+                    <div className="rounded-xl border border-dashed border-outline-variant/40 bg-surface-container-low p-5">
+                      <div className="flex items-center gap-3">
+                        <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                          <Icon name="description" className="text-2xl" />
                         </span>
-                      </div>
-                      <div className="space-y-3 font-mono text-sm leading-relaxed">
-                        {selectedSample.source.map((line, index) => (
-                          <div key={`${selectedSample.id}-source-${line}`} className="flex gap-3 rounded-xl bg-surface p-3">
-                            <span className="text-primary/60">{String(index + 1).padStart(2, '0')}</span>
-                            <span>{line}</span>
-                          </div>
-                        ))}
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-on-surface">cable-cardigan.pdf</p>
+                          <p className="text-xs text-on-surface-variant">12 pages · 842 KB</p>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="rounded-2xl bg-on-surface text-background p-5 shadow-ambient">
-                      <div className="flex items-center justify-between gap-3 mb-4">
-                        <p className="text-xs font-bold uppercase tracking-[0.22em] text-background/65">Translation</p>
-                        <span className="rounded-full bg-background/10 px-3 py-1 text-xs font-semibold text-background">
-                          {LANGUAGE_FLAGS[selectedLanguage.code]} {selectedLanguage.name}
-                        </span>
+                    <div className="mt-5 grid grid-cols-2 gap-3">
+                      <div className="rounded-xl bg-surface-container-low p-4">
+                        <p className="text-xs text-on-surface-variant">Source</p>
+                        <p className="mt-1 font-semibold text-on-surface">Auto-detect</p>
                       </div>
-                      <div className="space-y-3 font-mono text-sm leading-relaxed">
-                        {translatedLines.map((line, index) => (
-                          <div key={`${selectedSample.id}-${selectedLanguage.code}-${line}`} className="flex gap-3 rounded-xl bg-background/10 p-3">
-                            <span className="text-inverse-primary">{String(index + 1).padStart(2, '0')}</span>
-                            <span>{line}</span>
-                          </div>
-                        ))}
+                      <div className="rounded-xl bg-surface-container-low p-4">
+                        <p className="text-xs text-on-surface-variant">Translate to</p>
+                        <p className="mt-1 font-semibold text-on-surface">German</p>
+                      </div>
+                      <div className="rounded-xl bg-primary-fixed p-4">
+                        <p className="text-xs text-on-primary-fixed-variant">This translation</p>
+                        <p className="mt-1 font-bold text-on-primary-fixed">8.5 credits</p>
+                      </div>
+                      <div className="rounded-xl bg-surface-container-low p-4">
+                        <p className="text-xs text-on-surface-variant">Balance after</p>
+                        <p className="mt-1 font-semibold text-on-surface">16.5 credits</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 rounded-xl bg-surface-container-low p-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <p className="text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">Progress</p>
+                        <p className="text-xs font-semibold text-primary">Complete</p>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-surface-container-highest">
+                        <div className="h-full w-full rounded-full bg-primary" />
                       </div>
                     </div>
                   </div>
 
-                  <div className="mt-6 grid grid-cols-3 gap-3 text-center">
-                    {[
-                      { value: `${LANGUAGES.length}`, label: 'languages' },
-                      { value: `${selectedSample.source.length}`, label: 'pattern lines' },
-                      { value: '0', label: 'credits used' },
-                    ].map((stat) => (
-                      <div key={stat.label} className="rounded-2xl bg-surface-container-low/80 p-4">
-                        <p className="font-headline text-2xl font-bold text-primary">{stat.value}</p>
-                        <p className="text-xs uppercase tracking-widest text-on-surface-variant">{stat.label}</p>
+                  <div className="p-5">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div className="rounded-xl bg-surface-container-low p-4">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <p className="text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">Original</p>
+                          <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-on-surface-variant">English</span>
+                        </div>
+                        <div className="space-y-2 font-mono text-xs leading-relaxed text-on-surface">
+                          <p>Row 12: P2, C6F, k4, C6B, p2.</p>
+                          <p>Row 13: K2, p16, k2.</p>
+                          <p>Continue until piece measures 18 cm.</p>
+                        </div>
                       </div>
-                    ))}
+
+                      <div className="rounded-xl bg-on-surface p-4 text-background">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <p className="text-xs font-bold uppercase tracking-[0.2em] text-background/65">Translation</p>
+                          <span className="rounded-full bg-background/10 px-2.5 py-1 text-xs font-semibold text-background">German</span>
+                        </div>
+                        <div className="space-y-2 font-mono text-xs leading-relaxed">
+                          <p>R 12: 2 li, Z6V, 4 re, Z6H, 2 li.</p>
+                          <p>R 13: 2 re, 16 li, 2 re.</p>
+                          <p>Weiterstricken bis das Teil 18 cm misst.</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {[
+                        { icon: 'download', label: 'Export PDF / DOCX' },
+                        { icon: 'forum', label: 'Ask AI about this pattern' },
+                        { icon: 'history', label: 'Reopen from My Patterns' },
+                      ].map((action) => (
+                        <span
+                          key={action.label}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-xs font-semibold text-on-surface"
+                        >
+                          <Icon name={action.icon} className="text-base text-primary" />
+                          {action.label}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -735,8 +478,8 @@ export const LandingPage: React.FC = () => {
         <section className="px-6 sm:px-8 py-16 sm:py-24 bg-surface-container-high">
           <div className="max-w-5xl mx-auto">
             <div className="text-center mb-12 sm:mb-16">
-              <h2 className="text-3xl sm:text-4xl font-headline font-bold mb-4">Choose Your Pace</h2>
-              <p className="text-on-surface-variant">Buy credits — the more you buy, the less you pay per page. Credits never expire.</p>
+	              <h2 className="text-3xl sm:text-4xl font-headline font-bold mb-4">Choose Your Pace</h2>
+	              <p className="text-on-surface-variant">Buy credits when you need them. Larger packs lower your cost per credit, and credits never expire.</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {CREDIT_PACKAGES.map((pack, idx) => {
@@ -757,8 +500,8 @@ export const LandingPage: React.FC = () => {
                     <div>
                       <p className="text-3xl font-headline font-bold text-on-surface">{pack.credits}</p>
                       <p className="text-sm text-on-surface-variant mb-4">credits</p>
-                      <p className="text-2xl font-bold text-primary">${pack.price.toFixed(2)}</p>
-                      <p className="text-xs text-on-surface-variant mt-2">${perCredit.toFixed(2)} per credit</p>
+                      <p className="text-2xl font-bold text-primary">€{pack.price.toFixed(2)}</p>
+                      <p className="text-xs text-on-surface-variant mt-2">€{perCredit.toFixed(2)} per credit</p>
                     </div>
                     <button
                       type="button"
@@ -767,9 +510,9 @@ export const LandingPage: React.FC = () => {
                         isBest
                           ? 'bg-primary text-on-primary hover:opacity-90'
                           : 'border border-outline-variant/30 hover:bg-surface-container'
-                      }`}
+                        }`}
                     >
-                      {isBest ? 'Go Pro' : 'Get Started'}
+                      Buy {pack.credits} credits
                     </button>
                   </div>
                 );
@@ -778,66 +521,70 @@ export const LandingPage: React.FC = () => {
           </div>
         </section>
 
-        <section className="px-6 sm:px-8 py-16 sm:py-24 max-w-3xl mx-auto">
-          <h2 className="text-3xl sm:text-4xl font-headline font-bold mb-10 sm:mb-12 text-center">Questions &amp; Answers</h2>
-          <div className="space-y-4">
+        <section className="px-6 sm:px-8 py-16 sm:py-24 max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-[0.82fr_1.18fr] gap-10 lg:gap-14 items-start">
+            <div className="lg:sticky lg:top-28">
+              <p className="text-xs font-bold uppercase tracking-[0.28em] text-primary mb-4">Questions &amp; Answers</p>
+              <h2 className="text-3xl sm:text-5xl font-headline font-bold italic leading-tight mb-5">
+                Before you upload a pattern.
+              </h2>
+              <p className="text-on-surface-variant leading-relaxed">
+                Clear answers for the parts that matter: file support, credit use, privacy, accuracy, and what you can do with a finished translation.
+              </p>
+              <div className="mt-8 grid grid-cols-2 gap-3 text-sm">
+                {[
+                  { icon: 'lock', label: 'Private files' },
+                  { icon: 'receipt_long', label: 'Cost shown first' },
+                  { icon: 'file_present', label: 'PDF, DOCX, TXT, RTF' },
+                  { icon: 'download', label: 'Export ready' },
+                ].map(({ icon, label }) => (
+                  <div key={label} className="flex items-center gap-2 rounded-xl bg-surface-container-low px-3 py-3 font-semibold text-on-surface">
+                    <Icon name={icon} className="text-lg text-primary" />
+                    <span>{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-4">
             {[
               {
-                q: 'Will abbreviations like SSK or YO be correct?',
-                a: 'Yes. The system is trained specifically on knitting patterns.',
+                q: 'What kinds of pattern files can I upload?',
+                a: 'StitchSpeak accepts PDF, DOCX, TXT, and RTF files. The app extracts the pattern text, keeps the original file attached to your project, and saves the finished translation in My Patterns.',
               },
               {
-                q: 'Can I keep my original layout and logo?',
-                a: '100%. We only translate the text.',
+                q: 'Will I see the credit cost before translation starts?',
+                a: 'Yes. After you choose the target language, StitchSpeak shows an estimated credit cost and your balance before you confirm. If you do not have enough credits, the app tells you before spending anything.',
               },
               {
-                q: 'Is my pattern private?',
-                a: 'Absolutely. Your files are never shared or used for training.',
+                q: 'Will knitting abbreviations like SSK, YO, C6F, or BOR translate correctly?',
+                a: 'That is the point of the product. StitchSpeak is built for fiber-pattern language, so it treats abbreviations, row instructions, repeats, and glossary terms as craft instructions instead of generic prose.',
+              },
+              {
+                q: 'Does it preserve the original layout?',
+                a: 'For supported document formats, the app aims to preserve the structure and make the translated result easy to review and export. Very complex scans, charts, handwritten notes, or image-only PDFs may need manual checking.',
+              },
+              {
+                q: 'Can I ask questions about a translated pattern?',
+                a: 'Yes. Finished translations can be reopened from My Patterns, exported, or used with the AI chat so you can ask about abbreviations, confusing rows, sizing notes, or next steps.',
+              },
+              {
+                q: 'Are my pattern files private?',
+                a: 'Your files are processed to provide the translation and are not made public. They are not used to train StitchSpeak models, and you can review the privacy policy for the full data-handling details.',
               },
             ].map(({ q, a }) => (
-              <details key={q} className="group bg-surface-container-low rounded-xl">
-                <summary className="flex justify-between items-center p-6 cursor-pointer font-medium list-none">
-                  <span>{q}</span>
+              <details key={q} className="group rounded-xl border border-outline-variant/20 bg-surface-container-low shadow-sm">
+                <summary className="flex cursor-pointer items-start justify-between gap-4 p-6 font-bold list-none text-on-surface">
+                  <span className="pr-2">{q}</span>
                   <Icon name="expand_more" className="transition-transform group-open:rotate-180 shrink-0" />
                 </summary>
                 <div className="px-6 pb-6 pt-0 text-on-surface-variant leading-relaxed">{a}</div>
               </details>
             ))}
+            </div>
           </div>
         </section>
 
-        <section className="px-6 sm:px-8 py-16 sm:py-20">
-          <div className="max-w-7xl mx-auto bg-tertiary-container rounded-[2.5rem] p-8 sm:p-12 md:p-24 text-center text-on-tertiary-container relative overflow-hidden">
-            <div className="relative z-10">
-              <h2 className="text-3xl sm:text-4xl md:text-6xl font-headline font-bold italic mb-6">Woven with love, sent weekly.</h2>
-              <p className="text-lg opacity-90 mb-10 max-w-xl mx-auto">
-                Get curated patterns, yarn guides, and craft stories delivered to your inbox.
-              </p>
-              <form
-                className="flex flex-col md:flex-row gap-4 max-w-md mx-auto"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                }}
-              >
-                <input
-                  className="flex-1 px-6 py-4 rounded-xl bg-surface/20 border-none placeholder:text-on-tertiary-container/60 focus:ring-2 focus:ring-on-tertiary-container text-on-tertiary-container"
-                  placeholder="Enter your email"
-                  type="email"
-                  name="email"
-                  autoComplete="email"
-                />
-                <button
-                  type="submit"
-                  className="px-8 py-4 bg-on-tertiary-container text-tertiary-container font-bold rounded-xl hover:opacity-90 transition-all"
-                >
-                  Subscribe
-                </button>
-              </form>
-            </div>
-            <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-tertiary rounded-full opacity-20 blur-3xl pointer-events-none" aria-hidden />
-          </div>
-        </section>
-      </main>
+	      </main>
 
       {showCreditPurchaseModal && (
         <div
@@ -884,20 +631,24 @@ export const LandingPage: React.FC = () => {
           <div className="flex flex-col gap-2 text-center md:text-left">
             <div className="font-headline text-xl font-semibold text-on-surface dark:text-background">StitchSpeak</div>
             <p className="font-body text-sm tracking-wide text-on-surface-variant/60 dark:text-background/60">
-              © {new Date().getFullYear()} StitchSpeak. Crafted for the modern maker.
+              © {new Date().getFullYear()} StitchSpeak. Operated by Innovai Studio S.L.
             </p>
           </div>
-          <div className="flex flex-wrap justify-center gap-6 sm:gap-8">
-            {['Privacy Policy', 'Terms of Service', 'Accessibility', 'Support'].map((label) => (
-              <a
-                key={label}
-                href="#"
-                className="font-body text-sm tracking-wide text-on-surface-variant/60 hover:text-on-surface dark:hover:text-background transition-all"
-                onClick={(e) => e.preventDefault()}
-              >
-                {label}
-              </a>
-            ))}
+	          <div className="flex flex-wrap justify-center gap-6 sm:gap-8">
+	            {[
+	              { label: 'Privacy Policy', href: '/privacy.html' },
+	              { label: 'Terms of Service', href: '/terms.html' },
+	              { label: 'Accessibility', href: '/accessibility.html' },
+	              { label: 'Support', href: 'mailto:support@stitchspeak.com' },
+	            ].map(({ label, href }) => (
+	              <a
+	                key={label}
+	                href={href}
+	                className="font-body text-sm tracking-wide text-on-surface-variant/60 hover:text-on-surface dark:hover:text-background transition-all"
+	              >
+	                {label}
+	              </a>
+	            ))}
           </div>
         </div>
       </footer>
@@ -914,7 +665,7 @@ export const LandingPage: React.FC = () => {
         <div className="absolute bottom-full right-0 mb-4 bg-surface p-4 rounded-xl shadow-ambient opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap pointer-events-none">
           <p className="text-xs font-bold text-on-surface-variant uppercase tracking-tighter">Try it</p>
           <p className="font-headline font-bold text-on-surface">Translate a pattern</p>
-          <p className="text-sm text-on-surface-variant">Upload PDF — first page free</p>
+	          <p className="text-sm text-on-surface-variant">Upload PDF, DOCX, TXT, or RTF</p>
         </div>
       </div>
     </div>

@@ -23,10 +23,10 @@ db.exec(`
   )
 `);
 
-// Records Stripe events we've already applied so retried/duplicate webhook
+// Records payment events we've already applied so retried/duplicate webhook
 // deliveries can't credit an account more than once.
 db.exec(`
-  CREATE TABLE IF NOT EXISTS processed_stripe_events (
+  CREATE TABLE IF NOT EXISTS processed_payment_events (
     event_id   TEXT PRIMARY KEY,
     created_at INTEGER NOT NULL
   )
@@ -54,10 +54,10 @@ const stmts = {
     'SELECT balance FROM credits WHERE sub = ?',
   ),
   hasEvent: db.prepare<[string]>(
-    'SELECT 1 FROM processed_stripe_events WHERE event_id = ?',
+    'SELECT 1 FROM processed_payment_events WHERE event_id = ?',
   ),
   markEvent: db.prepare<[string, number]>(
-    'INSERT INTO processed_stripe_events (event_id, created_at) VALUES (?, ?)',
+    'INSERT INTO processed_payment_events (event_id, created_at) VALUES (?, ?)',
   ),
 } as const;
 
@@ -99,7 +99,7 @@ const grantTx = db.transaction(
 );
 
 /**
- * Idempotently credit an account in response to a verified Stripe event.
+ * Idempotently credit an account in response to a verified payment event.
  * Repeated deliveries of the same `eventId` are no-ops.
  */
 export function grantCreditsForEvent(
@@ -109,4 +109,11 @@ export function grantCreditsForEvent(
   email?: string,
 ): { applied: boolean; balance: number } {
   return grantTx(eventId, sub, amount, email);
+}
+
+export function creditStoreHealth(): { ok: boolean } {
+  db.prepare('SELECT 1').get();
+  return {
+    ok: fs.existsSync(DATA_DIR) && fs.existsSync(DB_PATH),
+  };
 }

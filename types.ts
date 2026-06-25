@@ -73,7 +73,7 @@ export interface TranslationRecord {
 }
 
 export interface CreditPackage {
-  /** Server pack id (e.g. "credits_10"); used to start Stripe checkout. */
+  /** Server pack id (e.g. "credits_10"); used to start checkout. */
   id: string;
   credits: number;
   price: number;

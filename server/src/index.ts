@@ -1,11 +1,18 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
+import crypto from 'node:crypto';
 import translateRouter from './routes/translate.js';
 import chatRouter from './routes/chat.js';
 import creditsRouter from './routes/credits.js';
 import glossaryRouter from './routes/glossary.js';
 import patternsRouter from './routes/patterns.js';
-import stripeWebhookRouter from './routes/stripeWebhook.js';
+import lemonSqueezyWebhookRouter from './routes/lemonSqueezyWebhook.js';
+import { creditStoreHealth } from './services/creditStore.js';
+import { patternStoreHealth } from './services/patternStore.js';
+import {
+  isLemonSqueezyConfigured,
+  isLemonSqueezyWebhookConfigured,
+} from './services/lemonSqueezy.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -78,14 +85,62 @@ app.use(
   }),
 );
 
-// The Stripe webhook must see the raw, unparsed body for signature verification,
+// The Lemon Squeezy webhook must see the raw, unparsed body for signature verification,
 // so mount it BEFORE express.json(). (The router applies its own raw parser.)
-app.use('/api/stripe/webhook', stripeWebhookRouter);
+app.use('/api/lemon-squeezy/webhook', lemonSqueezyWebhookRouter);
 
 app.use(express.json({ limit: '50mb' }));
 
+app.use((req, res, next) => {
+  const startedAt = Date.now();
+  const requestId =
+    typeof req.headers['x-request-id'] === 'string'
+      ? req.headers['x-request-id']
+      : crypto.randomUUID();
+  res.setHeader('X-Request-Id', requestId);
+
+  res.on('finish', () => {
+    const durationMs = Date.now() - startedAt;
+    const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
+    const message = `[request] id=${requestId} method=${req.method} path=${req.originalUrl} status=${res.statusCode} durationMs=${durationMs}`;
+    if (level === 'error') {
+      console.error(message);
+    } else if (level === 'warn') {
+      console.warn(message);
+    } else if (req.originalUrl !== '/health') {
+      console.log(message);
+    }
+  });
+
+  next();
+});
+
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
+});
+
+app.get('/health/deep', (_req, res) => {
+  try {
+    const checks = {
+      config: {
+        gemini: Boolean(process.env.GEMINI_API_KEY?.trim()),
+        googleOAuth: Boolean(process.env.GOOGLE_CLIENT_ID?.trim()),
+        lemonSqueezy: isLemonSqueezyConfigured(),
+        lemonSqueezyWebhook: isLemonSqueezyWebhookConfigured(),
+      },
+      credits: creditStoreHealth(),
+      patterns: patternStoreHealth(),
+    };
+    const ok =
+      checks.config.gemini &&
+      checks.config.googleOAuth &&
+      checks.credits.ok &&
+      checks.patterns.ok;
+    res.status(ok ? 200 : 503).json({ status: ok ? 'ok' : 'degraded', checks });
+  } catch (err) {
+    console.error('[health/deep] failed:', err);
+    res.status(503).json({ status: 'error' });
+  }
 });
 
 app.use('/api/translate', translateRouter);

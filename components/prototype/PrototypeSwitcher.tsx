@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
 
 export interface PrototypeVariantMeta {
   key: string;
@@ -22,7 +22,7 @@ export const PrototypeSwitcher: React.FC<PrototypeSwitcherProps> = ({
   current,
   paramKey = 'variant',
 }) => {
-  if (import.meta.env.PROD) return null;
+  const enabled = !import.meta.env.PROD;
 
   const currentIndex = Math.max(
     0,
@@ -30,16 +30,20 @@ export const PrototypeSwitcher: React.FC<PrototypeSwitcherProps> = ({
   );
   const currentMeta = variants[currentIndex] ?? variants[0];
 
-  const goTo = (index: number) => {
-    const next = variants[(index + variants.length) % variants.length];
-    const params = new URLSearchParams(window.location.search);
-    params.set(paramKey, next.key);
-    const nextUrl = `${window.location.pathname}?${params.toString()}`;
-    window.history.replaceState(null, '', nextUrl);
-    window.dispatchEvent(new PopStateEvent('popstate'));
-  };
+  const goTo = useCallback(
+    (index: number) => {
+      const next = variants[(index + variants.length) % variants.length];
+      const params = new URLSearchParams(window.location.search);
+      params.set(paramKey, next.key);
+      const nextUrl = `${window.location.pathname}?${params.toString()}`;
+      window.history.replaceState(null, '', nextUrl);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    },
+    [paramKey, variants],
+  );
 
   useEffect(() => {
+    if (!enabled) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (isEditableTarget(event.target)) return;
       if (event.key === 'ArrowLeft') {
@@ -54,7 +58,9 @@ export const PrototypeSwitcher: React.FC<PrototypeSwitcherProps> = ({
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [currentIndex, variants]);
+  }, [currentIndex, enabled, goTo]);
+
+  if (!enabled) return null;
 
   return (
     <div

@@ -564,7 +564,7 @@ export const DashboardPage: React.FC = () => {
 
   const handleCreditPurchase = useCallback(
     async (pack: CreditPackage) => {
-      // Redirects to Stripe Checkout. Credits are granted by the server webhook
+      // Redirects to hosted checkout. Credits are granted by the server webhook
       // after payment; on return the user can re-initiate their translation.
       await startCheckout(pack.id);
     },
@@ -1038,6 +1038,7 @@ export const DashboardPage: React.FC = () => {
         analyzeError={modalAnalyzeError}
         pdfMetrics={modalPdfMetrics}
         priceEstimate={modalPriceEstimate}
+        creditBalance={balance}
         sourceLanguage={modalSourceLanguage}
         targetLanguage={modalTargetLanguage}
         onSourceChange={setModalSourceLanguage}

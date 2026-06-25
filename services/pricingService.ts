@@ -69,5 +69,5 @@ export function estimateChatCost(messageCount: number): number {
 }
 
 export function formatPrice(amount: number): string {
-  return `$${amount.toFixed(2)}`;
+  return `€${amount.toFixed(2)}`;
 }

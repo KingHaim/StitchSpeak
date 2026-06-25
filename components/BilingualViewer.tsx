@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useRef } from 'react';
 import { stripCodeFences } from '../services/alignment';
+import { sanitizePatternHtml } from '../services/sanitizePatternHtml';
 
 interface BilingualViewerProps {
   /** Translated HTML annotated with data-seg / data-o alignment attributes. */
@@ -62,7 +63,7 @@ export const BilingualViewer: React.FC<BilingualViewerProps> = ({
   const activeSegRef = useRef<string | null>(null);
 
   const { originalHtml, translatedHtml } = useMemo(
-    () => splitBilingual(stripCodeFences(html)),
+    () => splitBilingual(sanitizePatternHtml(stripCodeFences(html))),
     [html],
   );
 

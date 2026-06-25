@@ -13,6 +13,7 @@ interface TranslationLanguageModalProps {
   analyzeError: string | null;
   pdfMetrics: PdfMetrics | null;
   priceEstimate: PriceEstimate | null;
+  creditBalance?: number;
   sourceLanguage: Language;
   targetLanguage: Language;
   onSourceChange: (lang: Language) => void;
@@ -32,6 +33,7 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
   analyzeError,
   pdfMetrics,
   priceEstimate,
+  creditBalance,
   sourceLanguage,
   targetLanguage,
   onSourceChange,
@@ -155,7 +157,7 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
 
           {pdfMetrics && priceEstimate && !isAnalyzing && (
             <div className="border-t border-outline-variant/20 pt-6">
-              <PricePreview metrics={pdfMetrics} estimate={priceEstimate} />
+              <PricePreview metrics={pdfMetrics} estimate={priceEstimate} creditBalance={creditBalance} />
               {isBatch && (
                 <p className="text-xs text-on-surface-variant -mt-6 mb-8 px-1">
                   Total shown for {fileCount} patterns. Each pattern will be translated and saved separately.

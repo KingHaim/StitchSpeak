@@ -12,15 +12,15 @@ export default defineConfig(({ mode }) => {
       outDir: 'dist',
     },
     // `vite preview` serves the production build, so it's the right place to
-    // exercise the report-only CSP locally (dev uses inline/eval HMR scripts
-    // that would generate misleading violations). Mirrors vercel.json.
+    // exercise the enforced CSP locally (dev uses inline/eval HMR scripts that
+    // would generate misleading violations). Mirrors vercel.json.
     preview: {
       headers: {
         'X-Content-Type-Options': 'nosniff',
         'X-Frame-Options': 'DENY',
         'Referrer-Policy': 'no-referrer',
-        'Content-Security-Policy-Report-Only':
-          "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://*.googleusercontent.com https://*.gstatic.com; connect-src 'self' https://accounts.google.com https://stitchspeak-production.up.railway.app; frame-src https://accounts.google.com; worker-src 'self' blob:",
+        'Content-Security-Policy':
+          "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://*.gstatic.com; connect-src 'self' https://accounts.google.com https://*.up.railway.app https://stitchspeak.com https://www.stitchspeak.com; frame-src https://accounts.google.com; worker-src 'self' blob:",
       },
     },
     server: {

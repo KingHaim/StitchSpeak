@@ -1,12 +1,25 @@
 
-import React, { useState } from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { DashboardLayout } from './components/DashboardLayout';
-import { DashboardPage } from './components/pages/DashboardPage';
-import { GlossaryPage } from './components/pages/GlossaryPage';
-import { HistoryPage } from './components/pages/HistoryPage';
 import { LandingPage } from './components/pages/LandingPage';
 import type { PageId } from './types';
+
+const DashboardPage = lazy(() =>
+  import('./components/pages/DashboardPage').then((module) => ({
+    default: module.DashboardPage,
+  })),
+);
+const GlossaryPage = lazy(() =>
+  import('./components/pages/GlossaryPage').then((module) => ({
+    default: module.GlossaryPage,
+  })),
+);
+const HistoryPage = lazy(() =>
+  import('./components/pages/HistoryPage').then((module) => ({
+    default: module.HistoryPage,
+  })),
+);
 
 const App: React.FC = () => {
   const { isAuthenticated } = useAuth();
@@ -29,7 +42,15 @@ const App: React.FC = () => {
 
   return (
     <DashboardLayout activePage={currentPage} onNavigate={setCurrentPage}>
-      {renderPage()}
+      <Suspense
+        fallback={
+          <div className="flex min-h-[50vh] items-center justify-center text-sm text-on-surface-variant">
+            Loading...
+          </div>
+        }
+      >
+        {renderPage()}
+      </Suspense>
     </DashboardLayout>
   );
 };

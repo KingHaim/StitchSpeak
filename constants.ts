@@ -25,7 +25,7 @@ export const SOURCE_LANGUAGES: Language[] = [
 ];
 
 // Display catalogue mirroring the server's source of truth (server/src/services/pricing.ts).
-// `id` must match the server pack ids so Stripe checkout charges the right amount.
+// `id` must match the server pack ids so checkout charges the right amount.
 export const CREDIT_PACKAGES: CreditPackage[] = [
   { id: 'credits_5', credits: 5, price: 5.00, label: '5 credits' },
   { id: 'credits_10', credits: 10, price: 8.50, label: '10 credits' },

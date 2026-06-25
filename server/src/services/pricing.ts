@@ -3,7 +3,7 @@ import mammoth from 'mammoth';
 import { detectSourceKind } from './documentExtract.js';
 
 /**
- * Server-side source of truth for pricing. Credits are denominated 1:1 in USD.
+ * Server-side source of truth for pricing. Credits are denominated 1:1 in EUR.
  * The client may show estimates, but every charge is computed and deducted
  * here so the amount can't be tampered with.
  */
@@ -31,7 +31,7 @@ export const PRICING = {
 export interface CreditPack {
   id: string;
   credits: number;
-  /** Price in USD. */
+  /** Price in EUR. */
   price: number;
   label: string;
 }
@@ -120,7 +120,7 @@ export async function computeDocumentMetrics(
   }
 }
 
-/** Translation cost in credits (USD), computed from server-side metrics. */
+/** Translation cost in credits (EUR), computed from server-side metrics. */
 export function translationCostFromMetrics(metrics: DocumentMetrics): number {
   const { inputCostPer1MTokens, outputCostPer1MTokens, fixedMargin } = PRICING.translation;
   const inputCost = (metrics.estimatedInputTokens / 1_000_000) * inputCostPer1MTokens;

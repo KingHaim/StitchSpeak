@@ -8,7 +8,7 @@ import { useModalA11y } from '../hooks/useModalA11y';
 interface BuyCreditsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  /** Starts Stripe Checkout for the chosen pack (redirects the browser). */
+  /** Starts hosted checkout for the chosen pack (redirects the browser). */
   onPurchase: (pack: CreditPackage) => void | Promise<void>;
   /** When set (e.g. after landing pricing → sign-in), pre-select this package in the grid. */
   initialSelectedIndex?: number;
@@ -52,7 +52,7 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({
     setIsProcessing(true);
     try {
       await onPurchase(selectedPack);
-      // On success the browser is redirected to Stripe, so we leave the
+      // On success the browser is redirected to checkout, so we leave the
       // spinner running. If we get here without navigating, reset it.
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not start checkout.';
@@ -101,8 +101,8 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({
                   <p className="text-2xl font-bold text-brand-800">{pack.credits}</p>
                   <p className="text-xs text-brand-500 font-medium">credits</p>
                   <div className="mt-2 pt-2 border-t border-slate-100">
-                    <p className="text-lg font-bold text-slate-800">${pack.price.toFixed(2)}</p>
-                    <p className="text-[10px] text-slate-400">${perCredit.toFixed(2)} / credit</p>
+                    <p className="text-lg font-bold text-slate-800">€{pack.price.toFixed(2)}</p>
+                    <p className="text-[10px] text-slate-400">€{perCredit.toFixed(2)} / credit</p>
                   </div>
                 </button>
               );
@@ -111,7 +111,7 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({
 
           <div className="mb-6 text-center">
             <p className="text-slate-500 mb-1">Total Amount</p>
-            <p className="text-4xl font-bold text-slate-800">${selectedPack.price.toFixed(2)}</p>
+            <p className="text-4xl font-bold text-slate-800">€{selectedPack.price.toFixed(2)}</p>
             <p className="text-xs text-brand-600 mt-2 font-medium px-3 py-1 bg-brand-50 inline-block rounded-full">
               {selectedPack.credits} credits
             </p>
@@ -137,7 +137,7 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({
                 Redirecting…
               </span>
             ) : (
-              `Continue to checkout — $${selectedPack.price.toFixed(2)}`
+              `Continue to checkout — €${selectedPack.price.toFixed(2)}`
             )}
           </button>
         </form>
@@ -145,7 +145,7 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({
         <div className="bg-slate-50 px-4 sm:px-6 py-3 border-t border-slate-100 text-center">
           <p className="text-xs text-slate-400 flex items-center justify-center gap-1">
             <LockIcon className="w-3 h-3" />
-            Secure payment powered by Stripe
+            Secure payment powered by Lemon Squeezy
           </p>
         </div>
       </div>

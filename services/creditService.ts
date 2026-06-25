@@ -59,9 +59,9 @@ export async function getPackages(idToken: string): Promise<CreditPackagesRespon
 }
 
 /**
- * Start a Stripe Checkout session for a credit pack and return the hosted
- * checkout URL. Credits are only granted by the server's webhook once Stripe
- * confirms payment — the client can no longer mutate its own balance.
+ * Start a Lemon Squeezy checkout for a credit pack and return the hosted
+ * checkout URL. Credits are only granted by the server's webhook once Lemon
+ * Squeezy confirms payment — the client can no longer mutate its own balance.
  */
 export async function createCheckoutSession(idToken: string, packId: string): Promise<string> {
   const data = await apiFetch('/checkout', idToken, 'POST', { packId });

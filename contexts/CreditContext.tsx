@@ -11,7 +11,7 @@ type CreditContextValue = {
   /** Set the balance directly from a server response (e.g. after a translation). */
   applyBalance: (balance: number) => void;
   refreshBalance: () => Promise<void>;
-  /** Redirect to Stripe Checkout for a credit pack. */
+  /** Redirect to hosted checkout for a credit pack. */
   startCheckout: (packId: string) => Promise<void>;
 };
 

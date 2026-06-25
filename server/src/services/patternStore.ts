@@ -582,3 +582,13 @@ export function bumpChatAllowance(
   const row = stmts.getChatAllowance.get(sub, id) as { chat_extra_allowance: number };
   return { extraAllowance: row.chat_extra_allowance };
 }
+
+export function patternStoreHealth(): { ok: boolean } {
+  db.prepare('SELECT 1').get();
+  return {
+    ok:
+      fs.existsSync(DATA_DIR) &&
+      fs.existsSync(DB_PATH) &&
+      fs.existsSync(SOURCES_DIR),
+  };
+}

@@ -73,6 +73,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
   const [languageFilter, setLanguageFilter] = useState<'all' | string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [activeDownloadMenuId, setActiveDownloadMenuId] = useState<string | null>(null);
+  const [activeMoreMenuId, setActiveMoreMenuId] = useState<string | null>(null);
   const [downloadingRecordId, setDownloadingRecordId] = useState<string | null>(null);
   const [addingTranslationId, setAddingTranslationId] = useState<string | null>(null);
   const [openingInStudioId, setOpeningInStudioId] = useState<string | null>(null);
@@ -85,6 +86,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
   const [selectedByFile, setSelectedByFile] = useState<Record<string, string>>({});
 
   const downloadMenuRef = useRef<HTMLDivElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
     setIsLoadingRecords(true);
@@ -141,6 +143,24 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
       document.removeEventListener('keydown', handleKey);
     };
   }, [activeDownloadMenuId]);
+
+  useEffect(() => {
+    if (!activeMoreMenuId) return;
+    const handleClick = (event: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setActiveMoreMenuId(null);
+      }
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setActiveMoreMenuId(null);
+    };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [activeMoreMenuId]);
 
   const availableLanguages = useMemo(() => {
     return Array.from(new Set(records.map(record => record.targetLanguage))).sort();
@@ -741,7 +761,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
                       <p className="text-on-surface-variant text-sm mb-3 leading-relaxed">
                         {langLine(record)}
                         {record.pdfMetrics ? ` · ${record.pdfMetrics.pages} page${record.pdfMetrics.pages !== 1 ? 's' : ''}` : ''}
-                        {record.cost > 0 ? ` · $${record.cost.toFixed(2)}` : ''}
+                        {record.cost > 0 ? ` · €${record.cost.toFixed(2)}` : ''}
                       </p>
                       <div className="flex flex-wrap items-center gap-1.5 mb-4">
                         {group.records.map((r) => {
@@ -762,29 +782,6 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
                             </button>
                           );
                         })}
-                        <button
-                          type="button"
-                          onClick={() => void handleAddTranslation(record)}
-                          disabled={addingTranslationId === record.id}
-                          className="px-2.5 py-1 rounded-full text-[11px] uppercase font-semibold tracking-widest border border-dashed border-primary/50 text-primary hover:bg-primary/10 transition-colors inline-flex items-center gap-1 disabled:opacity-60"
-                          title="Translate this pattern into another language"
-                        >
-                          {addingTranslationId === record.id ? (
-                            <svg
-                              className="animate-spin h-3 w-3"
-                              xmlns="http://www.w3.org/2000/svg"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              aria-hidden
-                            >
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                            </svg>
-                          ) : (
-                            <Icon name="add" className="text-sm" />
-                          )}
-                          Add
-                        </button>
                       </div>
                       <p className="text-on-surface-variant/90 text-xs mb-6">{formatDate(record.timestamp)}</p>
                       <div className="mt-auto pt-6 border-t border-outline-variant/10 flex flex-wrap items-center gap-2 sm:justify-between">
@@ -792,15 +789,18 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
                           <button
                             type="button"
                             onClick={() => handleOpenFullView(record)}
-                            className="text-primary font-bold text-sm flex items-center gap-1 group/btn hover:underline"
+                            className="bg-primary text-on-primary px-4 py-2 rounded-lg font-bold text-sm inline-flex items-center gap-1.5 hover:opacity-95 transition-all"
                           >
                             View pattern
-                            <Icon name="arrow_forward" className="text-lg group-hover/btn:translate-x-1 transition-transform" />
+                            <Icon name="arrow_forward" className="text-lg" />
                           </button>
                           <div ref={activeDownloadMenuId === record.id ? downloadMenuRef : undefined} className="relative">
                             <button
                               type="button"
-                              onClick={() => setActiveDownloadMenuId((current) => (current === record.id ? null : record.id))}
+                              onClick={() => {
+                                setActiveMoreMenuId(null);
+                                setActiveDownloadMenuId((current) => (current === record.id ? null : record.id));
+                              }}
                               disabled={downloadingRecordId === record.id}
                               aria-haspopup="menu"
                               aria-expanded={activeDownloadMenuId === record.id}
@@ -831,49 +831,93 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
                               </div>
                             )}
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => handleToggleExpand(record.id)}
-                            className="px-3 py-1.5 rounded-lg text-sm font-semibold border border-outline-variant/30 hover:bg-surface-container-high transition-colors"
-                          >
-                            {expandedId === record.id ? 'Hide preview' : 'Preview'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleOpenInStudio(record)}
-                            disabled={openingInStudioId === record.id}
-                            className="px-3 py-1.5 rounded-lg text-sm font-semibold border border-outline-variant/30 hover:bg-surface-container-high transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
-                            title="Reopen this translation in the studio to continue chatting with the AI"
-                          >
-                            {openingInStudioId === record.id ? (
-                              <>
-                                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden>
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                </svg>
-                                Opening…
-                              </>
-                            ) : (
-                              <>
-                                <Icon name="forum" className="text-base" />
-                                Continue chat
-                              </>
+                          <div ref={activeMoreMenuId === record.id ? moreMenuRef : undefined} className="relative">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveDownloadMenuId(null);
+                                setActiveMoreMenuId((current) => (current === record.id ? null : record.id));
+                              }}
+                              className="px-3 py-1.5 rounded-lg text-sm font-semibold border border-outline-variant/30 hover:bg-surface-container-high transition-colors inline-flex items-center gap-1.5"
+                              aria-haspopup="menu"
+                              aria-expanded={activeMoreMenuId === record.id}
+                            >
+                              More
+                              <Icon name="more_horiz" className="text-base" />
+                            </button>
+                            {activeMoreMenuId === record.id && (
+                              <div
+                                role="menu"
+                                className="absolute left-0 bottom-full mb-2 w-52 bg-surface-container-lowest border border-outline-variant/20 rounded-xl shadow-xl overflow-hidden py-1 z-20 animate-in fade-in zoom-in duration-100 origin-bottom-left"
+                              >
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setActiveMoreMenuId(null);
+                                    void handleToggleExpand(record.id);
+                                  }}
+                                  className="w-full text-left px-3 py-2.5 hover:bg-surface-container-high transition-colors flex items-center gap-2 text-sm text-on-surface"
+                                >
+                                  <Icon name="visibility" className="text-lg text-primary" />
+                                  {expandedId === record.id ? 'Hide preview' : 'Preview'}
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setActiveMoreMenuId(null);
+                                    void handleOpenInStudio(record);
+                                  }}
+                                  disabled={openingInStudioId === record.id}
+                                  className="w-full text-left px-3 py-2.5 hover:bg-surface-container-high transition-colors flex items-center gap-2 text-sm text-on-surface disabled:opacity-60"
+                                >
+                                  {openingInStudioId === record.id ? (
+                                    <svg className="animate-spin h-4 w-4 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden>
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    </svg>
+                                  ) : (
+                                    <Icon name="forum" className="text-lg text-primary" />
+                                  )}
+                                  {openingInStudioId === record.id ? 'Opening…' : 'Continue chat'}
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setActiveMoreMenuId(null);
+                                    void handleAddTranslation(record);
+                                  }}
+                                  disabled={addingTranslationId === record.id}
+                                  className="w-full text-left px-3 py-2.5 hover:bg-surface-container-high transition-colors flex items-center gap-2 text-sm text-on-surface disabled:opacity-60"
+                                >
+                                  {addingTranslationId === record.id ? (
+                                    <svg className="animate-spin h-4 w-4 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden>
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    </svg>
+                                  ) : (
+                                    <Icon name="add" className="text-lg text-primary" />
+                                  )}
+                                  Add language
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setActiveMoreMenuId(null);
+                                    handleDelete(record.id);
+                                  }}
+                                  className="w-full text-left px-3 py-2.5 hover:bg-error-container/40 transition-colors flex items-center gap-2 text-sm text-error"
+                                >
+                                  <Icon name="delete" className="text-lg" />
+                                  {isMultiTranslation ? `Delete ${record.targetLanguage}` : 'Delete pattern'}
+                                </button>
+                              </div>
                             )}
-                          </button>
+                          </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(record.id)}
-                          className="p-2 rounded-full text-error hover:bg-error-container/30 transition-colors ml-auto"
-                          aria-label={`Delete ${record.targetLanguage} translation`}
-                          title={
-                            isMultiTranslation
-                              ? `Delete the ${record.targetLanguage} translation`
-                              : 'Delete this pattern'
-                          }
-                        >
-                          <Icon name="delete" />
-                        </button>
                       </div>
                     </div>
                   </div>
