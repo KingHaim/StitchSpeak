@@ -1,10 +1,12 @@
 import { Router, type Request, type Response } from 'express';
 import { requireAuth } from '../middleware/auth.js';
+import { rateLimit } from '../middleware/rateLimit.js';
 import { glossaryLookup } from '../services/gemini.js';
 
 const router = Router();
 
 router.use(requireAuth);
+router.use(rateLimit({ windowMs: 60_000, max: 60, name: 'glossary' }));
 
 router.post('/lookup', async (req: Request, res: Response) => {
   try {

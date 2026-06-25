@@ -1,7 +1,6 @@
 import mammoth from 'mammoth';
 import sharp from 'sharp';
 // @iarna/rtf-to-html ships no type declarations; it exposes { fromString, fromStream }.
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-expect-error - no bundled types
 import rtfToHTML from '@iarna/rtf-to-html';
 

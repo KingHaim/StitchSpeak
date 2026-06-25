@@ -1,4 +1,4 @@
-import { GoogleGenAI, type Chat } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, type Chat } from '@google/genai';
 import crypto from 'node:crypto';
 import { extractImages, buildImageCatalog, replaceImageMarkers } from './pdfImages.js';
 import { extractTypographyHints, buildTypographyCatalog } from './pdfTypography.js';
@@ -78,6 +78,16 @@ async function withRetry<T>(fn: () => T | Promise<T>): Promise<T> {
 // Centralized model id so the translation pipeline (PDF + document paths) stays
 // in sync when Gemini model names change.
 const TRANSLATION_MODEL = 'gemini-3.1-pro-preview';
+
+// gemini-3.1-pro-preview is a "thinking" model. Left at its default thinking
+// level it can spend 30-80s "reasoning" before emitting a single token, and the
+// total generation for a real pattern easily exceeds the edge/proxy response
+// timeout (Cloudflare/Railway), which kills the NDJSON stream mid-flight and
+// surfaces to the user as "The connection to the server was interrupted while
+// streaming the translation". Translation is a deterministic transformation, not
+// a reasoning task, so LOW thinking gives equivalent fidelity at roughly half the
+// latency and reliably lands inside the timeout window.
+const TRANSLATION_THINKING_CONFIG = { thinkingLevel: ThinkingLevel.LOW } as const;
 
 function getLanguageSpecificRules(language: string): string {
   if (language.toLowerCase() === 'spanish') {
@@ -241,6 +251,7 @@ async function translatePdf(
       config: {
         systemInstruction,
         temperature: 0.1,
+        thinkingConfig: TRANSLATION_THINKING_CONFIG,
       },
       contents: [
         {
@@ -386,6 +397,7 @@ async function translateDocumentHtml(
       config: {
         systemInstruction,
         temperature: 0.1,
+        thinkingConfig: TRANSLATION_THINKING_CONFIG,
       },
       contents: [
         {
@@ -461,6 +473,7 @@ export async function translatePattern(
 interface ChatSession {
   chat: Chat;
   createdAt: number;
+  ownerSub: string;
 }
 
 const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -483,6 +496,7 @@ export interface PriorChatMessage {
 export async function createChatSession(
   patternHtml: string,
   priorMessages: PriorChatMessage[] = [],
+  ownerSub: string,
 ): Promise<string> {
   const sessionId = crypto.randomUUID();
 
@@ -522,16 +536,19 @@ export async function createChatSession(
     }),
   );
 
-  chatSessions.set(sessionId, { chat, createdAt: Date.now() });
+  chatSessions.set(sessionId, { chat, createdAt: Date.now(), ownerSub });
   return sessionId;
 }
 
 export async function sendChatMessage(
   sessionId: string,
   message: string,
+  requesterSub: string,
 ): Promise<string> {
   const session = chatSessions.get(sessionId);
-  if (!session) {
+  // Treat a session owned by someone else as "not found" so a leaked sessionId
+  // can't be used to read into another user's pattern-seeded chat.
+  if (!session || session.ownerSub !== requesterSub) {
     throw new Error('Chat session not found or expired.');
   }
 

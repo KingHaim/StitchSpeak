@@ -23,6 +23,15 @@ db.exec(`
   )
 `);
 
+// Records payment events we've already applied so retried/duplicate webhook
+// deliveries can't credit an account more than once.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS processed_payment_events (
+    event_id   TEXT PRIMARY KEY,
+    created_at INTEGER NOT NULL
+  )
+`);
+
 const stmts = {
   getBalance: db.prepare<[string]>(
     'SELECT balance FROM credits WHERE sub = ?',
@@ -43,6 +52,12 @@ const stmts = {
   `),
   getBalanceAfter: db.prepare<[string]>(
     'SELECT balance FROM credits WHERE sub = ?',
+  ),
+  hasEvent: db.prepare<[string]>(
+    'SELECT 1 FROM processed_payment_events WHERE event_id = ?',
+  ),
+  markEvent: db.prepare<[string, number]>(
+    'INSERT INTO processed_payment_events (event_id, created_at) VALUES (?, ?)',
   ),
 } as const;
 
@@ -70,4 +85,35 @@ const deductTx = db.transaction((sub: string, amount: number): { ok: boolean; ba
 
 export function deductCredits(sub: string, amount: number): { ok: boolean; balance: number } {
   return deductTx(sub, amount);
+}
+
+const grantTx = db.transaction(
+  (eventId: string, sub: string, amount: number, email: string | undefined): { applied: boolean; balance: number } => {
+    if (stmts.hasEvent.get(eventId)) {
+      return { applied: false, balance: round(getBalance(sub)) };
+    }
+    stmts.markEvent.run(eventId, Date.now());
+    stmts.upsertAdd.run(sub, round(amount), Date.now(), email ?? null);
+    return { applied: true, balance: round(getBalance(sub)) };
+  },
+);
+
+/**
+ * Idempotently credit an account in response to a verified payment event.
+ * Repeated deliveries of the same `eventId` are no-ops.
+ */
+export function grantCreditsForEvent(
+  eventId: string,
+  sub: string,
+  amount: number,
+  email?: string,
+): { applied: boolean; balance: number } {
+  return grantTx(eventId, sub, amount, email);
+}
+
+export function creditStoreHealth(): { ok: boolean } {
+  db.prepare('SELECT 1').get();
+  return {
+    ok: fs.existsSync(DATA_DIR) && fs.existsSync(DB_PATH),
+  };
 }

@@ -4,6 +4,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import type { AuthenticatedUser } from '../auth/types';
@@ -17,7 +18,16 @@ import {
   writeStoredIdToken,
   clearStoredIdToken,
 } from '../auth/sessionStorage';
+import { getGoogleOAuthClientId } from '../auth/googleConfig';
 import { migrateGuestHistoryToServerIfRemoteEmpty } from '../services/historyService';
+
+// Begin silently renewing the Google ID token this long before it expires.
+const RENEW_BEFORE_MS = 5 * 60 * 1000;
+// After the token has fully expired, keep trying to silently renew for this
+// long before giving up and signing the user out.
+const EXPIRED_GRACE_MS = 60 * 1000;
+// Don't call google.accounts.id.prompt() more often than this.
+const PROMPT_THROTTLE_MS = 60 * 1000;
 
 type AuthContextValue = {
   user: AuthenticatedUser | null;
@@ -35,7 +45,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
   const [idToken, setIdToken] = useState<string | null>(null);
 
+  const lastPromptRef = useRef(0);
+  const expiredSinceRef = useRef<number | null>(null);
+  const gisInitedRef = useRef(false);
+
   const signOut = useCallback(() => {
+    // Explicit sign-out is the only thing that ends a session, so make sure
+    // GIS won't immediately auto-select the user back in.
+    try {
+      window.google?.accounts?.id?.disableAutoSelect?.();
+    } catch {
+      /* ignore */
+    }
     clearStoredIdToken();
     setUser(null);
     setIdToken(null);
@@ -55,47 +76,102 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     [signOut],
   );
 
+  // Lazily initialize Google Identity Services for silent renewal. The GIS
+  // script is loaded by @react-oauth/google's GoogleOAuthProvider, so it may
+  // not be ready on first paint — callers retry on the next interval tick.
+  const initGis = useCallback((): boolean => {
+    if (gisInitedRef.current) return true;
+    const clientId = getGoogleOAuthClientId();
+    const gid = window.google?.accounts?.id;
+    if (!gid || !clientId) return false;
+    try {
+      gid.initialize({
+        client_id: clientId,
+        auto_select: true,
+        cancel_on_tap_outside: false,
+        callback: (resp) => {
+          if (resp.credential) signInWithGoogleCredential(resp.credential);
+        },
+      });
+      gisInitedRef.current = true;
+      return true;
+    } catch {
+      return false;
+    }
+  }, [signInWithGoogleCredential]);
+
   useEffect(() => {
     const stored = readStoredIdToken();
     if (!stored) return;
     try {
       const payload = decodeGoogleIdToken(stored);
-      if (isPayloadExpired(payload)) {
-        clearStoredIdToken();
-        return;
+      // Even if the stored token has expired, keep the user signed in and let
+      // the renewal watchdog try to silently refresh it. It only signs the
+      // user out if renewal fails within the grace window.
+      if (!isPayloadExpired(payload)) {
+        setUser(payloadToUser(payload));
       }
       setIdToken(stored);
-      setUser(payloadToUser(payload));
     } catch {
       clearStoredIdToken();
     }
   }, []);
 
-  // Watchdog: Google ID tokens are valid for ~1 hour. Once expired, every API
-  // request silently 401s, which previously made buttons look like they did
-  // nothing. Periodically re-check expiration and sign the user out so the UI
-  // can offer a fresh sign-in instead of stalling.
+  // Renewal watchdog: Google ID tokens are only valid for ~1 hour. To keep the
+  // user signed in until they explicitly sign out, we silently renew the token
+  // shortly before it expires (and keep trying for a grace window after it has
+  // expired). The user is only signed out if renewal genuinely fails.
   useEffect(() => {
     if (!idToken) return;
-    const checkExpiry = () => {
+
+    const tryRenew = () => {
+      const now = Date.now();
+      if (now - lastPromptRef.current < PROMPT_THROTTLE_MS) return;
+      if (!initGis()) return;
+      lastPromptRef.current = now;
       try {
-        const payload = decodeGoogleIdToken(idToken);
-        if (isPayloadExpired(payload)) signOut();
+        window.google?.accounts?.id?.prompt?.();
       } catch {
-        signOut();
+        /* ignore — handled by the grace-window fallback */
       }
     };
-    checkExpiry();
-    const interval = window.setInterval(checkExpiry, 30_000);
+
+    const check = () => {
+      let expMs: number | null = null;
+      try {
+        const payload = decodeGoogleIdToken(idToken);
+        expMs = payload.exp != null ? payload.exp * 1000 : null;
+      } catch {
+        signOut();
+        return;
+      }
+
+      // No expiry claim: nothing to renew.
+      if (expMs == null) return;
+
+      const now = Date.now();
+      if (now >= expMs) {
+        // Expired: attempt silent renewal, but give up after the grace window.
+        if (expiredSinceRef.current == null) expiredSinceRef.current = now;
+        tryRenew();
+        if (now - expiredSinceRef.current > EXPIRED_GRACE_MS) signOut();
+      } else {
+        expiredSinceRef.current = null;
+        if (expMs - now <= RENEW_BEFORE_MS) tryRenew();
+      }
+    };
+
+    check();
+    const interval = window.setInterval(check, 30_000);
     const onVisibility = () => {
-      if (document.visibilityState === 'visible') checkExpiry();
+      if (document.visibilityState === 'visible') check();
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [idToken, signOut]);
+  }, [idToken, signOut, initGis]);
 
   useEffect(() => {
     if (!idToken) return;

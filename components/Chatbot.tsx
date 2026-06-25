@@ -15,6 +15,13 @@ interface ChatbotProps {
   onUnlockChat: () => void;
 }
 
+const starterPrompts = [
+  'Explain the abbreviations',
+  'Summarize the repeat rows',
+  'Find the gauge and sizing',
+  'Convert needle or hook sizes',
+];
+
 export const Chatbot: React.FC<ChatbotProps> = ({ history, onSendMessage, isLoading, error, messageCount, maxMessages, onUnlockChat }) => {
   const [input, setInput] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -33,6 +40,10 @@ export const Chatbot: React.FC<ChatbotProps> = ({ history, onSendMessage, isLoad
     }
   };
 
+  const sendStarterPrompt = (prompt: string) => {
+    if (!isLoading && !isLocked) onSendMessage(prompt);
+  };
+
   return (
     <div className="bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-brand-200">
       <div className="flex items-center justify-between mb-4">
@@ -43,6 +54,24 @@ export const Chatbot: React.FC<ChatbotProps> = ({ history, onSendMessage, isLoad
       </div>
       <div className="h-80 bg-brand-50 rounded-lg p-4 flex flex-col border border-brand-200">
         <div className="flex-grow overflow-y-auto mb-4 space-y-4" role="log" aria-live="polite">
+          {history.length === 0 && (
+            <div className="rounded-xl border border-brand-200 bg-white/70 p-4">
+              <p className="text-sm font-semibold text-brand-800">Useful questions to start with</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {starterPrompts.map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    onClick={() => sendStarterPrompt(prompt)}
+                    disabled={isLoading || isLocked}
+                    className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 transition-colors hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {history.map((msg, index) => (
             <div key={index} className={`flex ${msg.author === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-xs md:max-w-md lg:max-w-lg px-4 py-2 rounded-xl ${msg.author === 'user' ? 'bg-brand-600 text-white' : 'bg-brand-200 text-brand-800'}`}>

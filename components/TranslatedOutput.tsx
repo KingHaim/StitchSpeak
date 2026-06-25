@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ClipboardIcon } from './icons/ClipboardIcon';
 import { CheckIcon } from './icons/CheckIcon';
-import { YarnBallSpinner } from './icons/YarnBallSpinner';
+import { PencilLoader } from './icons/PencilLoader';
 import { PatternViewer } from './PatternViewer';
 import {
   exportPatternPdf,
@@ -10,6 +10,7 @@ import {
   exportPatternHtml,
   exportPatternText,
 } from '../services/pdfExport';
+import { sanitizePatternHtml } from '../services/sanitizePatternHtml';
 
 type DownloadFormat = 'pdf' | 'doc' | 'html' | 'txt';
 
@@ -94,7 +95,7 @@ export const TranslatedOutput: React.FC<TranslatedOutputProps> = ({
     };
   }, [isLoading]);
   
-  const cleanHtml = text ? text.replace(/^```html\n?/, '').replace(/\n?```$/, '') : '';
+  const cleanHtml = text ? sanitizePatternHtml(text) : '';
   const isStreaming = isLoading && cleanHtml.length > 0;
 
   const handleCopy = async () => {
@@ -151,10 +152,32 @@ export const TranslatedOutput: React.FC<TranslatedOutputProps> = ({
   const renderContent = () => {
     if (isLoading && !cleanHtml) {
       return (
-          <div className="flex flex-col items-center justify-center h-full text-center px-4 min-h-[16rem]">
-            <YarnBallSpinner className={`w-16 h-16 ${variant === 'studio' ? 'text-primary' : 'text-brand-600'}`} />
-            <p className={`mt-4 font-medium text-sm ${variant === 'studio' ? 'text-on-surface-variant' : 'text-brand-400'}`}>{currentLoadingMessage}</p>
-          </div>
+        <div
+          className="flex h-full min-h-[16rem] flex-col items-center justify-center px-4 text-center"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <PencilLoader
+            className={`h-28 w-28 sm:h-32 sm:w-32 ${
+              variant === 'studio' ? 'text-primary' : 'text-brand-600'
+            }`}
+            aria-hidden="true"
+          />
+          <p
+            className={`mt-5 text-sm font-semibold ${
+              variant === 'studio' ? 'text-on-surface' : 'text-brand-700'
+            }`}
+          >
+            Generating your translation
+          </p>
+          <p
+            className={`mt-1 text-sm ${
+              variant === 'studio' ? 'text-on-surface-variant' : 'text-brand-400'
+            }`}
+          >
+            {currentLoadingMessage}
+          </p>
+        </div>
       );
     }
 

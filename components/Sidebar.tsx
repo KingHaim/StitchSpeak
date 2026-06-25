@@ -26,7 +26,7 @@ const RAIL_CONTENT_TRANSITION = 'transition-[max-width,max-height,opacity,margin
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activePage, onNavigate }) => {
   const { isAuthenticated, idToken } = useAuth();
-  const { balance, addCredits } = useCredits();
+  const { balance, startCheckout } = useCredits();
   const [showCreditsOverview, setShowCreditsOverview] = useState(false);
   const [showBuyCredits, setShowBuyCredits] = useState(false);
   const [historyRecords, setHistoryRecords] = useState<TranslationRecord[]>([]);
@@ -36,8 +36,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activePage, o
   const [isHovered, setIsHovered] = useState(false);
 
   const handlePurchase = async (pack: CreditPackage) => {
-    await addCredits(pack.credits);
-    setShowBuyCredits(false);
+    await startCheckout(pack.id);
   };
 
   const goToNewTranslation = () => {

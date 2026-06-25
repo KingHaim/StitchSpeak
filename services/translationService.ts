@@ -131,6 +131,8 @@ interface NdjsonDoneEvent {
   type: 'done';
   html: string;
   usage: TranslationResult['usage'];
+  cost?: number;
+  balance?: number;
 }
 
 interface NdjsonErrorEvent {
@@ -207,7 +209,12 @@ export const translatePatternStream = async (
         return;
       }
       case 'done': {
-        finalResult = { html: event.html, usage: event.usage ?? null };
+        finalResult = {
+          html: event.html,
+          usage: event.usage ?? null,
+          cost: event.cost,
+          balance: event.balance,
+        };
         return;
       }
       case 'error': {
@@ -240,7 +247,6 @@ export const translatePatternStream = async (
   };
 
   try {
-    // eslint-disable-next-line no-constant-condition
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;

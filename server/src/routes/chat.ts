@@ -1,13 +1,16 @@
 import { Router, type Request, type Response } from 'express';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { rateLimit } from '../middleware/rateLimit.js';
 import { createChatSession, sendChatMessage } from '../services/gemini.js';
 
 const router = Router();
 
 router.use(requireAuth);
+router.use(rateLimit({ windowMs: 60_000, max: 40, name: 'chat' }));
 
 router.post('/start', async (req: Request, res: Response) => {
   try {
+    const { userSub } = req as AuthenticatedRequest;
     const { patternHtml, priorMessages } = req.body;
     if (!patternHtml || typeof patternHtml !== 'string') {
       res.status(400).json({ error: 'Missing "patternHtml" in request body.' });
@@ -27,7 +30,7 @@ router.post('/start', async (req: Request, res: Response) => {
           .map((m) => ({ role: m.role, content: m.content }))
       : [];
 
-    const sessionId = await createChatSession(patternHtml, cleanedPrior);
+    const sessionId = await createChatSession(patternHtml, cleanedPrior, userSub);
     res.json({ sessionId });
   } catch (err: any) {
     console.error('[chat/start] Error:', err);
@@ -37,6 +40,7 @@ router.post('/start', async (req: Request, res: Response) => {
 
 router.post('/message', async (req: Request, res: Response) => {
   try {
+    const { userSub } = req as AuthenticatedRequest;
     const { sessionId, message } = req.body;
     if (!sessionId || typeof sessionId !== 'string') {
       res.status(400).json({ error: 'Missing "sessionId" in request body.' });
@@ -47,7 +51,7 @@ router.post('/message', async (req: Request, res: Response) => {
       return;
     }
 
-    const text = await sendChatMessage(sessionId, message);
+    const text = await sendChatMessage(sessionId, message, userSub);
     res.json({ text });
   } catch (err: any) {
     console.error('[chat/message] Error:', err);

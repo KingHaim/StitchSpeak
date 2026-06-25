@@ -1,8 +1,11 @@
 const ID_TOKEN_KEY = 'stitchspeak_google_id_token';
 
+// Persisted in localStorage (not sessionStorage) so the session survives tab
+// closes and browser restarts. The session only ends when the user explicitly
+// signs out; while it is alive the token is silently renewed before expiry.
 export function readStoredIdToken(): string | null {
   try {
-    return sessionStorage.getItem(ID_TOKEN_KEY);
+    return localStorage.getItem(ID_TOKEN_KEY);
   } catch {
     return null;
   }
@@ -10,7 +13,7 @@ export function readStoredIdToken(): string | null {
 
 export function writeStoredIdToken(token: string): void {
   try {
-    sessionStorage.setItem(ID_TOKEN_KEY, token);
+    localStorage.setItem(ID_TOKEN_KEY, token);
   } catch {
     /* ignore */
   }
@@ -18,7 +21,7 @@ export function writeStoredIdToken(token: string): void {
 
 export function clearStoredIdToken(): void {
   try {
-    sessionStorage.removeItem(ID_TOKEN_KEY);
+    localStorage.removeItem(ID_TOKEN_KEY);
   } catch {
     /* ignore */
   }

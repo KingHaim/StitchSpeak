@@ -1,4 +1,4 @@
-import { PDFExtract, type PDFExtractPage, type PDFExtractText } from 'pdf.js-extract';
+import { PDFExtract, type PDFExtractPage } from 'pdf.js-extract';
 
 const MAX_HINTS = 25;
 

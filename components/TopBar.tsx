@@ -18,7 +18,7 @@ interface TopBarProps {
 
 export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, activePage }) => {
   const { user, isAuthenticated, signOut } = useAuth();
-  const { balance, addCredits } = useCredits();
+  const { balance, startCheckout } = useCredits();
   const [showBuyCredits, setShowBuyCredits] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
@@ -27,8 +27,7 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, activePage }) => {
     : null;
 
   const handlePurchase = async (pack: CreditPackage) => {
-    await addCredits(pack.credits);
-    setShowBuyCredits(false);
+    await startCheckout(pack.id);
   };
 
   const { kicker, title } = PAGE_HEADER[activePage];

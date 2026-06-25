@@ -39,6 +39,10 @@ export interface TranslationResult {
     candidateTokens: number;
     totalTokens: number;
   } | null;
+  /** Credits charged for this translation (server-authoritative). */
+  cost?: number;
+  /** Remaining credit balance after this translation, returned by the server. */
+  balance?: number;
 }
 
 export type PageId = 'dashboard' | 'glossary' | 'history';
@@ -69,6 +73,8 @@ export interface TranslationRecord {
 }
 
 export interface CreditPackage {
+  /** Server pack id (e.g. "credits_10"); used to start checkout. */
+  id: string;
   credits: number;
   price: number;
   label: string;
