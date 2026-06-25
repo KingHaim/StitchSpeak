@@ -96,6 +96,32 @@ const LandingGoogleSignIn: React.FC<LandingGoogleSignInProps> = ({ layout, clien
   );
 };
 
+const BrandLockup: React.FC<{ asButton?: boolean; onClick?: () => void }> = ({ asButton = false, onClick }) => {
+  const content = (
+    <>
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-outline-variant/20 bg-surface-container-lowest shadow-sm sm:h-12 sm:w-12">
+        <img src="/logo.png" alt="" className="h-8 w-8 object-contain sm:h-9 sm:w-9" />
+      </span>
+      <span className="font-headline text-xl font-black tracking-normal text-on-surface dark:text-background sm:text-2xl">
+        StitchSpeak
+      </span>
+    </>
+  );
+
+  const className =
+    'inline-flex min-w-0 items-center gap-3 rounded-2xl px-1.5 py-1.5 text-left transition-opacity hover:opacity-85';
+
+  if (asButton) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {content}
+      </button>
+    );
+  }
+
+  return <div className={className}>{content}</div>;
+};
+
 export const LandingPage: React.FC = () => {
   const { signInWithGoogleCredential } = useAuth();
   const clientId = getGoogleOAuthClientId();
@@ -133,18 +159,9 @@ export const LandingPage: React.FC = () => {
   if (view === 'translate') {
     return (
       <div className="min-h-screen bg-background text-on-surface font-body">
-        <header className="bg-background/80 dark:bg-on-surface/80 backdrop-blur-md sticky top-0 z-50 shadow-sm dark:shadow-none border-b border-outline-variant/15">
+        <header className="bg-background/95 dark:bg-on-surface/95 backdrop-blur-xl sticky top-0 z-50 shadow-sm dark:shadow-none border-b border-outline-variant/20">
           <div className="flex justify-between items-center px-6 sm:px-8 py-4 max-w-7xl mx-auto">
-            <button
-              type="button"
-              onClick={() => setView('home')}
-              className="flex items-center gap-0 min-w-0 text-left hover:opacity-80 transition-opacity"
-            >
-              <img src="/logo.png" alt="" className="h-10 w-10 shrink-0 object-contain" />
-              <span className="font-headline text-xl font-bold text-on-surface dark:text-background truncate">
-                StitchSpeak
-              </span>
-            </button>
+            <BrandLockup asButton onClick={() => setView('home')} />
             <div className="flex items-center shrink-0">
               <LandingGoogleSignIn layout="header" clientId={clientId} onSuccess={handleGoogleSuccess} />
             </div>
@@ -167,14 +184,9 @@ export const LandingPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background text-on-surface font-body selection:bg-primary-fixed selection:text-on-primary-fixed">
-      <header className="bg-background/80 dark:bg-on-surface/80 backdrop-blur-md sticky top-0 z-50 shadow-sm dark:shadow-none border-b border-outline-variant/15">
+      <header className="bg-background/95 dark:bg-on-surface/95 backdrop-blur-xl sticky top-0 z-50 shadow-sm dark:shadow-none border-b border-outline-variant/20">
         <div className="flex justify-between items-center gap-4 px-6 sm:px-8 py-4 max-w-7xl mx-auto">
-          <div className="flex items-center gap-0 min-w-0 shrink-0">
-            <img src="/logo.png" alt="" className="h-10 w-10 shrink-0 object-contain" />
-            <span className="font-headline text-xl font-bold text-on-surface dark:text-background truncate">
-              StitchSpeak
-            </span>
-          </div>
+          <BrandLockup />
           <div className="flex items-center shrink-0">
             <LandingGoogleSignIn layout="header" clientId={clientId} onSuccess={handleGoogleSuccess} />
           </div>
