@@ -353,6 +353,18 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
     latestTimestamp: number;
   }
 
+  const groupTargetLanguages = (group: PatternGroup) =>
+    [...new Set(group.records.map((r) => r.targetLanguage))];
+
+  const groupLangSummary = (group: PatternGroup) => {
+    const targets = groupTargetLanguages(group);
+    const source = group.records[0]?.sourceLanguage;
+    if (source && source !== 'Auto-Detect') {
+      return `${source} → ${targets.join(', ')}`;
+    }
+    return targets.join(', ');
+  };
+
   /**
    * Group records by source file so each card on the same pattern can show
    * "already translated to French + Spanish" and seed the dashboard hint.
@@ -749,9 +761,11 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
                           <Icon name="check_circle" className="text-xs" filled />
                           {isMultiTranslation ? `${group.records.length} languages` : 'Completed'}
                         </span>
-                        <span className="bg-surface/80 glass-nav text-on-surface px-3 py-1 rounded-full text-[10px] uppercase font-bold tracking-widest">
-                          {record.targetLanguage}
-                        </span>
+                        {!isMultiTranslation && (
+                          <span className="bg-surface/80 glass-nav text-on-surface px-3 py-1 rounded-full text-[10px] uppercase font-bold tracking-widest">
+                            {record.targetLanguage}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="p-6 sm:p-8 flex flex-col flex-1 min-w-0">
@@ -759,7 +773,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
                         {displayTitle(group.fileName)}
                       </h3>
                       <p className="text-on-surface-variant text-sm mb-3 leading-relaxed">
-                        {langLine(record)}
+                        {isMultiTranslation ? groupLangSummary(group) : langLine(record)}
                         {record.pdfMetrics ? ` · ${record.pdfMetrics.pages} page${record.pdfMetrics.pages !== 1 ? 's' : ''}` : ''}
                         {record.cost > 0 ? ` · €${record.cost.toFixed(2)}` : ''}
                       </p>
