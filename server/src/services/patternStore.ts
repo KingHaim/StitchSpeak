@@ -190,6 +190,15 @@ const stmts = {
     INSERT INTO chat_messages (pattern_id, sub, role, content, created_at)
     VALUES (?, ?, ?, ?, ?)
   `),
+  countUserChat: db.prepare<[string, string]>(`
+    SELECT COUNT(*) AS count
+    FROM chat_messages
+    WHERE sub = ? AND pattern_id = ? AND role = 'user'
+  `),
+  deleteReservedChat: db.prepare<[number, string, string]>(`
+    DELETE FROM chat_messages
+    WHERE id = ? AND sub = ? AND pattern_id = ? AND role = 'user'
+  `),
   deleteChatForPattern: db.prepare<[string, string]>(`
     DELETE FROM chat_messages WHERE sub = ? AND pattern_id = ?
   `),
@@ -568,6 +577,61 @@ export function appendChatMessages(
     }
   });
   insertMany(messages);
+  return true;
+}
+
+export type ChatReservationResult =
+  | { ok: true; messageId: number; messageCount: number; maxMessages: number }
+  | { ok: false; reason: 'not_found' | 'allowance_exhausted'; messageCount: number; maxMessages: number };
+
+/**
+ * Atomically claim one chat message before calling Gemini. Counting and
+ * inserting happen in the same SQLite transaction, so concurrent requests
+ * cannot both consume the final available slot.
+ */
+const reserveChatTx = db.transaction(
+  (sub: string, id: string, content: string, freeMessages: number): ChatReservationResult => {
+    const allowance = stmts.getChatAllowance.get(sub, id) as
+      | { chat_extra_allowance: number }
+      | undefined;
+    if (!allowance) {
+      return { ok: false, reason: 'not_found', messageCount: 0, maxMessages: 0 };
+    }
+
+    const row = stmts.countUserChat.get(sub, id) as { count: number };
+    const messageCount = row.count;
+    const maxMessages = freeMessages + allowance.chat_extra_allowance;
+    if (messageCount >= maxMessages) {
+      return { ok: false, reason: 'allowance_exhausted', messageCount, maxMessages };
+    }
+
+    const result = stmts.appendChat.run(id, sub, 'user', content, Date.now());
+    return {
+      ok: true,
+      messageId: Number(result.lastInsertRowid),
+      messageCount: messageCount + 1,
+      maxMessages,
+    };
+  },
+);
+
+export function reserveChatMessage(
+  sub: string,
+  id: string,
+  content: string,
+  freeMessages: number,
+): ChatReservationResult {
+  return reserveChatTx(sub, id, content, freeMessages);
+}
+
+export function rollbackChatReservation(sub: string, id: string, messageId: number): void {
+  stmts.deleteReservedChat.run(messageId, sub, id);
+}
+
+export function appendChatResponse(sub: string, id: string, content: string): boolean {
+  const exists = stmts.exists.get(sub, id);
+  if (!exists) return false;
+  stmts.appendChat.run(id, sub, 'model', content, Date.now());
   return true;
 }
 

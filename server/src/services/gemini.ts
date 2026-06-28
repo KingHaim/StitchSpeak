@@ -474,6 +474,7 @@ interface ChatSession {
   chat: Chat;
   createdAt: number;
   ownerSub: string;
+  patternId: string;
 }
 
 const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -497,6 +498,7 @@ export async function createChatSession(
   patternHtml: string,
   priorMessages: PriorChatMessage[] = [],
   ownerSub: string,
+  patternId: string,
 ): Promise<string> {
   const sessionId = crypto.randomUUID();
 
@@ -536,8 +538,13 @@ export async function createChatSession(
     }),
   );
 
-  chatSessions.set(sessionId, { chat, createdAt: Date.now(), ownerSub });
+  chatSessions.set(sessionId, { chat, createdAt: Date.now(), ownerSub, patternId });
   return sessionId;
+}
+
+export function getChatSessionPatternId(sessionId: string, requesterSub: string): string | null {
+  const session = chatSessions.get(sessionId);
+  return session?.ownerSub === requesterSub ? session.patternId : null;
 }
 
 export async function sendChatMessage(

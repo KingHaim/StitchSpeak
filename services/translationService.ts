@@ -289,22 +289,16 @@ export const translatePatternStream = async (
   return finalResult;
 };
 
-export interface PriorChatMessage {
-  role: 'user' | 'model';
-  content: string;
-}
-
 export const startChatSession = async (
-  patternHtml: string,
+  patternId: string,
   idToken: string,
-  priorMessages: PriorChatMessage[] = [],
 ): Promise<string> => {
   const response = await checkedFetch(
     `${getApiUrl()}/api/chat/start`,
     {
       method: 'POST',
       headers: { ...authHeaders(idToken), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ patternHtml, priorMessages }),
+      body: JSON.stringify({ patternId }),
     },
     'Chat session',
   );
@@ -317,7 +311,7 @@ export const sendChatMessage = async (
   sessionId: string,
   message: string,
   idToken: string,
-): Promise<string> => {
+): Promise<{ text: string; messageCount: number; maxMessages: number }> => {
   const response = await checkedFetch(
     `${getApiUrl()}/api/chat/message`,
     {
@@ -329,5 +323,9 @@ export const sendChatMessage = async (
   );
 
   const data = await response.json();
-  return data.text;
+  return {
+    text: data.text,
+    messageCount: data.messageCount,
+    maxMessages: data.maxMessages,
+  };
 };

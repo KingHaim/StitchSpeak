@@ -13,6 +13,8 @@ type CreditContextValue = {
   refreshBalance: () => Promise<void>;
   /** Redirect to hosted checkout for a credit pack. */
   startCheckout: (packId: string) => Promise<void>;
+  checkoutReturnPending: boolean;
+  dismissCheckoutReturn: () => void;
 };
 
 const CreditContext = createContext<CreditContextValue | null>(null);
@@ -21,6 +23,7 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const { idToken, isAuthenticated } = useAuth();
   const [balance, setBalance] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [checkoutReturnPending, setCheckoutReturnPending] = useState(false);
 
   const refreshBalance = useCallback(async () => {
     if (!isAuthenticated || !idToken) {
@@ -55,9 +58,31 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, [isAuthenticated, idToken, refreshBalance]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !idToken) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('checkout') !== 'success') return;
+
+    setCheckoutReturnPending(true);
+    url.searchParams.delete('checkout');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+
+    // Webhooks can arrive just after Lemon Squeezy redirects the browser.
+    // Reconcile repeatedly so the user does not have to refresh manually.
+    void refreshBalance();
+    const interval = window.setInterval(() => void refreshBalance(), 2_000);
+    const timeout = window.setTimeout(() => window.clearInterval(interval), 20_000);
+    return () => {
+      window.clearInterval(interval);
+      window.clearTimeout(timeout);
+    };
+  }, [isAuthenticated, idToken, refreshBalance]);
+
   const applyBalance = useCallback((next: number) => {
     if (typeof next === 'number' && Number.isFinite(next)) setBalance(next);
   }, []);
+
+  const dismissCheckoutReturn = useCallback(() => setCheckoutReturnPending(false), []);
 
   const startCheckout = useCallback(
     async (packId: string) => {
@@ -69,8 +94,24 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const value = useMemo<CreditContextValue>(
-    () => ({ balance, isLoading, applyBalance, refreshBalance, startCheckout }),
-    [balance, isLoading, applyBalance, refreshBalance, startCheckout],
+    () => ({
+      balance,
+      isLoading,
+      applyBalance,
+      refreshBalance,
+      startCheckout,
+      checkoutReturnPending,
+      dismissCheckoutReturn,
+    }),
+    [
+      balance,
+      isLoading,
+      applyBalance,
+      refreshBalance,
+      startCheckout,
+      checkoutReturnPending,
+      dismissCheckoutReturn,
+    ],
   );
 
   return (

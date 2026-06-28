@@ -551,7 +551,7 @@ export const LandingPage: React.FC = () => {
             {[
               {
                 q: 'Is StitchSpeak free?',
-                a: 'No. Translations use credits, which you buy in packs starting at €5. You sign in with Google, purchase credits through secure checkout, and only spend them after you review the estimate for each pattern.',
+                a: 'No. Translations use credits, which you buy in packs starting at €7. You sign in with Google, purchase credits through secure checkout, and only spend them after you review the estimate for each pattern.',
               },
               {
                 q: 'What kinds of pattern files can I upload?',

@@ -9,8 +9,11 @@ import { detectSourceKind } from './documentExtract.js';
  */
 export const PRICING = {
   translation: {
-    inputCostPer1MTokens: 1.25,
-    outputCostPer1MTokens: 5.0,
+    // Gemini 3.1 Pro Preview standard pricing (<=200k-token prompts),
+    // refreshed June 2026. Keep this conservative because output pricing also
+    // includes thinking tokens.
+    inputCostPer1MTokens: 2.0,
+    outputCostPer1MTokens: 12.0,
     fixedMargin: 6.0,
     includedPages: 10,
     pageSurcharge: 1.0,
@@ -41,7 +44,7 @@ export interface CreditPack {
  * authoritative: checkout always charges `price` for `credits`, keyed by `id`.
  */
 export const CREDIT_PACKS: CreditPack[] = [
-  { id: 'credits_5', credits: 5, price: 5.0, label: '5 credits' },
+  { id: 'credits_7', credits: 7, price: 7.0, label: '7 credits' },
   { id: 'credits_10', credits: 10, price: 8.5, label: '10 credits' },
   { id: 'credits_25', credits: 25, price: 19.0, label: '25 credits' },
   { id: 'credits_50', credits: 50, price: 35.0, label: '50 credits' },

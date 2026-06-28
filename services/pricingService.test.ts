@@ -4,6 +4,7 @@ import {
   estimateChatCost,
   estimateTranslationCost,
 } from './pricingService';
+import { CREDIT_PACKAGES } from '../constants';
 import type { PdfMetrics } from '../types';
 
 const metrics = (overrides: Partial<PdfMetrics> = {}): PdfMetrics => ({
@@ -22,6 +23,11 @@ describe('pricingService', () => {
     expect(estimate.translationCost).toBe(6.5);
     expect(estimate.totalCost).toBe(6.5);
     expect(estimate.breakdown.pageSurcharge).toBe(0);
+  });
+
+  it('offers an entry pack that can pay for the minimum translation', () => {
+    const minimumTranslation = estimateTranslationCost(metrics({ characters: 1 }));
+    expect(CREDIT_PACKAGES[0].credits).toBeGreaterThanOrEqual(minimumTranslation.translationCost);
   });
 
   it('adds page surcharges after the included page allowance', () => {
@@ -48,4 +54,3 @@ describe('pricingService', () => {
     expect(estimateChatCost(24)).toBe(0.2);
   });
 });
-

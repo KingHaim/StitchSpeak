@@ -45,6 +45,7 @@ export async function createLemonSqueezyCheckout(params: {
 
   const response = await fetch(API_URL, {
     method: 'POST',
+    signal: AbortSignal.timeout(10_000),
     headers: {
       Accept: 'application/vnd.api+json',
       'Content-Type': 'application/vnd.api+json',

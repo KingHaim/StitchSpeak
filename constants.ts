@@ -27,7 +27,7 @@ export const SOURCE_LANGUAGES: Language[] = [
 // Display catalogue mirroring the server's source of truth (server/src/services/pricing.ts).
 // `id` must match the server pack ids so checkout charges the right amount.
 export const CREDIT_PACKAGES: CreditPackage[] = [
-  { id: 'credits_5', credits: 5, price: 5.00, label: '5 credits' },
+  { id: 'credits_7', credits: 7, price: 7.00, label: '7 credits' },
   { id: 'credits_10', credits: 10, price: 8.50, label: '10 credits' },
   { id: 'credits_25', credits: 25, price: 19.00, label: '25 credits' },
   { id: 'credits_50', credits: 50, price: 35.00, label: '50 credits' },
@@ -38,8 +38,8 @@ export const PENDING_BUY_CREDITS_PACK_INDEX_KEY = 'ss_pending_buy_credits_pack_i
 
 export const PRICING = {
   translation: {
-    inputCostPer1MTokens: 1.25,
-    outputCostPer1MTokens: 5.00,
+    inputCostPer1MTokens: 2.00,
+    outputCostPer1MTokens: 12.00,
     fixedMargin: 6.00,
     includedPages: 10,
     pageSurcharge: 1.00,

@@ -12,7 +12,6 @@ import { analyzeFile } from '../../services/fileAnalyzer';
 import { estimateBatchTranslationCost, estimateTranslationCost } from '../../services/pricingService';
 import { saveTranslation, loadPatternSource } from '../../services/historyService';
 import {
-  appendPatternChatMessages,
   fetchPatternChatState,
   unlockPatternChatAllowance,
 } from '../../services/patternsService';
@@ -301,12 +300,8 @@ export const DashboardPage: React.FC = () => {
     let chatSessionId: string | null = null;
     try {
       chatSessionId = await startChatSession(
-        translatedHtml,
+        record.id,
         idToken,
-        chatHistory.map((m) => ({
-          role: m.author === 'user' ? ('user' as const) : ('model' as const),
-          content: m.content,
-        })),
       );
     } catch (err) {
       console.warn('[chat] Could not start session for rehydrated pattern:', err);
@@ -449,9 +444,9 @@ export const DashboardPage: React.FC = () => {
           console.error('Failed to save translated pattern to My Patterns:', saveErr);
         }
 
-        if (idToken) {
+        if (idToken && serverPatternId) {
           try {
-            const sessionId = await startChatSession(stripTranslatedHtml(result.html), idToken);
+            const sessionId = await startChatSession(serverPatternId, idToken);
             setJobs((prev) =>
               prev.map((j) => (j.id === id ? { ...j, chatSessionId: sessionId } : j)),
             );
@@ -593,32 +588,34 @@ export const DashboardPage: React.FC = () => {
       );
 
       try {
-        const text = await sendChatMessage(job.chatSessionId, message, idToken);
+        const result = await sendChatMessage(job.chatSessionId, message, idToken);
         setJobs((prev) =>
           prev.map((j) =>
             j.id === jobId
               ? {
                   ...j,
-                  chatHistory: [...j.chatHistory, { author: 'model' as const, content: text }],
+                  chatHistory: [...j.chatHistory, { author: 'model' as const, content: result.text }],
+                  chatMessageCount: result.messageCount,
+                  chatMessagesAllowed: result.maxMessages,
                 }
               : j,
           ),
         );
-
-        if (job.serverPatternId) {
-          try {
-            await appendPatternChatMessages(idToken, job.serverPatternId, [
-              { role: 'user', content: message },
-              { role: 'model', content: text },
-            ]);
-          } catch (persistErr) {
-            console.warn('[chat] Failed to persist exchange:', persistErr);
-          }
-        }
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : 'Sorry, something went wrong. Please try again.';
         console.error('Error sending chat message:', err);
         setChatError(errMsg);
+        setJobs((prev) =>
+          prev.map((j) =>
+            j.id === jobId
+              ? {
+                  ...j,
+                  chatHistory: job.chatHistory,
+                  chatMessageCount: job.chatMessageCount,
+                }
+              : j,
+          ),
+        );
       } finally {
         setIsChatSending(false);
       }

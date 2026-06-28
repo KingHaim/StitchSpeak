@@ -13,6 +13,7 @@ import {
   isLemonSqueezyConfigured,
   isLemonSqueezyWebhookConfigured,
 } from './services/lemonSqueezy.js';
+import { isProductionReady } from './services/readiness.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -131,11 +132,11 @@ app.get('/health/deep', (_req, res) => {
       credits: creditStoreHealth(),
       patterns: patternStoreHealth(),
     };
-    const ok =
-      checks.config.gemini &&
-      checks.config.googleOAuth &&
-      checks.credits.ok &&
-      checks.patterns.ok;
+    const ok = isProductionReady({
+      ...checks.config,
+      credits: checks.credits.ok,
+      patterns: checks.patterns.ok,
+    });
     res.status(ok ? 200 : 503).json({ status: ok ? 'ok' : 'degraded', checks });
   } catch (err) {
     console.error('[health/deep] failed:', err);
