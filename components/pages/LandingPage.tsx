@@ -15,6 +15,13 @@ const scrollToId = (id: string) => {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 };
 
+const HERO_FEATURES = [
+  { icon: 'public', text: 'Translate patterns from around the world.', tone: 'primary' as const },
+  { icon: 'texture', text: 'Knit and crochet with confidence.', tone: 'accent' as const },
+  { icon: 'menu_book', text: 'Save translations in your pattern library.', tone: 'primary' as const },
+  { icon: 'favorite', text: 'Craft connects. We help it speak your language.', tone: 'accent' as const },
+];
+
 const Icon: React.FC<{ name: string; className?: string }> = ({ name, className }) => (
   <span className={`material-symbols-outlined ${className ?? ''}`} aria-hidden>
     {name}
@@ -184,73 +191,56 @@ export const LandingPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background text-on-surface font-body selection:bg-primary-fixed selection:text-on-primary-fixed">
-      <header className="bg-background/95 dark:bg-on-surface/95 backdrop-blur-xl sticky top-0 z-50 shadow-sm dark:shadow-none border-b border-outline-variant/20">
-        <div className="flex justify-between items-center gap-4 px-6 sm:px-8 py-4 max-w-7xl mx-auto">
+      <header className="sticky top-0 z-50 border-b border-outline-variant/15 bg-background/90 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4 sm:px-8">
           <BrandLockup />
-          <div className="flex items-center shrink-0">
+          <div className="flex shrink-0 items-center">
             <LandingGoogleSignIn layout="header" clientId={clientId} onSuccess={handleGoogleSuccess} />
           </div>
         </div>
       </header>
 
       <main>
-        <section className="relative px-6 sm:px-8 py-16 sm:py-24 max-w-7xl mx-auto overflow-hidden">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
-            <div className="lg:col-span-7 z-10">
-              <h1 className="text-5xl sm:text-6xl md:text-8xl font-headline italic font-bold leading-tight text-on-surface mb-8">
-                The soul of a <br />
-                <span className="text-primary">pattern</span>, translated.
-              </h1>
-              <p className="text-lg sm:text-xl text-on-surface-variant max-w-lg mb-10 leading-relaxed">
-                Bridge the gap between international patterns and your needles. StitchSpeak preserves the heritage of craft through intelligent translation and digital journaling.
-              </p>
-              <div className="flex flex-wrap gap-4">
-                <button
-                  type="button"
-                  onClick={() => setView('translate')}
-                  className="px-8 py-4 bg-primary text-on-primary rounded-xl font-semibold text-lg shadow-ambient hover:bg-primary-container transition-all"
-                >
-                  Start Your First Project
-                </button>
-	                <button
-	                  type="button"
-	                  onClick={() => scrollToId('community')}
-	                  className="px-8 py-4 bg-secondary-container text-on-secondary-container rounded-xl font-semibold text-lg hover:opacity-90 transition-all"
-	                >
-                  See an Example
-	                </button>
-              </div>
-              <div className="mt-6 flex flex-wrap gap-2 text-sm text-on-surface-variant">
-                {['No card required', 'Private files', 'Layout preserved', 'PDF, DOCX, TXT, RTF'].map((item) => (
-                  <span
-                    key={item}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-surface-container-low px-3 py-1.5"
-                  >
-                    <Icon name="check_circle" className="text-sm text-primary" />
-                    {item}
-                  </span>
-                ))}
-              </div>
-              <div className="mt-6 sm:hidden">
-                <LandingGoogleSignIn layout="hero" clientId={clientId} onSuccess={handleGoogleSuccess} />
-              </div>
+        <section className="hero">
+          <div className="heroOverlay" />
+          <div className="heroContent">
+            <h1>
+              The soul of a <span>pattern,</span>
+              <br />
+              translated.
+            </h1>
+            <p>
+              Bridge the gap between international patterns and your needles. Upload a file, buy credits, and get a translation built for knitting and crochet language.
+            </p>
+            <div className="heroActions">
+              <button type="button" className="primary" onClick={() => setView('translate')}>
+                Start translating
+              </button>
+              <button type="button" className="secondary" onClick={() => scrollToId('pricing')}>
+                See pricing
+              </button>
             </div>
-            <div className="lg:col-span-5 relative">
-              <div className="aspect-[4/5] rounded-[2rem] overflow-hidden shadow-ambient rotate-3 hover:rotate-0 transition-transform duration-700 bg-surface-container max-w-md mx-auto lg:max-w-none">
-	                <img
-	                  className="w-full h-full object-cover"
-	                  alt=""
-	                  src="/landing-hero.jpg"
-	                />
-              </div>
-              <div className="absolute -bottom-8 -left-4 sm:-left-8 p-6 bg-surface/60 glass-nav rounded-xl shadow-ambient max-w-[200px]">
-                <Icon name="auto_awesome" className="text-primary mb-2 text-2xl" />
-                <p className="text-sm font-medium text-on-surface">
-                  Convert any crochet or knitting pattern to a different language.
-                </p>
-              </div>
+            <div className="mt-6 sm:hidden">
+              <LandingGoogleSignIn layout="hero" clientId={clientId} onSuccess={handleGoogleSuccess} />
             </div>
           </div>
+        </section>
+
+        <section className="border-t border-outline-variant/10 bg-surface-container-low/80">
+            <div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-6 py-10 sm:px-8 sm:py-12 md:grid-cols-2 xl:grid-cols-4">
+              {HERO_FEATURES.map(({ icon, text, tone }) => (
+                <div key={text} className="flex items-start gap-4">
+                  <span
+                    className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${
+                      tone === 'primary' ? 'bg-primary/10 text-primary' : 'bg-[#C9886E]/12 text-[#C9886E]'
+                    }`}
+                  >
+                    <Icon name={icon} className="text-2xl" />
+                  </span>
+                  <p className="pt-2 text-sm leading-relaxed text-on-surface sm:text-[0.9375rem]">{text}</p>
+                </div>
+              ))}
+            </div>
         </section>
 
         <section className="px-6 sm:px-8 py-16 sm:py-24 bg-surface-container-low">
@@ -303,7 +293,7 @@ export const LandingPage: React.FC = () => {
                 <h3 className="text-lg sm:text-xl font-headline font-bold mb-4 italic">
                   &quot;The clarity of these translated patterns is like having a master knitter sitting right beside you.&quot;
                 </h3>
-                <p className="text-sm font-label text-on-surface-variant">— Eleanor R., Fiber Artist</p>
+                <p className="text-sm font-label text-on-surface-variant">Eleanor R., fiber artist</p>
               </div>
 	              <div id="community" className="md:col-span-2 relative h-[260px] sm:h-[300px] rounded-xl overflow-hidden group scroll-mt-28">
 	                <img
@@ -328,8 +318,8 @@ export const LandingPage: React.FC = () => {
               </p>
               <div className="space-y-3">
                 {[
-                  { icon: 'upload_file', title: 'Upload PDF, DOCX, TXT, or RTF', body: 'The real flow starts with your own pattern file.' },
-                  { icon: 'payments', title: 'See credits before starting', body: 'The estimate is shown before translation begins.' },
+                  { icon: 'upload_file', title: 'Upload PDF, DOCX, TXT, or RTF', body: 'Sign in with Google, then upload your pattern file.' },
+                  { icon: 'payments', title: 'Buy credits, then confirm the estimate', body: 'Translation costs credits. You see the price before anything is charged.' },
                   { icon: 'folder_special', title: 'Saved after completion', body: 'Finished translations live in My Patterns for export or chat.' },
                 ].map((item) => (
                   <div key={item.title} className="flex items-start gap-3">
@@ -457,20 +447,20 @@ export const LandingPage: React.FC = () => {
               {
                 n: '1',
                 icon: 'upload_file',
-                title: 'Upload Pattern',
-                desc: 'Upload your knitting or crochet pattern as a PDF. Source language is auto-detected so you can move faster.',
+                title: 'Upload your pattern',
+                desc: 'Sign in and upload a PDF, DOCX, TXT, or RTF file. Source language is auto-detected.',
               },
               {
                 n: '2',
-                icon: 'psychology',
-                title: 'AI Interpretation',
-                desc: 'Our engine parses abbreviations and charts specific to local knitting cultures.',
+                icon: 'payments',
+                title: 'Buy credits and confirm',
+                desc: 'Purchase a credit pack, review the translation estimate, and approve before StitchSpeak starts.',
               },
               {
                 n: '3',
                 icon: 'check_circle',
-                title: 'Cast On',
-                desc: 'Get your translated pattern back with the layout untouched — clean, readable, and ready to use.',
+                title: 'Cast on',
+                desc: 'Get your translated pattern back with the layout preserved, ready to export from My Patterns.',
               },
             ].map(({ n, icon, title, desc }) => (
               <div key={n} className="text-center relative pt-8">
@@ -487,11 +477,11 @@ export const LandingPage: React.FC = () => {
           </div>
         </section>
 
-        <section className="px-6 sm:px-8 py-16 sm:py-24 bg-surface-container-high">
+        <section id="pricing" className="px-6 sm:px-8 py-16 sm:py-24 bg-surface-container-high scroll-mt-24">
           <div className="max-w-5xl mx-auto">
             <div className="text-center mb-12 sm:mb-16">
 	              <h2 className="text-3xl sm:text-4xl font-headline font-bold mb-4">Choose Your Pace</h2>
-	              <p className="text-on-surface-variant">Buy credits when you need them. Larger packs lower your cost per credit, and credits never expire.</p>
+	              <p className="text-on-surface-variant">Every translation uses credits. Buy packs when you need them; larger packs lower your cost per credit, and credits never expire.</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {CREDIT_PACKAGES.map((pack, idx) => {
@@ -547,7 +537,7 @@ export const LandingPage: React.FC = () => {
                 {[
                   { icon: 'lock', label: 'Private files' },
                   { icon: 'receipt_long', label: 'Cost shown first' },
-                  { icon: 'file_present', label: 'PDF, DOCX, TXT, RTF' },
+                  { icon: 'payments', label: 'Credits required' },
                   { icon: 'download', label: 'Export ready' },
                 ].map(({ icon, label }) => (
                   <div key={label} className="flex items-center gap-2 rounded-xl bg-surface-container-low px-3 py-3 font-semibold text-on-surface">
@@ -559,6 +549,10 @@ export const LandingPage: React.FC = () => {
             </div>
             <div className="space-y-4">
             {[
+              {
+                q: 'Is StitchSpeak free?',
+                a: 'No. Translations use credits, which you buy in packs starting at €5. You sign in with Google, purchase credits through secure checkout, and only spend them after you review the estimate for each pattern.',
+              },
               {
                 q: 'What kinds of pattern files can I upload?',
                 a: 'StitchSpeak accepts PDF, DOCX, TXT, and RTF files. The app extracts the pattern text, keeps the original file attached to your project, and saves the finished translation in My Patterns.',
@@ -675,9 +669,8 @@ export const LandingPage: React.FC = () => {
           <Icon name="counter_1" className="text-3xl" />
         </button>
         <div className="absolute bottom-full right-0 mb-4 bg-surface p-4 rounded-xl shadow-ambient opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap pointer-events-none">
-          <p className="text-xs font-bold text-on-surface-variant uppercase tracking-tighter">Try it</p>
           <p className="font-headline font-bold text-on-surface">Translate a pattern</p>
-	          <p className="text-sm text-on-surface-variant">Upload PDF, DOCX, TXT, or RTF</p>
+	          <p className="text-sm text-on-surface-variant">Sign in and use credits</p>
         </div>
       </div>
     </div>
