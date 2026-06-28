@@ -19,6 +19,7 @@ import {
   clearStoredIdToken,
 } from '../auth/sessionStorage';
 import { getGoogleOAuthClientId } from '../auth/googleConfig';
+import { initializeGoogleIdentity } from '../auth/googleIdentity';
 import { migrateGuestHistoryToServerIfRemoteEmpty } from '../services/historyService';
 
 // Begin silently renewing the Google ID token this long before it expires.
@@ -33,6 +34,7 @@ type AuthContextValue = {
   user: AuthenticatedUser | null;
   idToken: string | null;
   isAuthenticated: boolean;
+  googleIdentityReady: boolean;
   signInWithGoogleCredential: (credential: string) => void;
   signOut: () => void;
 };
@@ -44,10 +46,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
   const [idToken, setIdToken] = useState<string | null>(null);
+  const [googleIdentityReady, setGoogleIdentityReady] = useState(false);
 
   const lastPromptRef = useRef(0);
   const expiredSinceRef = useRef<number | null>(null);
-  const gisInitedRef = useRef(false);
 
   const signOut = useCallback(() => {
     // Explicit sign-out is the only thing that ends a session, so make sure
@@ -76,28 +78,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     [signOut],
   );
 
-  // Lazily initialize Google Identity Services for silent renewal. The GIS
-  // script is loaded by @react-oauth/google's GoogleOAuthProvider, so it may
-  // not be ready on first paint — callers retry on the next interval tick.
-  const initGis = useCallback((): boolean => {
-    if (gisInitedRef.current) return true;
+  // Initialize the page-global GIS client exactly once. The script loads
+  // asynchronously, so retry briefly until GoogleOAuthProvider has installed
+  // window.google. All rendered buttons and silent renewal share this config.
+  useEffect(() => {
     const clientId = getGoogleOAuthClientId();
-    const gid = window.google?.accounts?.id;
-    if (!gid || !clientId) return false;
-    try {
-      gid.initialize({
-        client_id: clientId,
-        auto_select: true,
-        cancel_on_tap_outside: false,
-        callback: (resp) => {
-          if (resp.credential) signInWithGoogleCredential(resp.credential);
-        },
+    if (!clientId) return;
+
+    const attempt = () => {
+      const ready = initializeGoogleIdentity(clientId, (response) => {
+        if (response.credential) signInWithGoogleCredential(response.credential);
       });
-      gisInitedRef.current = true;
-      return true;
-    } catch {
-      return false;
-    }
+      if (ready) setGoogleIdentityReady(true);
+      return ready;
+    };
+
+    if (attempt()) return;
+    const interval = window.setInterval(() => {
+      if (attempt()) window.clearInterval(interval);
+    }, 100);
+    return () => window.clearInterval(interval);
   }, [signInWithGoogleCredential]);
 
   useEffect(() => {
@@ -127,7 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     const tryRenew = () => {
       const now = Date.now();
       if (now - lastPromptRef.current < PROMPT_THROTTLE_MS) return;
-      if (!initGis()) return;
+      if (!googleIdentityReady) return;
       lastPromptRef.current = now;
       try {
         window.google?.accounts?.id?.prompt?.();
@@ -171,7 +171,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [idToken, signOut, initGis]);
+  }, [idToken, signOut, googleIdentityReady]);
 
   useEffect(() => {
     if (!idToken) return;
@@ -183,10 +183,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       user,
       idToken,
       isAuthenticated: user != null && idToken != null,
+      googleIdentityReady,
       signInWithGoogleCredential,
       signOut,
     }),
-    [user, idToken, signInWithGoogleCredential, signOut],
+    [user, idToken, googleIdentityReady, signInWithGoogleCredential, signOut],
   );
 
   return (

@@ -1,7 +1,7 @@
-import React, { Suspense, lazy, useState } from 'react';
-import { GoogleLogin, type CredentialResponse } from '@react-oauth/google';
+import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getGoogleOAuthClientId } from '../../auth/googleConfig';
+import { renderGoogleIdentityButton } from '../../auth/googleIdentity';
 import { CREDIT_PACKAGES, PENDING_BUY_CREDITS_PACK_INDEX_KEY } from '../../constants';
 import { CloseIcon } from '../icons/CloseIcon';
 
@@ -30,8 +30,7 @@ const Icon: React.FC<{ name: string; className?: string }> = ({ name, className 
 
 interface LandingGoogleSignInProps {
   layout: 'header' | 'hero' | 'modal';
-  clientId: string | undefined;
-  onSuccess: (res: CredentialResponse) => void;
+  isReady: boolean;
 }
 
 /** Match former header CTAs (~44px tall). */
@@ -61,9 +60,25 @@ function GoogleMark({ className }: { className?: string }) {
   );
 }
 
-const LandingGoogleSignIn: React.FC<LandingGoogleSignInProps> = ({ layout, clientId, onSuccess }) => {
-  if (!clientId) return null;
+const LandingGoogleSignIn: React.FC<LandingGoogleSignInProps> = ({ layout, isReady }) => {
   const widthPx = layout === 'hero' ? 200 : layout === 'modal' ? 240 : 180;
+  const buttonHostRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const host = buttonHostRef.current;
+    if (!host || !isReady) return;
+    renderGoogleIdentityButton(host, {
+      type: 'standard',
+      theme: 'outline',
+      size: 'large',
+      text: 'signin',
+      shape: 'rectangular',
+      logo_alignment: 'left',
+      width: widthPx,
+    });
+  }, [isReady, widthPx]);
+
+  if (!isReady) return null;
 
   return (
     <div
@@ -79,26 +94,10 @@ const LandingGoogleSignIn: React.FC<LandingGoogleSignInProps> = ({ layout, clien
         <GoogleMark className="h-5 w-5 shrink-0" />
         Sign in
       </div>
-      <div className="absolute inset-0 z-10 overflow-hidden opacity-0 [&>div]:!flex [&>div]:!h-full [&>div]:!w-full [&>div]:!items-stretch [&_iframe]:!h-full [&_iframe]:!min-h-0 [&_iframe]:!w-full [&_iframe]:!shadow-none">
-        <GoogleLogin
-          onSuccess={onSuccess}
-          onError={() => {}}
-          theme="outline"
-          size="large"
-          text="signin"
-          shape="rectangular"
-          logo_alignment="left"
-          width={widthPx}
-          containerProps={{
-            className: '!flex h-full w-full items-stretch',
-            style: {
-              height: '100%',
-              minHeight: LANDING_GOOGLE_BTN_HEIGHT_PX,
-              width: '100%',
-            },
-          }}
-        />
-      </div>
+      <div
+        ref={buttonHostRef}
+        className="absolute inset-0 z-10 overflow-hidden opacity-0 [&>div]:!flex [&>div]:!h-full [&>div]:!w-full [&>div]:!items-stretch [&_iframe]:!h-full [&_iframe]:!min-h-0 [&_iframe]:!w-full [&_iframe]:!shadow-none"
+      />
     </div>
   );
 };
@@ -130,8 +129,8 @@ const BrandLockup: React.FC<{ asButton?: boolean; onClick?: () => void }> = ({ a
 };
 
 export const LandingPage: React.FC = () => {
-  const { signInWithGoogleCredential } = useAuth();
-  const clientId = getGoogleOAuthClientId();
+  const { googleIdentityReady } = useAuth();
+  const googleSignInConfigured = Boolean(getGoogleOAuthClientId());
   const [view, setView] = useState<LandingView>('home');
   const [showCreditPurchaseModal, setShowCreditPurchaseModal] = useState(false);
 
@@ -157,12 +156,6 @@ export const LandingPage: React.FC = () => {
     setShowCreditPurchaseModal(true);
   };
 
-  const handleGoogleSuccess = (res: CredentialResponse) => {
-    if (res.credential) {
-      signInWithGoogleCredential(res.credential);
-    }
-  };
-
   if (view === 'translate') {
     return (
       <div className="min-h-screen bg-background text-on-surface font-body">
@@ -170,7 +163,7 @@ export const LandingPage: React.FC = () => {
           <div className="flex justify-between items-center px-6 sm:px-8 py-4 max-w-7xl mx-auto">
             <BrandLockup asButton onClick={() => setView('home')} />
             <div className="flex items-center shrink-0">
-              <LandingGoogleSignIn layout="header" clientId={clientId} onSuccess={handleGoogleSuccess} />
+              <LandingGoogleSignIn layout="header" isReady={googleIdentityReady} />
             </div>
           </div>
         </header>
@@ -195,7 +188,7 @@ export const LandingPage: React.FC = () => {
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4 sm:px-8">
           <BrandLockup />
           <div className="flex shrink-0 items-center">
-            <LandingGoogleSignIn layout="header" clientId={clientId} onSuccess={handleGoogleSuccess} />
+            <LandingGoogleSignIn layout="header" isReady={googleIdentityReady} />
           </div>
         </div>
       </header>
@@ -221,7 +214,7 @@ export const LandingPage: React.FC = () => {
               </button>
             </div>
             <div className="mt-6 sm:hidden">
-              <LandingGoogleSignIn layout="hero" clientId={clientId} onSuccess={handleGoogleSuccess} />
+              <LandingGoogleSignIn layout="hero" isReady={googleIdentityReady} />
             </div>
           </div>
         </section>
@@ -623,9 +616,9 @@ export const LandingPage: React.FC = () => {
               Continue with Google to open checkout. The credit pack you chose will be selected for you.
             </p>
             <div className="flex justify-center">
-              <LandingGoogleSignIn layout="modal" clientId={clientId} onSuccess={handleGoogleSuccess} />
+              <LandingGoogleSignIn layout="modal" isReady={googleIdentityReady} />
             </div>
-            {!clientId && (
+            {!googleSignInConfigured && (
               <p className="text-sm text-error mt-4 text-center">Google sign-in is not configured.</p>
             )}
           </div>
