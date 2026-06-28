@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CloseIcon } from './icons/CloseIcon';
 import { BuyCreditsModal } from './BuyCreditsModal';
 import { CreditsOverviewModal } from './CreditsOverviewModal';
@@ -34,6 +34,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activePage, o
   // On lg+, the rail is a 5rem strip showing icons only. Hover or keyboard
   // focus inside the aside expands it to the full 16rem layout.
   const [isHovered, setIsHovered] = useState(false);
+  const asideRef = useRef<HTMLElement>(null);
+
+  const handleAsideMouseLeave = () => {
+    setIsHovered(false);
+    onClose();
+
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && asideRef.current?.contains(active)) {
+      active.blur();
+    }
+  };
 
   const handlePurchase = async (pack: CreditPackage) => {
     await startCheckout(pack.id);
@@ -88,8 +99,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activePage, o
       <div className={`hidden lg:block shrink-0 ${RAIL_COLLAPSED_W}`} aria-hidden />
 
       <aside
+        ref={asideRef}
         onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
+        onMouseLeave={handleAsideMouseLeave}
         className={`
           group fixed top-0 left-0 z-40 h-full w-64 bg-surface-container-low border-r border-outline-variant/40
           flex flex-col py-8 gap-4 min-h-0 overflow-hidden
