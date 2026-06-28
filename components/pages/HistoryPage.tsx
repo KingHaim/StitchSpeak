@@ -22,6 +22,7 @@ import { PatternViewer } from '../PatternViewer';
 import { abbreviationLanguageCodeFromTargetLabel } from '../../services/abbreviationService';
 import { setAddTranslationHint } from '../../services/addTranslationHint';
 import { setOpenPatternHint } from '../../services/openPatternHint';
+import { languageFlagEmoji, sortedUniqueLanguageLabels } from '../../utils/languageFlags';
 
 type DownloadFormat = 'pdf' | 'doc' | 'html' | 'txt';
 
@@ -354,7 +355,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
   }
 
   const groupTargetLanguages = (group: PatternGroup) =>
-    [...new Set(group.records.map((r) => r.targetLanguage))];
+    sortedUniqueLanguageLabels(group.records.map((r) => r.targetLanguage));
 
   const groupLangSummary = (group: PatternGroup) => {
     const targets = groupTargetLanguages(group);
@@ -757,15 +758,27 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                       />
                       <div className="absolute top-4 left-4 flex flex-wrap gap-2">
-                        <span className="bg-secondary-container text-on-secondary-container px-3 py-1 rounded-full text-[10px] uppercase font-bold tracking-widest flex items-center gap-1">
-                          <Icon name="check_circle" className="text-xs" filled />
-                          {isMultiTranslation ? `${group.records.length} languages` : 'Completed'}
-                        </span>
                         {!isMultiTranslation && (
-                          <span className="bg-surface/80 glass-nav text-on-surface px-3 py-1 rounded-full text-[10px] uppercase font-bold tracking-widest">
-                            {record.targetLanguage}
+                          <span className="bg-secondary-container text-on-secondary-container px-3 py-1 rounded-full text-[10px] uppercase font-bold tracking-widest flex items-center gap-1">
+                            <Icon name="check_circle" className="text-xs" filled />
+                            Completed
                           </span>
                         )}
+                        <div
+                          className="flex flex-wrap gap-1.5"
+                          aria-label={`Translated to ${groupTargetLanguages(group).join(', ')}`}
+                        >
+                          {groupTargetLanguages(group).map((lang) => (
+                            <span
+                              key={lang}
+                              title={lang}
+                              aria-label={lang}
+                              className="bg-surface/90 glass-nav w-8 h-8 rounded-full flex items-center justify-center text-lg leading-none shadow-sm ring-1 ring-outline-variant/20"
+                            >
+                              {languageFlagEmoji(lang)}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     </div>
                     <div className="p-6 sm:p-8 flex flex-col flex-1 min-w-0">
