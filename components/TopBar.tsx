@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useCredits } from '../contexts/CreditContext';
 import { MenuIcon } from './icons/NavIcons';
@@ -21,10 +21,18 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, activePage }) => {
   const { balance, startCheckout } = useCredits();
   const [showBuyCredits, setShowBuyCredits] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [avatarFailed, setAvatarFailed] = useState(false);
 
   const displayName = isAuthenticated && user?.name
     ? user.name.split(' ')[0]
     : null;
+
+  const avatarInitial = (displayName?.[0] ?? user?.email?.[0] ?? '?').toUpperCase();
+  const showAvatarImage = Boolean(isAuthenticated && user?.picture && !avatarFailed);
+
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [user?.picture]);
 
   const handlePurchase = async (pack: CreditPackage) => {
     await startCheckout(pack.id);
@@ -91,19 +99,25 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, activePage }) => {
               </button>
             )}
 
-            {isAuthenticated && user?.picture ? (
+            {isAuthenticated && user && (
               <div className="relative">
                 <button
                   type="button"
                   onClick={() => setShowUserMenu((prev) => !prev)}
-                  className="h-9 w-9 rounded-full border-2 border-outline-variant/40 overflow-hidden hover:border-primary/50 transition-colors"
+                  className="h-9 w-9 rounded-full border-2 border-outline-variant/40 overflow-hidden hover:border-primary/50 transition-colors bg-surface-container-high flex items-center justify-center"
+                  aria-label="Account menu"
                 >
-                  <img
-                    src={user.picture}
-                    alt=""
-                    className="h-full w-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
+                  {showAvatarImage ? (
+                    <img
+                      src={user.picture}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      referrerPolicy="no-referrer"
+                      onError={() => setAvatarFailed(true)}
+                    />
+                  ) : (
+                    <span className="text-sm font-semibold text-primary">{avatarInitial}</span>
+                  )}
                 </button>
                 {showUserMenu && (
                   <>
@@ -126,12 +140,6 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, activePage }) => {
                     </div>
                   </>
                 )}
-              </div>
-            ) : (
-              <div className="h-9 w-9 rounded-full bg-surface-container-high flex items-center justify-center">
-                <span className="text-sm font-semibold text-primary">
-                  {displayName ? displayName[0] : '?'}
-                </span>
               </div>
             )}
           </div>
