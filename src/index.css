@@ -492,3 +492,126 @@ h1, h2, h3, h4, h5, h6 {
   -webkit-font-smoothing: antialiased;
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
 }
+
+/* ── Landing hero (background image + left text overlay) ── */
+
+.hero {
+  position: relative;
+  min-height: 760px;
+  display: flex;
+  align-items: center;
+  padding: 120px 8vw;
+  overflow: hidden;
+  background-image: url('/images/stitchspeak-hero-bg.png');
+  background-size: cover;
+  background-position: center right;
+  background-repeat: no-repeat;
+}
+
+.heroOverlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(250, 246, 238, 0.96) 0%,
+    rgba(250, 246, 238, 0.82) 34%,
+    rgba(250, 246, 238, 0.25) 58%,
+    rgba(250, 246, 238, 0) 100%
+  );
+  pointer-events: none;
+}
+
+.heroContent {
+  position: relative;
+  z-index: 1;
+  max-width: 540px;
+}
+
+.hero h1 {
+  font-family: var(--font-headline);
+  font-size: clamp(3.2rem, 6vw, 6.5rem);
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+  color: #1f1f1b;
+  margin: 0 0 28px;
+}
+
+.hero h1 span {
+  color: #53664f;
+  font-style: italic;
+}
+
+.hero p {
+  font-size: 1.15rem;
+  line-height: 1.65;
+  color: #4f514a;
+  max-width: 500px;
+  margin-bottom: 32px;
+}
+
+.heroActions {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 28px;
+}
+
+.hero .primary {
+  background: #4f664d;
+  color: white;
+  border: none;
+  border-radius: 14px;
+  padding: 16px 26px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.hero .primary:hover {
+  background: #53664f;
+}
+
+.hero .secondary {
+  background: rgba(255, 255, 255, 0.55);
+  color: #b97863;
+  border: 1.5px solid #d99b85;
+  border-radius: 14px;
+  padding: 16px 26px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.hero .secondary:hover {
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.heroFeatures {
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+  color: #5f6259;
+  font-size: 0.95rem;
+}
+
+@media (max-width: 900px) {
+  .hero {
+    min-height: auto;
+    padding: 110px 24px 520px;
+    background-size: auto 520px;
+    background-position: bottom right -160px;
+  }
+
+  .heroOverlay {
+    background: linear-gradient(
+      180deg,
+      rgba(250, 246, 238, 0.98) 0%,
+      rgba(250, 246, 238, 0.94) 48%,
+      rgba(250, 246, 238, 0.35) 100%
+    );
+  }
+
+  .heroContent {
+    max-width: 100%;
+  }
+}
