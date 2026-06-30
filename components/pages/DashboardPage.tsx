@@ -92,7 +92,7 @@ function aggregatePdfMetrics(metricsList: PdfMetrics[]): PdfMetrics | null {
 }
 
 export const DashboardPage: React.FC = () => {
-  const { user, idToken, isAuthenticated } = useAuth();
+  const { user, idToken, isAuthenticated, googleIdentityReady } = useAuth();
   const { balance, applyBalance, refreshBalance, startCheckout } = useCredits();
 
   const [jobs, setJobs] = useState<TranslationJob[]>([]);
@@ -1046,6 +1046,8 @@ export const DashboardPage: React.FC = () => {
         startDisabled={modalStartDisabled || isStartingFromModal}
         startBusy={isStartingFromModal}
         startError={modalStartError}
+        requiresSignIn={!isAuthenticated}
+        googleIdentityReady={googleIdentityReady}
       />
 
       <BuyCreditsModal

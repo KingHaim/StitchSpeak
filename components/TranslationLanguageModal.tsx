@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { LanguageSelector } from './LanguageSelector';
 import { CloseIcon } from './icons/CloseIcon';
 import { PricePreview } from './PricePreview';
 import { LANGUAGES, SOURCE_LANGUAGES } from '../constants';
 import type { Language, PdfMetrics, PriceEstimate } from '../types';
 import { useModalA11y } from '../hooks/useModalA11y';
+import { renderGoogleIdentityButton } from '../auth/googleIdentity';
 
 interface TranslationLanguageModalProps {
   isOpen: boolean;
@@ -24,7 +25,59 @@ interface TranslationLanguageModalProps {
   startDisabled: boolean;
   startBusy?: boolean;
   startError?: string | null;
+  requiresSignIn: boolean;
+  googleIdentityReady: boolean;
 }
+
+const ModalGoogleSignInAction: React.FC<{ isReady: boolean }> = ({ isReady }) => {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const width = 230;
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host || !isReady) return;
+    renderGoogleIdentityButton(host, {
+      type: 'standard',
+      theme: 'outline',
+      size: 'large',
+      text: 'continue_with',
+      shape: 'rectangular',
+      logo_alignment: 'left',
+      width,
+    });
+  }, [isReady]);
+
+  if (!isReady) {
+    return (
+      <button
+        type="button"
+        disabled
+        className="min-h-[48px] rounded-xl bg-primary px-8 py-3.5 font-bold text-on-primary opacity-50"
+      >
+        Preparing sign-in…
+      </button>
+    );
+  }
+
+  return (
+    <div
+      className="relative min-h-[48px] overflow-hidden rounded-xl shadow-lg shadow-primary/20 focus-within:ring-2 focus-within:ring-primary/35 focus-within:ring-offset-2"
+      style={{ width }}
+    >
+      <div
+        className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 bg-primary px-6 font-bold text-on-primary"
+        aria-hidden
+      >
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-background text-xs font-black text-primary">G</span>
+        Sign in to continue
+      </div>
+      <div
+        ref={hostRef}
+        className="absolute inset-0 z-10 overflow-hidden opacity-0 [&>div]:!flex [&>div]:!h-full [&>div]:!w-full [&>div]:!items-stretch [&_iframe]:!h-full [&_iframe]:!min-h-0 [&_iframe]:!w-full [&_iframe]:!shadow-none"
+      />
+    </div>
+  );
+};
 
 export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> = ({
   isOpen,
@@ -44,6 +97,8 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
   startDisabled,
   startBusy = false,
   startError = null,
+  requiresSignIn,
+  googleIdentityReady,
 }) => {
   const dialogRef = useModalA11y(isOpen, onClose);
 
@@ -166,7 +221,7 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
             </div>
           )}
 
-          {startError && (
+          {startError && !requiresSignIn && (
             <div
               role="alert"
               className="text-sm text-on-error-container bg-error-container/40 border border-error/30 rounded-xl px-4 py-3"
@@ -198,28 +253,34 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
           >
             Cancel
           </button>
-          <button
-            type="button"
-            onClick={onStart}
-            disabled={startDisabled}
-            aria-busy={startBusy}
-            className="order-1 sm:order-2 bg-primary hover:bg-primary-container text-on-primary px-8 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 min-h-[48px]"
-          >
-            {startBusy ? (
-              <>
-                <svg className="animate-spin h-5 w-5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden>
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Starting…
-              </>
+          <div className="order-1 flex justify-center sm:order-2">
+            {requiresSignIn ? (
+              <ModalGoogleSignInAction isReady={googleIdentityReady} />
             ) : (
-              <>
-                {startLabel}
-                <span aria-hidden>→</span>
-              </>
+              <button
+                type="button"
+                onClick={onStart}
+                disabled={startDisabled}
+                aria-busy={startBusy}
+                className="bg-primary hover:bg-primary-container text-on-primary px-8 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 min-h-[48px]"
+              >
+                {startBusy ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden>
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Starting…
+                  </>
+                ) : (
+                  <>
+                    {startLabel}
+                    <span aria-hidden>→</span>
+                  </>
+                )}
+              </button>
             )}
-          </button>
+          </div>
         </div>
       </div>
     </div>
