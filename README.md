@@ -40,6 +40,22 @@ Before switching real users on:
 3. Confirm Lemon Squeezy webhook sends `order_created` to `/api/lemon-squeezy/webhook`.
 4. Run `npm run check` in the repo root and `npm run build` in `server/`.
 5. Open the deployed frontend and test sign-in, credit balance, checkout cancel/success, one small translation, glossary lookup, chat, history reload, and export.
+6. Confirm the Lemon Squeezy API key, store, variant, and webhook are in **live
+   mode**. Test-mode credentials can create valid-looking checkout URLs but cannot
+   accept production payments.
+
+### Production operations
+
+- Railway must mount its persistent volume at `/data` and set `DATA_DIR=/data`.
+- Configure the Railway health check to use `/health/deep`; it verifies AI, OAuth,
+  payments, webhook configuration, and both persistent stores.
+- Enable automated Railway volume backups before accepting payments. Periodically
+  test restoring `credits.db` and the pattern store into a non-production environment.
+- The `Production health` GitHub Actions workflow checks `/health/deep` every 15
+  minutes. Keep GitHub Actions failure notifications enabled for the repository.
+- The same workflow checks `/health/payments`; verified webhook reconciliation
+  failures trigger alerts for one hour without taking the API offline.
+- The `CI` GitHub Actions workflow must pass before merging to `main`.
 
 ### Lemon Squeezy setup
 
@@ -47,7 +63,7 @@ Before switching real users on:
 2. Copy the store ID and the product variant ID into `LEMON_SQUEEZY_STORE_ID` and `LEMON_SQUEEZY_VARIANT_ID`.
 3. Create an API key in Lemon Squeezy and set `LEMON_SQUEEZY_API_KEY`.
 4. Create a webhook endpoint for `https://your-api.example.com/api/lemon-squeezy/webhook`.
-5. Subscribe the webhook to `order_created`.
+5. Subscribe the webhook to `order_created` and `order_refunded`.
 6. Choose a signing secret and set the same value as `LEMON_SQUEEZY_WEBHOOK_SECRET`.
 
 The server creates checkout links on demand using Lemon Squeezy's Checkouts API. It overrides the product price per credit pack and sends the signed-in user ID as checkout custom data. Credits are granted only when the verified `order_created` webhook arrives.

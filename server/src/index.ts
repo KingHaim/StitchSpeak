@@ -7,7 +7,10 @@ import creditsRouter from './routes/credits.js';
 import glossaryRouter from './routes/glossary.js';
 import patternsRouter from './routes/patterns.js';
 import lemonSqueezyWebhookRouter from './routes/lemonSqueezyWebhook.js';
-import { creditStoreHealth } from './services/creditStore.js';
+import {
+  creditStoreHealth,
+  paymentReconciliationHealth,
+} from './services/creditStore.js';
 import { patternStoreHealth } from './services/patternStore.js';
 import {
   isLemonSqueezyConfigured,
@@ -140,6 +143,21 @@ app.get('/health/deep', (_req, res) => {
     res.status(ok ? 200 : 503).json({ status: ok ? 'ok' : 'degraded', checks });
   } catch (err) {
     console.error('[health/deep] failed:', err);
+    res.status(503).json({ status: 'error' });
+  }
+});
+
+// Separate from deployment readiness: a reconciliation anomaly should alert
+// operators, but must not take a healthy API out of service during a deploy.
+app.get('/health/payments', (_req, res) => {
+  try {
+    const health = paymentReconciliationHealth();
+    res.status(health.ok ? 200 : 503).json({
+      status: health.ok ? 'ok' : 'attention_required',
+      ...health,
+    });
+  } catch (err) {
+    console.error('[health/payments] failed:', err);
     res.status(503).json({ status: 'error' });
   }
 });

@@ -1,6 +1,10 @@
 import { Router, type Request, type Response } from 'express';
 import express from 'express';
-import { grantCreditsForEvent } from '../services/creditStore.js';
+import {
+  applyOrderRefund,
+  recordPaymentAnomaly,
+  recordPurchaseAndGrantCredits,
+} from '../services/creditStore.js';
 import { getCreditPack } from '../services/pricing.js';
 import {
   getLemonSqueezyVariantId,
@@ -27,6 +31,7 @@ interface LemonSqueezyWebhookPayload {
       refunded?: unknown;
       subtotal?: unknown;
       total?: unknown;
+      refunded_amount?: unknown;
       first_order_item?: {
         variant_id?: unknown;
       };
@@ -77,7 +82,7 @@ router.post(
           ? req.headers['x-event-name']
           : '';
 
-    if (eventName !== 'order_created') {
+    if (eventName !== 'order_created' && eventName !== 'order_refunded') {
       res.json({ received: true, ignored: true });
       return;
     }
@@ -96,6 +101,36 @@ router.post(
     const expectedVariantId = numberFromUnknown(getLemonSqueezyVariantId());
     const status = typeof attrs?.status === 'string' ? attrs.status : '';
 
+    if (eventName === 'order_refunded') {
+      const refundedAmount = numberFromUnknown(attrs?.refunded_amount);
+      if (!orderId || refundedAmount == null || refundedAmount <= 0) {
+        recordPaymentAnomaly('invalid_refund_payload', orderId || undefined);
+        console.error('[lemon-squeezy/webhook] Invalid refund payload', {
+          orderId,
+          refundedAmount,
+        });
+        res.status(400).json({ error: 'Invalid refund payload.' });
+        return;
+      }
+
+      const refundEventId = `${eventName}:${orderId}:${Math.round(refundedAmount)}`;
+      const result = applyOrderRefund(refundEventId, orderId, refundedAmount);
+      if (!result.applied && result.reason === 'unknown_order') {
+        recordPaymentAnomaly('refund_unknown_order', orderId);
+        console.error('[lemon-squeezy/webhook] Refund references an unknown order', { orderId });
+        res.status(409).json({ error: 'Purchase has not been recorded yet.' });
+        return;
+      }
+
+      console.log('[lemon-squeezy/webhook] order_refunded', {
+        orderId,
+        applied: result.applied,
+        revoked: 'revoked' in result ? result.revoked : 0,
+      });
+      res.json({ received: true, applied: result.applied });
+      return;
+    }
+
     const isExpectedOrder =
       orderId &&
       sub &&
@@ -108,6 +143,7 @@ router.post(
       amountPaid >= Math.round(pack.price * 100);
 
     if (!isExpectedOrder || !pack || credits == null) {
+      recordPaymentAnomaly('rejected_paid_order', orderId || undefined);
       console.warn('[lemon-squeezy/webhook] Paid order did not match an expected credit pack', {
         orderId,
         packId,
@@ -121,7 +157,20 @@ router.post(
 
     const eventId = `${eventName}:${orderId}`;
     const email = typeof attrs?.user_email === 'string' ? attrs.user_email : undefined;
-    const { applied, balance } = grantCreditsForEvent(eventId, sub, credits, email);
+    const chargedTotal = total ?? subtotal;
+    if (chargedTotal == null || chargedTotal <= 0) {
+      recordPaymentAnomaly('invalid_paid_order_total', orderId);
+      res.status(400).json({ error: 'Invalid paid order total.' });
+      return;
+    }
+    const { applied, balance } = recordPurchaseAndGrantCredits({
+      eventId,
+      orderId,
+      sub,
+      credits,
+      amountPaidCents: chargedTotal,
+      email,
+    });
     console.log(
       `[lemon-squeezy/webhook] order_created sub=${sub} credits=${credits} applied=${applied} balance=${balance}`,
     );
