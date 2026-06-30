@@ -15,17 +15,59 @@ const scrollToId = (id: string) => {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 };
 
-const HERO_FEATURES = [
-  { icon: 'public', text: 'Translate patterns from around the world.', tone: 'primary' as const },
-  { icon: 'texture', text: 'Knit and crochet with confidence.', tone: 'accent' as const },
-  { icon: 'menu_book', text: 'Save translations in your pattern library.', tone: 'primary' as const },
-  { icon: 'favorite', text: 'Craft connects. We help it speak your language.', tone: 'accent' as const },
+const TRUST_POINTS = [
+  { icon: 'translate', title: '13 languages', text: 'Craft terminology, not generic prose' },
+  { icon: 'receipt_long', title: 'Cost shown first', text: 'Approve every translation before spending' },
+  { icon: 'lock', title: 'Private files', text: 'Your patterns stay in your library' },
+];
+
+const JOURNEY_STEPS = [
+  {
+    icon: 'upload_file',
+    title: 'Upload your pattern',
+    desc: 'Add a PDF, DOCX, TXT, or RTF file. StitchSpeak detects the source language.',
+  },
+  {
+    icon: 'payments',
+    title: 'Review and confirm',
+    desc: 'See the translation estimate and your remaining balance before anything starts.',
+  },
+  {
+    icon: 'check_circle',
+    title: 'Translate and cast on',
+    desc: 'Review, save, and export the finished pattern from your personal library.',
+  },
 ];
 
 const Icon: React.FC<{ name: string; className?: string }> = ({ name, className }) => (
   <span className={`material-symbols-outlined ${className ?? ''}`} aria-hidden>
     {name}
   </span>
+);
+
+const JourneySection: React.FC = () => (
+  <section className="border-b border-outline-variant/10 px-6 py-14 sm:px-8 sm:py-18">
+    <div className="mx-auto max-w-7xl">
+      <div className="mb-10 max-w-2xl sm:mb-12">
+        <h2 className="font-headline text-3xl font-bold sm:text-4xl">From pattern to project</h2>
+        <p className="mt-3 text-on-surface-variant">Three clear steps, with the price visible before translation begins.</p>
+      </div>
+      <div className="grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-10">
+        {JOURNEY_STEPS.map(({ icon, title, desc }, index) => (
+          <div key={title} className="relative border-t border-outline-variant/25 pt-6">
+            <div className="mb-5 flex items-center justify-between">
+              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Icon name={icon} className="text-2xl" />
+              </span>
+              <span className="font-headline text-3xl font-bold text-outline-variant/55">0{index + 1}</span>
+            </div>
+            <h3 className="font-headline text-xl font-bold">{title}</h3>
+            <p className="mt-2 max-w-sm text-sm leading-relaxed text-on-surface-variant">{desc}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
 );
 
 interface LandingGoogleSignInProps {
@@ -36,7 +78,7 @@ interface LandingGoogleSignInProps {
 /** Match former header CTAs (~44px tall). */
 const LANDING_GOOGLE_BTN_HEIGHT_PX = 44;
 
-/** Multicolor G — used on custom-styled sign-in; real click target is an invisible Google-rendered button on top. */
+/** Multicolor G used on custom-styled sign-in; the real click target is Google's invisible rendered button. */
 function GoogleMark({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden>
@@ -61,7 +103,7 @@ function GoogleMark({ className }: { className?: string }) {
 }
 
 const LandingGoogleSignIn: React.FC<LandingGoogleSignInProps> = ({ layout, isReady }) => {
-  const widthPx = layout === 'hero' ? 200 : layout === 'modal' ? 240 : 180;
+  const widthPx = layout === 'hero' ? 200 : layout === 'modal' ? 240 : 148;
   const buttonHostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -185,7 +227,7 @@ export const LandingPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-background text-on-surface font-body selection:bg-primary-fixed selection:text-on-primary-fixed">
       <header className="sticky top-0 z-50 border-b border-outline-variant/15 bg-background/90 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4 sm:px-8">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:gap-4 sm:px-8 sm:py-4">
           <BrandLockup />
           <div className="flex shrink-0 items-center">
             <LandingGoogleSignIn layout="header" isReady={googleIdentityReady} />
@@ -203,7 +245,7 @@ export const LandingPage: React.FC = () => {
               translated.
             </h1>
             <p>
-              Bridge the gap between international patterns and your needles. Upload a file, buy credits, and get a translation built for knitting and crochet language.
+              Translate knitting and crochet patterns with the terminology, structure, and abbreviations makers expect.
             </p>
             <div className="heroActions">
               <button type="button" className="primary" onClick={() => setView('translate')}>
@@ -213,32 +255,31 @@ export const LandingPage: React.FC = () => {
                 See pricing
               </button>
             </div>
-            <div className="mt-6 sm:hidden">
-              <LandingGoogleSignIn layout="hero" isReady={googleIdentityReady} />
-            </div>
           </div>
         </section>
 
-        <section className="border-t border-outline-variant/10 bg-surface-container-low/80">
-            <div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-6 py-10 sm:px-8 sm:py-12 md:grid-cols-2 xl:grid-cols-4">
-              {HERO_FEATURES.map(({ icon, text, tone }) => (
-                <div key={text} className="flex items-start gap-4">
-                  <span
-                    className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${
-                      tone === 'primary' ? 'bg-primary/10 text-primary' : 'bg-[#C9886E]/12 text-[#C9886E]'
-                    }`}
-                  >
-                    <Icon name={icon} className="text-2xl" />
-                  </span>
-                  <p className="pt-2 text-sm leading-relaxed text-on-surface sm:text-[0.9375rem]">{text}</p>
+        <section className="border-y border-outline-variant/10 bg-surface-container-low/80">
+          <div className="mx-auto grid max-w-7xl grid-cols-1 px-6 sm:px-8 md:grid-cols-3">
+            {TRUST_POINTS.map(({ icon, title, text }, index) => (
+              <div
+                key={title}
+                className={`flex items-center gap-4 py-5 md:px-7 ${index > 0 ? 'border-t border-outline-variant/15 md:border-l md:border-t-0' : ''}`}
+              >
+                <Icon name={icon} className="shrink-0 text-2xl text-primary" />
+                <div>
+                  <p className="text-sm font-bold text-on-surface">{title}</p>
+                  <p className="mt-0.5 text-xs leading-relaxed text-on-surface-variant">{text}</p>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
+          </div>
         </section>
 
-        <section className="px-6 sm:px-8 py-16 sm:py-24 bg-surface-container-low">
+        <JourneySection />
+
+        <section className="bg-surface-container-low px-6 py-14 sm:px-8 sm:py-20">
           <div className="max-w-7xl mx-auto">
-            <div className="mb-16">
+            <div className="mb-10 max-w-2xl sm:mb-12">
               <h2 className="text-3xl sm:text-4xl font-headline font-bold mb-4">Crafted for the Modern Maker</h2>
               <p className="text-on-surface-variant">Where tradition meets technological precision.</p>
             </div>
@@ -282,24 +323,11 @@ export const LandingPage: React.FC = () => {
                   </p>
                 </div>
               </div>
-              <div className="bg-surface-container-highest p-8 rounded-xl flex flex-col items-center justify-center text-center">
-                <h3 className="text-lg sm:text-xl font-headline font-bold mb-4 italic">
-                  &quot;The clarity of these translated patterns is like having a master knitter sitting right beside you.&quot;
-                </h3>
-                <p className="text-sm font-label text-on-surface-variant">Eleanor R., fiber artist</p>
-              </div>
-	              <div id="community" className="md:col-span-2 relative h-[260px] sm:h-[300px] rounded-xl overflow-hidden group scroll-mt-28">
-	                <img
-	                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-	                  alt=""
-	                  src="/landing-community.jpg"
-	                />
-              </div>
             </div>
           </div>
         </section>
 
-        <section className="px-6 sm:px-8 py-16 sm:py-24 max-w-7xl mx-auto">
+        <section className="mx-auto max-w-7xl px-6 py-14 sm:px-8 sm:py-20">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
             <div className="lg:col-span-4">
               <p className="text-xs font-bold uppercase tracking-[0.28em] text-primary mb-4">Inside the app</p>
@@ -433,44 +461,7 @@ export const LandingPage: React.FC = () => {
           </div>
         </section>
 
-        <section className="px-6 sm:px-8 py-16 sm:py-24 max-w-7xl mx-auto">
-          <h2 className="text-4xl sm:text-5xl font-headline font-bold text-center mb-16 sm:mb-20 italic">The Journey of a Stitch</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-12 sm:gap-16">
-            {[
-              {
-                n: '1',
-                icon: 'upload_file',
-                title: 'Upload your pattern',
-                desc: 'Sign in and upload a PDF, DOCX, TXT, or RTF file. Source language is auto-detected.',
-              },
-              {
-                n: '2',
-                icon: 'payments',
-                title: 'Buy credits and confirm',
-                desc: 'Purchase a credit pack, review the translation estimate, and approve before StitchSpeak starts.',
-              },
-              {
-                n: '3',
-                icon: 'check_circle',
-                title: 'Cast on',
-                desc: 'Get your translated pattern back with the layout preserved, ready to export from My Patterns.',
-              },
-            ].map(({ n, icon, title, desc }) => (
-              <div key={n} className="text-center relative pt-8">
-                <div className="text-[8rem] sm:text-[12rem] font-headline font-black text-surface-container absolute -top-4 sm:-top-24 left-1/2 -translate-x-1/2 -z-10 opacity-50 pointer-events-none select-none">
-                  {n}
-                </div>
-                <div className="mb-6 inline-block p-4 bg-surface-container-high rounded-full relative">
-                  <Icon name={icon} className="text-primary text-3xl" />
-                </div>
-                <h4 className="text-2xl font-headline font-bold mb-4">{title}</h4>
-                <p className="text-on-surface-variant">{desc}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section id="pricing" className="px-6 sm:px-8 py-16 sm:py-24 bg-surface-container-high scroll-mt-24">
+        <section id="pricing" className="bg-surface-container-high px-6 py-14 scroll-mt-24 sm:px-8 sm:py-20">
           <div className="max-w-5xl mx-auto">
             <div className="text-center mb-12 sm:mb-16">
 	              <h2 className="text-3xl sm:text-4xl font-headline font-bold mb-4">Choose Your Pace</h2>
@@ -479,7 +470,7 @@ export const LandingPage: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {CREDIT_PACKAGES.map((pack, idx) => {
                 const perCredit = pack.price / pack.credits;
-                const isBest = idx === CREDIT_PACKAGES.length - 1;
+                const isBest = idx === 1;
                 return (
                   <div
                     key={pack.credits}
@@ -489,7 +480,7 @@ export const LandingPage: React.FC = () => {
                   >
                     {isBest && (
                       <div className="absolute top-0 right-0 bg-secondary-container text-on-secondary-container px-4 py-2 rounded-bl-xl text-xs font-bold uppercase tracking-widest">
-                        Best value
+                        Most popular
                       </div>
                     )}
                     <div>
@@ -516,7 +507,7 @@ export const LandingPage: React.FC = () => {
           </div>
         </section>
 
-        <section className="px-6 sm:px-8 py-16 sm:py-24 max-w-6xl mx-auto">
+        <section className="mx-auto max-w-6xl px-6 py-14 sm:px-8 sm:py-20">
           <div className="grid grid-cols-1 lg:grid-cols-[0.82fr_1.18fr] gap-10 lg:gap-14 items-start">
             <div className="lg:sticky lg:top-28">
               <p className="text-xs font-bold uppercase tracking-[0.28em] text-primary mb-4">Questions &amp; Answers</p>
@@ -580,6 +571,24 @@ export const LandingPage: React.FC = () => {
               </details>
             ))}
             </div>
+          </div>
+        </section>
+
+        <section className="bg-primary px-6 py-14 text-on-primary sm:px-8 sm:py-18">
+          <div className="mx-auto flex max-w-5xl flex-col items-start justify-between gap-8 md:flex-row md:items-center">
+            <div className="max-w-2xl">
+              <h2 className="font-headline text-3xl font-bold sm:text-4xl">Ready when your next pattern is.</h2>
+              <p className="mt-3 max-w-xl text-on-primary/80">
+                Upload the file, check the cost, and translate with terminology made for knitters and crocheters.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setView('translate')}
+              className="shrink-0 rounded-xl bg-background px-6 py-3.5 font-bold text-primary transition-transform hover:-translate-y-0.5 active:translate-y-0"
+            >
+              Start translating
+            </button>
           </div>
         </section>
 
@@ -652,20 +661,6 @@ export const LandingPage: React.FC = () => {
         </div>
       </footer>
 
-      <div className="fixed bottom-8 right-8 z-50 group">
-        <button
-          type="button"
-          onClick={() => setView('translate')}
-          className="bg-surface/60 glass-nav shadow-ambient w-16 h-16 rounded-full flex items-center justify-center text-primary hover:bg-primary hover:text-on-primary transition-all duration-300"
-          aria-label="Open translator"
-        >
-          <Icon name="counter_1" className="text-3xl" />
-        </button>
-        <div className="absolute bottom-full right-0 mb-4 bg-surface p-4 rounded-xl shadow-ambient opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap pointer-events-none">
-          <p className="font-headline font-bold text-on-surface">Translate a pattern</p>
-	          <p className="text-sm text-on-surface-variant">Sign in and use credits</p>
-        </div>
-      </div>
     </div>
   );
 };

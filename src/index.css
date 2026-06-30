@@ -497,10 +497,11 @@ h1, h2, h3, h4, h5, h6 {
 
 .hero {
   position: relative;
-  min-height: 760px;
+  height: min(700px, calc(100dvh - 81px));
+  min-height: 600px;
   display: flex;
   align-items: center;
-  padding: 120px 8vw;
+  padding: clamp(56px, 8vh, 88px) 8vw;
   overflow: hidden;
   background-image: url('/images/stitchspeak-hero-bg.png');
   background-size: cover;
@@ -529,8 +530,8 @@ h1, h2, h3, h4, h5, h6 {
 
 .hero h1 {
   font-family: var(--font-headline);
-  font-size: clamp(3.2rem, 6vw, 6.5rem);
-  line-height: 0.95;
+  font-size: clamp(3.2rem, 5.5vw, 5.75rem);
+  line-height: 0.98;
   letter-spacing: -0.04em;
   color: #1f1f1b;
   margin: 0 0 28px;
@@ -545,7 +546,7 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 1.15rem;
   line-height: 1.65;
   color: #4f514a;
-  max-width: 500px;
+  max-width: 470px;
   margin-bottom: 32px;
 }
 
@@ -553,7 +554,7 @@ h1, h2, h3, h4, h5, h6 {
   display: flex;
   gap: 16px;
   flex-wrap: wrap;
-  margin-bottom: 28px;
+  margin-bottom: 0;
 }
 
 .hero .primary {
@@ -596,10 +597,11 @@ h1, h2, h3, h4, h5, h6 {
 
 @media (max-width: 900px) {
   .hero {
-    min-height: auto;
-    padding: 110px 24px 520px;
-    background-size: auto 520px;
-    background-position: bottom right -160px;
+    height: auto;
+    min-height: calc(100dvh - 81px);
+    padding: 64px 24px 360px;
+    background-size: auto 390px;
+    background-position: bottom right -115px;
   }
 
   .heroOverlay {
@@ -613,5 +615,31 @@ h1, h2, h3, h4, h5, h6 {
 
   .heroContent {
     max-width: 100%;
+  }
+
+  .hero h1 {
+    font-size: clamp(3rem, 12vw, 4.5rem);
+  }
+
+  .hero p {
+    max-width: 32rem;
+    font-size: 1.05rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .hero {
+    padding: 48px 20px 300px;
+    background-size: auto 325px;
+    background-position: bottom right -105px;
+  }
+
+  .hero h1 {
+    font-size: clamp(2.75rem, 13vw, 3.75rem);
+    margin-bottom: 20px;
+  }
+
+  .hero p {
+    margin-bottom: 24px;
   }
 }
