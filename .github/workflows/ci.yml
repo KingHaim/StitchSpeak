@@ -22,8 +22,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run check
       - run: npm ci
         working-directory: server
+      - run: npm run check
       - run: npm run build
         working-directory: server
