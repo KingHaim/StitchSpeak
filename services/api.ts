@@ -2,6 +2,7 @@
  * Backend API client (pattern copied from BeatingHeart `src/services/replicate.js`).
  * Point `VITE_API_URL` at your own API when you add one; until then these helpers are unused by the app.
  */
+import { readStoredIdToken } from '../auth/sessionStorage';
 
 const isLocalhost =
   typeof window !== 'undefined' &&
@@ -39,7 +40,9 @@ export function getDeviceFingerprint(): string | null {
 
 export function getToken(): string | null {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem(SS_TOKEN_KEY);
+  // `SS_TOKEN_KEY` belonged to the retired email/password auth flow. Current
+  // sessions are Google ID tokens, stored by AuthProvider.
+  return localStorage.getItem(SS_TOKEN_KEY) || readStoredIdToken();
 }
 
 export async function apiCall<T = unknown>(
