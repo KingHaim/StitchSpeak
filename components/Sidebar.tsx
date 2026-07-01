@@ -50,14 +50,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activePage, o
     await startCheckout(pack.id);
   };
 
-  const goToNewTranslation = () => {
-    onNavigate('dashboard');
-    onClose();
-    window.setTimeout(() => {
-      document.getElementById('new-translation')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
-  };
-
   useEffect(() => {
     if (!showCreditsOverview) return;
     let cancelled = false;
@@ -223,21 +215,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activePage, o
               </div>
             </button>
           )}
-
-          <button
-            type="button"
-            onClick={goToNewTranslation}
-            className={`w-full bg-primary text-on-primary py-3.5 rounded-xl font-medium flex items-center justify-center gap-2 shadow-lg shadow-primary/10 hover:bg-primary-container transition-colors ${
-              isHovered ? '' : 'lg:py-3 lg:px-0'
-            } lg:group-focus-within:px-4`}
-            title={!isHovered ? 'New translation' : undefined}
-            aria-label="New translation"
-          >
-            <span className="material-symbols-outlined text-xl" aria-hidden>
-              add
-            </span>
-            <span className={labelVisibilityClass}>New translation</span>
-          </button>
 
           <div className={`flex flex-col gap-1 border-t border-outline-variant/40 pt-4 ${detailVisibilityClass}`}>
             <button
