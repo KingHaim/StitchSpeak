@@ -7,6 +7,7 @@ import { Chatbot } from '../Chatbot';
 import { BuyCreditsModal } from '../BuyCreditsModal';
 import { TranslationLanguageModal } from '../TranslationLanguageModal';
 import { TranslationJobCard } from '../TranslationJobCard';
+import { FileThumbnail } from '../FileThumbnail';
 import { translatePatternStream, startChatSession, sendChatMessage } from '../../services/translationService';
 import { analyzeFile } from '../../services/fileAnalyzer';
 import { estimateBatchTranslationCost, estimateTranslationCost } from '../../services/pricingService';
@@ -43,6 +44,7 @@ import {
   CREDIT_PACKAGES,
   PENDING_BUY_CREDITS_PACK_INDEX_KEY,
 } from '../../constants';
+import { estimatedTranslationProgress } from '../../services/progressEstimate';
 import type {
   ChatMessage,
   Language,
@@ -315,6 +317,7 @@ export const DashboardPage: React.FC = () => {
 
     const newJob: TranslationJob = {
       id: createJobId(),
+      startedAt: record.timestamp || Date.now(),
       file: placeholderFile,
       fileName: record.fileName,
       sourceLanguage: sourceLanguageObj,
@@ -367,6 +370,7 @@ export const DashboardPage: React.FC = () => {
       const id = createJobId();
       const newJob: TranslationJob = {
         id,
+        startedAt: Date.now(),
         file,
         fileName: file.name,
         sourceLanguage,
@@ -716,6 +720,15 @@ export const DashboardPage: React.FC = () => {
   const projectInitial =
     selectedJob?.fileName?.trim()?.charAt(0)?.toUpperCase() ?? '?';
 
+  const [progressClock, setProgressClock] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (selectedJob?.status !== 'translating') return;
+    setProgressClock(Date.now());
+    const interval = window.setInterval(() => setProgressClock(Date.now()), 500);
+    return () => window.clearInterval(interval);
+  }, [selectedJob?.id, selectedJob?.status]);
+
   const completionPercent =
     !selectedJob
       ? null
@@ -723,7 +736,10 @@ export const DashboardPage: React.FC = () => {
         ? 100
         : selectedJob.status === 'error'
           ? 0
-          : null;
+          : estimatedTranslationProgress(
+              progressClock - selectedJob.startedAt,
+              selectedJob.pdfMetrics?.pages ?? 1,
+            );
 
   const canStudioExport =
     selectedJob?.status === 'complete' && !!stripTranslatedHtml(selectedJob.translatedHtml ?? '');
@@ -741,9 +757,11 @@ export const DashboardPage: React.FC = () => {
               selectedJob.status === 'error') && (
               <div className="bg-surface-container-low rounded-xl p-6 sm:p-8 flex flex-col md:flex-row gap-8 items-center border border-outline-variant/15">
                 <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-lg overflow-hidden bg-surface-container-highest shrink-0 flex items-center justify-center border border-outline-variant/20">
-                  <span className="font-headline italic text-4xl text-primary" aria-hidden>
-                    {projectInitial}
-                  </span>
+                  <FileThumbnail
+                    file={selectedJob.file}
+                    fallbackText={projectInitial}
+                    className="h-full w-full object-cover object-top"
+                  />
                 </div>
                 <div className="flex-1 space-y-4 w-full min-w-0">
                   <div className="flex justify-between items-start gap-4">
@@ -769,7 +787,7 @@ export const DashboardPage: React.FC = () => {
                         <>
                           <span className="text-3xl font-headline text-primary">{completionPercent}%</span>
                           <span className="block text-[10px] uppercase tracking-tighter text-on-surface-variant">
-                            Completion
+                            {selectedJob.status === 'translating' ? 'Estimated progress' : 'Completion'}
                           </span>
                         </>
                       ) : (
@@ -783,14 +801,10 @@ export const DashboardPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="w-full bg-surface-container-highest h-1.5 rounded-full overflow-hidden">
-                    {completionPercent !== null ? (
-                      <div
-                        className="bg-primary h-full rounded-full transition-all duration-500"
-                        style={{ width: `${completionPercent}%` }}
-                      />
-                    ) : (
-                      <div className="bg-primary h-full w-1/3 rounded-full animate-pulse" />
-                    )}
+                    <div
+                      className="bg-primary h-full rounded-full transition-[width] duration-700 ease-out"
+                      style={{ width: `${completionPercent ?? 0}%` }}
+                    />
                   </div>
                 </div>
               </div>

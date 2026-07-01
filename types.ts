@@ -84,6 +84,8 @@ export type TranslationJobStatus = 'translating' | 'complete' | 'error';
 
 export interface TranslationJob {
   id: string;
+  /** Client timestamp used only for an explicitly estimated progress display. */
+  startedAt: number;
   file: File;
   fileName: string;
   sourceLanguage: Language;
