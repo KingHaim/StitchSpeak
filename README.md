@@ -31,6 +31,7 @@ Server hosting needs:
 - `GOOGLE_CLIENT_ID` matching the frontend client ID
 - `FRONTEND_URL` with every public frontend origin, comma-separated
 - `DATA_DIR` on a persistent volume
+- `ADMIN_EMAILS` with the comma-separated Google accounts allowed to open `/admin`
 - `LEMON_SQUEEZY_API_KEY`, `LEMON_SQUEEZY_STORE_ID`, `LEMON_SQUEEZY_VARIANT_ID`, and `LEMON_SQUEEZY_WEBHOOK_SECRET` when payments are live
 
 Before switching real users on:

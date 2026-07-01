@@ -31,6 +31,7 @@ StitchSpeak is a React 19 + TypeScript + Tailwind CSS v4 frontend (Vite) with an
 | `PORT` | `server/.env` | Port the Express server listens on (default `3001`) |
 | `FRONTEND_URL` | `server/.env` | Comma-separated extra CORS origins (localhost dev ports are always allowed) |
 | `DATA_DIR` | `server/.env` | Directory for persistent data like the credits DB (default `./data`) |
+| `ADMIN_EMAILS` | `server/.env` | Comma-separated Google emails allowed to access the server-enforced admin console |
 | `VITE_GOOGLE_CLIENT_ID` | `.env` | Google OAuth Web client ID for sign-in |
 | `VITE_API_URL` | `.env` | Backend origin the frontend calls (e.g. `http://localhost:3001`) |
 

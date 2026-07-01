@@ -1,0 +1,36 @@
+import { Router, type Request, type Response } from 'express';
+import { requireAdmin } from '../middleware/admin.js';
+import type { AuthenticatedRequest } from '../middleware/auth.js';
+import { adminOverview, adjustMemberCredits, getAdminMember, listAdminMembers } from '../services/adminStore.js';
+import { deletePattern } from '../services/patternStore.js';
+
+const router = Router();
+router.use(requireAdmin);
+
+router.get('/me', (req, res) => res.json({ admin: true, email: (req as AuthenticatedRequest).userEmail }));
+router.get('/overview', (_req, res) => res.json(adminOverview()));
+router.get('/members', (req, res) => res.json({ members: listAdminMembers(typeof req.query.q === 'string' ? req.query.q : '') }));
+router.get('/members/:sub', (req, res) => {
+  const sub = Array.isArray(req.params.sub) ? req.params.sub[0] : req.params.sub;
+  const detail = getAdminMember(sub);
+  if (!detail) return void res.status(404).json({ error: 'Member not found.' });
+  res.json(detail);
+});
+router.post('/members/:sub/credits', (req: Request, res: Response) => {
+  const sub = Array.isArray(req.params.sub) ? req.params.sub[0] : req.params.sub;
+  const delta = Number(req.body?.delta);
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 240) : '';
+  if (!Number.isFinite(delta) || delta === 0 || Math.abs(delta) > 1000 || reason.length < 3) {
+    res.status(400).json({ error: 'Enter a non-zero adjustment up to 1,000 credits and a reason.' }); return;
+  }
+  const balance = adjustMemberCredits(sub, delta, reason, (req as AuthenticatedRequest).userEmail || 'unknown');
+  res.json({ balance });
+});
+router.delete('/members/:sub/uploads/:id', (req, res) => {
+  const sub = Array.isArray(req.params.sub) ? req.params.sub[0] : req.params.sub;
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  if (!deletePattern(sub, id)) return void res.status(404).json({ error: 'Upload not found.' });
+  res.status(204).end();
+});
+
+export default router;

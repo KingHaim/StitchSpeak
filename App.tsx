@@ -21,6 +21,9 @@ const HistoryPage = lazy(() =>
     default: module.HistoryPage,
   })),
 );
+const AdminPage = lazy(() =>
+  import('./components/pages/AdminPage').then((module) => ({ default: module.AdminPage })),
+);
 
 const App: React.FC = () => {
   const { isAuthenticated } = useAuth();
@@ -33,6 +36,10 @@ const App: React.FC = () => {
   // who already have a StitchSpeak session.
   if (isBetaCampaign) {
     return <BetaCampaignPage />;
+  }
+
+  if (window.location.pathname === '/admin' && isAuthenticated) {
+    return <Suspense fallback={<div className="min-h-screen bg-background" />}><AdminPage /></Suspense>;
   }
 
   if (!isAuthenticated) {
