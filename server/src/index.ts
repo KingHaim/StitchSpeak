@@ -7,6 +7,7 @@ import creditsRouter from './routes/credits.js';
 import glossaryRouter from './routes/glossary.js';
 import patternsRouter from './routes/patterns.js';
 import lemonSqueezyWebhookRouter from './routes/lemonSqueezyWebhook.js';
+import betaApplicationsRouter from './routes/betaApplications.js';
 import {
   creditStoreHealth,
   paymentReconciliationHealth,
@@ -168,6 +169,7 @@ app.use('/api/chat', chatRouter);
 app.use('/api/credits', creditsRouter);
 app.use('/api/glossary', glossaryRouter);
 app.use('/api/patterns', patternsRouter);
+app.use('/api/beta-applications', betaApplicationsRouter);
 
 app.use(
   (err: unknown, _req: Request, res: Response, _next: NextFunction) => {

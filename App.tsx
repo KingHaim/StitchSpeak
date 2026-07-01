@@ -3,6 +3,7 @@ import React, { Suspense, lazy, useState } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { DashboardLayout } from './components/DashboardLayout';
 import { LandingPage } from './components/pages/LandingPage';
+import { BetaCampaignPage } from './components/pages/BetaCampaignPage';
 import type { PageId } from './types';
 
 const DashboardPage = lazy(() =>
@@ -24,6 +25,15 @@ const HistoryPage = lazy(() =>
 const App: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const [currentPage, setCurrentPage] = useState<PageId>('dashboard');
+  const isBetaCampaign =
+    window.location.pathname === '/beta' ||
+    new URLSearchParams(window.location.search).get('campaign') === 'beta';
+
+  // The campaign is a public destination and must not disappear for people
+  // who already have a StitchSpeak session.
+  if (isBetaCampaign) {
+    return <BetaCampaignPage />;
+  }
 
   if (!isAuthenticated) {
     return <LandingPage />;
