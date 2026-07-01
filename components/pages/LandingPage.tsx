@@ -245,7 +245,8 @@ export const LandingPage: React.FC = () => {
               translated.
             </h1>
             <p>
-              Translate knitting and crochet patterns with the terminology, structure, and abbreviations makers expect.
+              A brilliant pattern should never become an abandoned project just because it speaks the wrong language.
+              StitchSpeak turns the instructions you found into the craft language your hands already know.
             </p>
             <div className="heroActions">
               <button type="button" className="primary" onClick={() => setView('translate')}>
