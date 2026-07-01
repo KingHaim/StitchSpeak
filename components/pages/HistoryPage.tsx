@@ -19,12 +19,29 @@ import { useAuth } from '../../contexts/AuthContext';
 import { CloseIcon } from '../icons/CloseIcon';
 import { PatternThumbnail } from '../PatternThumbnail';
 import { PatternViewer } from '../PatternViewer';
+import { OriginalPreview } from '../OriginalPreview';
 import { abbreviationLanguageCodeFromTargetLabel } from '../../services/abbreviationService';
 import { setAddTranslationHint } from '../../services/addTranslationHint';
 import { setOpenPatternHint } from '../../services/openPatternHint';
 import { languageFlagEmoji, sortedUniqueLanguageLabels } from '../../utils/languageFlags';
 
 type DownloadFormat = 'pdf' | 'doc' | 'html' | 'txt';
+
+interface PatternGroup {
+  fileName: string;
+  records: TranslationRecord[];
+  latestTimestamp: number;
+}
+
+function latestRecordPerTarget(records: TranslationRecord[]): TranslationRecord[] {
+  const seen = new Set<string>();
+  return records.filter((record) => {
+    const key = record.targetLanguage.trim().toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 const downloadOptions: { id: DownloadFormat; label: string; icon: string }[] = [
   { id: 'pdf', label: 'PDF', icon: 'picture_as_pdf' },
@@ -64,9 +81,12 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
   const [isExpandedLoading, setIsExpandedLoading] = useState(false);
 
   const [fullViewRecord, setFullViewRecord] = useState<TranslationRecord | null>(null);
+  const [fullViewGroup, setFullViewGroup] = useState<PatternGroup | null>(null);
   const [fullViewHtml, setFullViewHtml] = useState<string | null>(null);
+  const [fullViewSource, setFullViewSource] = useState<File | null>(null);
   const [fullViewError, setFullViewError] = useState<string | null>(null);
   const [isFullViewLoading, setIsFullViewLoading] = useState(false);
+  const [isFullViewSourceLoading, setIsFullViewSourceLoading] = useState(false);
 
   const [confirmClear, setConfirmClear] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -88,6 +108,8 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
 
   const downloadMenuRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
+  const fullViewRequestRef = useRef(0);
+  const fullViewSourceRequestRef = useRef(0);
 
   const refresh = useCallback(async () => {
     setIsLoadingRecords(true);
@@ -203,30 +225,55 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
     }
   };
 
-  const handleOpenFullView = async (record: TranslationRecord) => {
+  const loadFullViewTranslation = async (record: TranslationRecord) => {
+    const requestId = ++fullViewRequestRef.current;
     setFullViewRecord(record);
     setFullViewHtml(null);
     setFullViewError(null);
     setIsFullViewLoading(true);
     try {
       const html = await loadTranslationHtml(record.id, idToken);
+      if (requestId !== fullViewRequestRef.current) return;
       setFullViewHtml(html);
       if (!html) {
         setFullViewError('No saved HTML was found for this pattern.');
       }
     } catch (err) {
+      if (requestId !== fullViewRequestRef.current) return;
       console.error('Failed to load pattern:', err);
       setFullViewHtml(null);
       setFullViewError(err instanceof Error ? err.message : 'Could not load this pattern.');
     } finally {
-      setIsFullViewLoading(false);
+      if (requestId === fullViewRequestRef.current) setIsFullViewLoading(false);
+    }
+  };
+
+  const handleOpenFullView = async (group: PatternGroup, record: TranslationRecord) => {
+    const sourceRequestId = ++fullViewSourceRequestRef.current;
+    setFullViewGroup(group);
+    setFullViewSource(null);
+    setIsFullViewSourceLoading(true);
+    void loadFullViewTranslation(record);
+
+    const sourceRecord = group.records.find((candidate) => candidate.hasSource) ?? record;
+    try {
+      const source = await loadPatternSource(sourceRecord.id, idToken);
+      if (sourceRequestId === fullViewSourceRequestRef.current) setFullViewSource(source);
+    } finally {
+      if (sourceRequestId === fullViewSourceRequestRef.current) setIsFullViewSourceLoading(false);
     }
   };
 
   const handleCloseFullView = () => {
+    fullViewRequestRef.current += 1;
+    fullViewSourceRequestRef.current += 1;
     setFullViewRecord(null);
+    setFullViewGroup(null);
     setFullViewHtml(null);
+    setFullViewSource(null);
     setFullViewError(null);
+    setIsFullViewLoading(false);
+    setIsFullViewSourceLoading(false);
   };
 
   const handleDelete = async (id: string) => {
@@ -347,12 +394,6 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
   const hasActiveFilters = searchQuery.trim().length > 0 || languageFilter !== 'all';
 
   const goTranslate = () => onNavigateToTranslate?.();
-
-  interface PatternGroup {
-    fileName: string;
-    records: TranslationRecord[];
-    latestTimestamp: number;
-  }
 
   const groupTargetLanguages = (group: PatternGroup) =>
     sortedUniqueLanguageLabels(group.records.map((r) => r.targetLanguage));
@@ -791,7 +832,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
                         {record.cost > 0 ? ` · €${record.cost.toFixed(2)}` : ''}
                       </p>
                       <div className="flex flex-wrap items-center gap-1.5 mb-4">
-                        {group.records.map((r) => {
+                        {latestRecordPerTarget(group.records).map((r) => {
                           const isActive = r.id === record.id;
                           return (
                             <button
@@ -815,7 +856,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
                         <div className="flex flex-wrap gap-2">
                           <button
                             type="button"
-                            onClick={() => handleOpenFullView(record)}
+                            onClick={() => void handleOpenFullView(group, record)}
                             className="bg-primary text-on-primary px-4 py-2 rounded-lg font-bold text-sm inline-flex items-center gap-1.5 hover:opacity-95 transition-all"
                           >
                             View pattern
@@ -1020,7 +1061,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
               role="dialog"
               aria-modal="true"
               aria-labelledby="full-view-pattern-title"
-              className="relative z-[110] w-full max-w-5xl max-h-[94vh] bg-surface rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-outline-variant/20 animate-in fade-in zoom-in duration-200"
+              className="relative z-[110] w-full max-w-7xl max-h-[94vh] bg-surface rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-outline-variant/20 animate-in fade-in zoom-in duration-200"
               onMouseDown={(e) => e.stopPropagation()}
             >
               <div className="bg-surface-container-high p-4 sm:p-5 border-b border-outline-variant/15 flex items-start justify-between gap-4">
@@ -1044,8 +1085,30 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
                 </button>
               </div>
 
-              <div className="px-4 sm:px-5 py-3 border-b border-outline-variant/15 bg-surface-container-lowest">
-                <div ref={activeDownloadMenuId === fullViewRecord.id ? downloadMenuRef : undefined} className="relative w-full sm:w-fit">
+              <div className="px-4 sm:px-5 py-3 border-b border-outline-variant/15 bg-surface-container-lowest flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex flex-wrap gap-2" role="tablist" aria-label="Translation language">
+                  {latestRecordPerTarget(fullViewGroup?.records ?? [fullViewRecord]).map((record) => {
+                    const isActive = record.id === fullViewRecord.id;
+                    return (
+                      <button
+                        key={record.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={isActive}
+                        onClick={() => void loadFullViewTranslation(record)}
+                        className={`px-3 py-2 rounded-full text-xs font-bold transition-colors inline-flex items-center gap-2 ${
+                          isActive
+                            ? 'bg-primary text-on-primary'
+                            : 'bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest'
+                        }`}
+                      >
+                        <span aria-hidden>{languageFlagEmoji(record.targetLanguage)}</span>
+                        {record.targetLanguage}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div ref={activeDownloadMenuId === fullViewRecord.id ? downloadMenuRef : undefined} className="relative w-full sm:w-fit shrink-0">
                   <button
                     type="button"
                     onClick={() => setActiveDownloadMenuId((current) => (current === fullViewRecord.id ? null : fullViewRecord.id))}
@@ -1082,32 +1145,60 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
               </div>
 
               <div className="p-4 sm:p-6 overflow-y-auto bg-background flex-1">
-                {isFullViewLoading ? (
-                  <p className="text-sm text-on-surface-variant italic">Loading pattern…</p>
-                ) : fullViewHtml ? (
-                  <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 p-4 sm:p-8 text-sm sm:text-base text-on-surface leading-relaxed shadow-sm min-h-[12rem]">
-                    <PatternViewer
-                      html={fullViewHtml}
-                      languageCode={abbreviationLanguageCodeFromTargetLabel(fullViewRecord.targetLanguage)}
-                      tone="studio"
-                    />
-                  </div>
-                ) : fullViewError ? (
-                  <div className="rounded-xl border border-error/30 bg-error-container/30 p-4 text-sm text-on-error-container space-y-3">
-                    <p className="font-medium">{fullViewError}</p>
-                    <button
-                      type="button"
-                      onClick={() => void handleOpenFullView(fullViewRecord)}
-                      className="px-4 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90"
-                    >
-                      Try again
-                    </button>
-                  </div>
-                ) : (
-                  <p className="text-sm text-on-surface-variant italic">
-                    Full view is not available for this pattern. Try downloading it instead.
-                  </p>
-                )}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+                  <section aria-labelledby="original-pattern-heading">
+                    <div className="flex items-center justify-between mb-2 px-1">
+                      <h4 id="original-pattern-heading" className="text-xs font-bold uppercase tracking-[0.16em] text-on-surface-variant">
+                        Original pattern
+                      </h4>
+                    </div>
+                    {isFullViewSourceLoading ? (
+                      <div className="h-28 lg:h-[500px] rounded-xl bg-surface-container-high animate-pulse" aria-label="Loading original pattern" />
+                    ) : fullViewSource ? (
+                      <OriginalPreview file={fullViewSource} variant="studio" />
+                    ) : (
+                      <div className="h-28 lg:h-[500px] rounded-xl border border-outline-variant/20 bg-surface-container-lowest flex flex-col items-center justify-center text-center p-6">
+                        <Icon name="draft" className="text-3xl text-on-surface-variant mb-2" />
+                        <p className="text-sm font-semibold text-on-surface">Original preview unavailable</p>
+                        <p className="text-xs text-on-surface-variant mt-1 max-w-xs">This older translation does not have its source file stored.</p>
+                      </div>
+                    )}
+                  </section>
+
+                  <section aria-labelledby="translated-pattern-heading">
+                    <div className="flex items-center justify-between mb-2 px-1">
+                      <h4 id="translated-pattern-heading" className="text-xs font-bold uppercase tracking-[0.16em] text-on-surface-variant">
+                        {fullViewRecord.targetLanguage} translation
+                      </h4>
+                    </div>
+                    {isFullViewLoading ? (
+                      <div className="h-[500px] rounded-xl bg-surface-container-high animate-pulse" aria-label="Loading translation" />
+                    ) : fullViewHtml ? (
+                      <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 p-4 sm:p-6 text-sm sm:text-base text-on-surface leading-relaxed shadow-sm h-[500px] overflow-y-auto">
+                        <PatternViewer
+                          html={fullViewHtml}
+                          languageCode={abbreviationLanguageCodeFromTargetLabel(fullViewRecord.targetLanguage)}
+                          tone="studio"
+                        />
+                      </div>
+                    ) : fullViewError ? (
+                      <div className="h-[500px] rounded-xl border border-error/30 bg-error-container/30 p-4 text-sm text-on-error-container flex flex-col items-center justify-center text-center gap-3">
+                        <p className="font-medium">{fullViewError}</p>
+                        <button
+                          type="button"
+                          onClick={() => void loadFullViewTranslation(fullViewRecord)}
+                          className="px-4 py-2 rounded-lg bg-primary text-on-primary text-sm font-semibold hover:opacity-90"
+                        >
+                          Try again
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="h-[500px] rounded-xl border border-outline-variant/20 bg-surface-container-lowest flex items-center justify-center p-6 text-center">
+                        <p className="text-sm text-on-surface-variant italic">Full view is not available for this pattern.</p>
+                      </div>
+                    )}
+                  </section>
+                </div>
               </div>
             </div>
           </div>,
