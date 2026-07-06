@@ -29,8 +29,7 @@ export const PatternViewer: React.FC<PatternViewerProps> = ({ html, languageCode
     return root.innerHTML;
   }, [html, languageCode]);
 
-  const handleMouseOver = useCallback((e: React.MouseEvent) => {
-    const target = e.target as HTMLElement;
+  const showTooltip = useCallback((target: HTMLElement) => {
     if (target.classList.contains('abbr-highlight')) {
       const full = target.getAttribute('data-full');
       if (!full) return;
@@ -45,12 +44,31 @@ export const PatternViewer: React.FC<PatternViewerProps> = ({ html, languageCode
     }
   }, []);
 
+  const handleMouseOver = useCallback((e: React.MouseEvent) => {
+    showTooltip(e.target as HTMLElement);
+  }, [showTooltip]);
+
   const handleMouseOut = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
     if (target.classList.contains('abbr-highlight')) {
       setTooltip(null);
     }
   }, []);
+
+  const handleFocus = useCallback((e: React.FocusEvent) => {
+    showTooltip(e.target as HTMLElement);
+  }, [showTooltip]);
+
+  const handleBlur = useCallback((e: React.FocusEvent) => {
+    if ((e.target as HTMLElement).classList.contains('abbr-highlight')) setTooltip(null);
+  }, []);
+
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (!target.classList.contains('abbr-highlight')) return;
+    e.preventDefault();
+    showTooltip(target);
+  }, [showTooltip]);
 
   useEffect(() => {
     setTooltip(null);
@@ -62,6 +80,9 @@ export const PatternViewer: React.FC<PatternViewerProps> = ({ html, languageCode
       className="relative h-full"
       onMouseOver={handleMouseOver}
       onMouseOut={handleMouseOut}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
+      onClick={handleClick}
     >
       {tooltip && (
         <div
@@ -134,6 +155,9 @@ function highlightTextNodes(
         const span = document.createElement('span');
         span.className = 'abbr-highlight';
         span.setAttribute('data-full', part.full);
+        span.setAttribute('tabindex', '0');
+        span.setAttribute('role', 'button');
+        span.setAttribute('aria-label', `${part.abbr}: ${part.full}`);
         span.textContent = part.abbr;
         frag.appendChild(span);
       }

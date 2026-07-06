@@ -14,6 +14,7 @@ import {
   rollbackChatReservation,
 } from '../services/patternStore.js';
 import { PRICING } from '../services/pricing.js';
+import { boundedString } from '../services/requestValidation.js';
 
 const router = Router();
 
@@ -23,9 +24,9 @@ router.use(rateLimit({ windowMs: 60_000, max: 40, name: 'chat' }));
 router.post('/start', async (req: Request, res: Response) => {
   try {
     const { userSub } = req as AuthenticatedRequest;
-    const { patternId } = req.body;
-    if (!patternId || typeof patternId !== 'string') {
-      res.status(400).json({ error: 'Missing "patternId" in request body.' });
+    const patternId = boundedString(req.body?.patternId, 128);
+    if (!patternId) {
+      res.status(400).json({ error: 'patternId must be between 1 and 128 characters.' });
       return;
     }
 
@@ -53,13 +54,14 @@ router.post('/start', async (req: Request, res: Response) => {
 router.post('/message', async (req: Request, res: Response) => {
   try {
     const { userSub } = req as AuthenticatedRequest;
-    const { sessionId, message } = req.body;
-    if (!sessionId || typeof sessionId !== 'string') {
-      res.status(400).json({ error: 'Missing "sessionId" in request body.' });
+    const sessionId = boundedString(req.body?.sessionId, 256);
+    const message = boundedString(req.body?.message, 4_000);
+    if (!sessionId) {
+      res.status(400).json({ error: 'sessionId must be between 1 and 256 characters.' });
       return;
     }
-    if (!message || typeof message !== 'string') {
-      res.status(400).json({ error: 'Missing "message" in request body.' });
+    if (!message) {
+      res.status(400).json({ error: 'message must be between 1 and 4,000 characters.' });
       return;
     }
 

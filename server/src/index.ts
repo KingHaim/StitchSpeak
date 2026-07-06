@@ -20,6 +20,7 @@ import {
   isLemonSqueezyWebhookConfigured,
 } from './services/lemonSqueezy.js';
 import { isProductionReady } from './services/readiness.js';
+import { isAuthEmailConfigured } from './services/authEmail.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -96,7 +97,18 @@ app.use(
 // so mount it BEFORE express.json(). (The router applies its own raw parser.)
 app.use('/api/lemon-squeezy/webhook', lemonSqueezyWebhookRouter);
 
-app.use(express.json({ limit: '50mb' }));
+const regularJson = express.json({ limit: '256kb' });
+const patternJson = express.json({ limit: '20mb' });
+
+// Saved translated HTML may contain embedded base64 images. Keep that one
+// route large enough for legitimate patterns while protecting every other
+// JSON endpoint with a much smaller memory ceiling.
+app.use((req, res, next) => {
+  const parser = req.path === '/api/patterns' && req.method === 'POST'
+    ? patternJson
+    : regularJson;
+  parser(req, res, next);
+});
 
 app.use((req, res, next) => {
   const startedAt = Date.now();
@@ -134,6 +146,8 @@ app.get('/health/deep', (_req, res) => {
         googleOAuth: Boolean(process.env.GOOGLE_CLIENT_ID?.trim()),
         lemonSqueezy: isLemonSqueezyConfigured(),
         lemonSqueezyWebhook: isLemonSqueezyWebhookConfigured(),
+        authSession: Boolean(process.env.AUTH_SESSION_SECRET?.trim()),
+        authEmail: isAuthEmailConfigured(),
       },
       credits: creditStoreHealth(),
       patterns: patternStoreHealth(),
@@ -179,6 +193,13 @@ app.use(
   (err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (res.headersSent) return;
     console.error('[StitchSpeak Server] Unhandled error:', err);
+    const status = typeof (err as { status?: unknown })?.status === 'number'
+      ? (err as { status: number }).status
+      : 500;
+    if (status === 413) {
+      res.status(413).json({ error: 'Request body is too large.' });
+      return;
+    }
     // Don't leak internal error details (stack traces, library messages) to
     // clients in production; the full error is still logged above.
     res.status(500).json({

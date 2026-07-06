@@ -1,10 +1,12 @@
 
-import React, { Suspense, lazy, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { DashboardLayout } from './components/DashboardLayout';
 import { LandingPage } from './components/pages/LandingPage';
 import { BetaCampaignPage } from './components/pages/BetaCampaignPage';
+import { AccountActionPage } from './components/pages/AccountActionPage';
 import type { PageId } from './types';
+import { pageFromPath, pathForPage } from './services/navigation';
 
 const DashboardPage = lazy(() =>
   import('./components/pages/DashboardPage').then((module) => ({
@@ -27,10 +29,36 @@ const AdminPage = lazy(() =>
 
 const App: React.FC = () => {
   const { isAuthenticated } = useAuth();
-  const [currentPage, setCurrentPage] = useState<PageId>('dashboard');
+  const [pathname, setPathname] = useState(() => window.location.pathname);
+  const currentPage = pageFromPath(pathname);
+
+  useEffect(() => {
+    const handlePopState = () => setPathname(window.location.pathname);
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || pathname !== '/') return;
+    const nextPath = pathForPage('dashboard');
+    window.history.replaceState({}, '', nextPath);
+    setPathname(nextPath);
+  }, [isAuthenticated, pathname]);
+
+  const navigate = useCallback((page: PageId) => {
+    const nextPath = pathForPage(page);
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({}, '', nextPath);
+    }
+    setPathname(nextPath);
+  }, []);
+
   const isBetaCampaign =
-    window.location.pathname === '/beta' ||
+    pathname === '/beta' ||
     new URLSearchParams(window.location.search).get('campaign') === 'beta';
+
+  if (pathname === '/verify-email') return <AccountActionPage mode="verify" />;
+  if (pathname === '/reset-password') return <AccountActionPage mode="reset" />;
 
   // The campaign is a public destination and must not disappear for people
   // who already have a StitchSpeak session.
@@ -38,7 +66,7 @@ const App: React.FC = () => {
     return <BetaCampaignPage />;
   }
 
-  if (window.location.pathname === '/admin' && isAuthenticated) {
+  if (pathname === '/admin' && isAuthenticated) {
     return <Suspense fallback={<div className="min-h-screen bg-background" />}><AdminPage /></Suspense>;
   }
 
@@ -53,12 +81,12 @@ const App: React.FC = () => {
       case 'glossary':
         return <GlossaryPage />;
       case 'history':
-        return <HistoryPage onNavigateToTranslate={() => setCurrentPage('dashboard')} />;
+        return <HistoryPage onNavigateToTranslate={() => navigate('dashboard')} />;
     }
   };
 
   return (
-    <DashboardLayout activePage={currentPage} onNavigate={setCurrentPage}>
+    <DashboardLayout activePage={currentPage} onNavigate={navigate}>
       <Suspense
         fallback={
           <div className="flex min-h-[50vh] items-center justify-center text-sm text-on-surface-variant">

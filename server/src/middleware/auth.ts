@@ -5,6 +5,8 @@ import { verifyEmailSession } from '../services/emailAuth.js';
 export interface AuthenticatedRequest extends Request {
   userSub: string;
   userEmail?: string;
+  identityProvider: 'google' | 'email';
+  emailVerified: boolean;
 }
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
@@ -27,6 +29,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   if (emailSession) {
     (req as AuthenticatedRequest).userSub = emailSession.sub;
     (req as AuthenticatedRequest).userEmail = emailSession.email;
+    (req as AuthenticatedRequest).identityProvider = 'email';
+    // Local email accounts do not currently complete an ownership challenge.
+    // Never treat the user-supplied address as verified authorization data.
+    (req as AuthenticatedRequest).emailVerified = false;
     next();
     return;
   }
@@ -45,6 +51,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     (req as AuthenticatedRequest).userSub = payload.sub;
     (req as AuthenticatedRequest).userEmail = payload.email;
+    (req as AuthenticatedRequest).identityProvider = 'google';
+    (req as AuthenticatedRequest).emailVerified = payload.email_verified === true;
     next();
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Token verification failed.';
@@ -73,6 +81,8 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
   if (emailSession) {
     (req as AuthenticatedRequest).userSub = emailSession.sub;
     (req as AuthenticatedRequest).userEmail = emailSession.email;
+    (req as AuthenticatedRequest).identityProvider = 'email';
+    (req as AuthenticatedRequest).emailVerified = false;
     next();
     return;
   }
@@ -87,6 +97,8 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
     if (payload?.sub) {
       (req as AuthenticatedRequest).userSub = payload.sub;
       (req as AuthenticatedRequest).userEmail = payload.email;
+      (req as AuthenticatedRequest).identityProvider = 'google';
+      (req as AuthenticatedRequest).emailVerified = payload.email_verified === true;
     }
   } catch {
     // Invalid token — proceed as guest

@@ -70,6 +70,8 @@
 
 body {
   font-family: 'Source Sans 3', sans-serif;
+  min-width: 320px;
+  overscroll-behavior-y: none;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -90,6 +92,7 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 0.9375rem;
   line-height: 1.75;
   color: #3D2B1F;
+  overflow-wrap: anywhere;
 }
 .pattern-rendered h1, .pattern-rendered h2, .pattern-rendered h3,
 .pattern-rendered h4, .pattern-rendered h5, .pattern-rendered h6 {
@@ -217,6 +220,36 @@ h1, h2, h3, h4, h5, h6 {
 }
 .abbr-highlight:hover {
   background: #E8DDD3;
+}
+.abbr-highlight:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+@media (max-width: 639px) {
+  .pattern-rendered {
+    font-size: 0.9375rem;
+  }
+
+  .pattern-rendered--studio {
+    font-size: 1rem;
+  }
+
+  .pattern-rendered table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+  }
 }
 
 /* ── Bilingual viewer (original ↔ translation hover sync) ── */

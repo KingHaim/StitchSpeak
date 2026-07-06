@@ -88,8 +88,8 @@ export async function register(
   email: string,
   password: string,
   name?: string,
-): Promise<{ token?: string; user?: unknown }> {
-  const data = await apiCall<{ token?: string; user?: unknown }>(
+): Promise<{ token?: string; user?: unknown; verificationRequired?: boolean; developmentVerificationUrl?: string }> {
+  const data = await apiCall<{ token?: string; user?: unknown; verificationRequired?: boolean; developmentVerificationUrl?: string }>(
     '/auth/register',
     'POST',
     {
@@ -101,6 +101,24 @@ export async function register(
   );
   if (data.token) localStorage.setItem(SS_TOKEN_KEY, data.token);
   return data;
+}
+
+export async function verifyEmail(token: string): Promise<{ token: string; user: unknown }> {
+  const data = await apiCall<{ token: string; user: unknown }>('/auth/verify-email', 'POST', { token });
+  localStorage.setItem(SS_TOKEN_KEY, data.token);
+  return data;
+}
+
+export async function requestPasswordReset(email: string): Promise<{ ok: boolean; developmentResetUrl?: string }> {
+  return apiCall('/auth/password-reset/request', 'POST', { email });
+}
+
+export async function resendVerification(email: string, password: string): Promise<{ ok: boolean; developmentVerificationUrl?: string }> {
+  return apiCall('/auth/verification/resend', 'POST', { email, password });
+}
+
+export async function confirmPasswordReset(token: string, password: string): Promise<{ ok: boolean }> {
+  return apiCall('/auth/password-reset/confirm', 'POST', { token, password });
 }
 
 export async function login(

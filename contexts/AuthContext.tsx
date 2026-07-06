@@ -37,7 +37,7 @@ type AuthContextValue = {
   isAuthenticated: boolean;
   googleIdentityReady: boolean;
   signInWithGoogleCredential: (credential: string) => void;
-  signInWithEmail: (email: string, password: string, createAccount: boolean, name?: string) => Promise<void>;
+  signInWithEmail: (email: string, password: string, createAccount: boolean, name?: string) => Promise<{ verificationRequired: boolean; developmentVerificationUrl?: string }>;
   signOut: () => void;
 };
 
@@ -81,11 +81,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   const signInWithEmail = useCallback(async (email: string, password: string, createAccount: boolean, name?: string) => {
-    const result = createAccount ? await register(email, password, name) : await login(email, password);
+    if (createAccount) {
+      const registration = await register(email, password, name);
+      if (registration.verificationRequired) {
+        return { verificationRequired: true, developmentVerificationUrl: registration.developmentVerificationUrl };
+      }
+    }
+    const result = await login(email, password);
     if (!result.token || !result.user) throw new Error('The server did not create a session.');
     const nextUser = result.user as AuthenticatedUser;
     setIdToken(result.token);
     setUser(nextUser);
+    return { verificationRequired: false };
   }, []);
 
   // Initialize the page-global GIS client exactly once. The script loads

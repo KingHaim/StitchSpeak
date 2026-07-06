@@ -1,10 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.mjs',
-  import.meta.url,
-).toString();
+import { loadPdfJs } from '../services/pdfClient';
 
 interface OriginalPreviewProps {
   file: File;
@@ -29,6 +24,7 @@ const PdfCanvasPreview: React.FC<{ file: File; variant: 'card' | 'studio' }> = (
       setPageUrls([]);
 
       try {
+        const pdfjsLib = await loadPdfJs();
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         const urls: string[] = [];

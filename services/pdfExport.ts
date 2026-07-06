@@ -1,7 +1,3 @@
-import { jsPDF } from 'jspdf';
-import JSZip from 'jszip';
-import html2canvas from 'html2canvas';
-
 const EXPORT_WIDTH_PX = 816;
 const PAGE_MARGIN_PT = 36;
 const EMU_PER_PIXEL = 9525;
@@ -636,6 +632,10 @@ async function waitForImages(container: HTMLElement): Promise<void> {
 }
 
 export async function exportPatternPdf(html: string, options?: PatternExportOptions): Promise<void> {
+  const [{ jsPDF }, { default: html2canvas }] = await Promise.all([
+    import('jspdf'),
+    import('html2canvas'),
+  ]);
   const style = document.createElement('style');
   style.textContent = PATTERN_EXPORT_CSS;
   const container = document.createElement('div');
@@ -732,6 +732,7 @@ export function exportPatternText(html: string, options?: PatternExportOptions):
 }
 
 export async function exportPatternDoc(html: string, options?: PatternExportOptions): Promise<void> {
+  const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
   const { documentXml, images } = await buildDocxDocumentXml(html);
   const imageContentTypes = Array.from(new Set(images.map((image) => image.contentType)))

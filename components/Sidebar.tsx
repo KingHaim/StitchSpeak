@@ -99,7 +99,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activePage, o
           flex flex-col py-8 gap-4 min-h-0 overflow-hidden
           transition-[width,transform,box-shadow] duration-300 ease-in-out
           shadow-[4px_0_24px_-12px_rgba(29,28,23,0.08)]
-          ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+          ${isOpen ? 'translate-x-0 visible' : '-translate-x-full invisible lg:visible'}
           lg:translate-x-0
           lg:focus-within:w-64
           lg:focus-within:shadow-[8px_0_32px_-16px_rgba(29,28,23,0.18)]
