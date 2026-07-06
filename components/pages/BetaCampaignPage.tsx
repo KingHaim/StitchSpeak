@@ -1,4 +1,4 @@
-import React, { useState, type FormEvent } from 'react';
+import React, { useRef, useState, type FormEvent } from 'react';
 import { submitBetaApplication, type BetaApplicationInput } from '../../services/betaCampaignService';
 
 const DEMOS = [
@@ -52,6 +52,7 @@ export const BetaCampaignPage: React.FC = () => {
   const [form, setForm] = useState(INITIAL_FORM);
   const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
+  const promotionPlanRef = useRef<HTMLTextAreaElement>(null);
 
   const update = <K extends keyof BetaApplicationInput>(key: K, value: BetaApplicationInput[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -60,6 +61,18 @@ export const BetaCampaignPage: React.FC = () => {
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const promotionLength = form.promotionPlan.trim().length;
+    if (promotionLength < 20) {
+      const remaining = 20 - promotionLength;
+      setStatus('error');
+      setMessage(`Add ${remaining} more character${remaining === 1 ? '' : 's'} describing how you would share StitchSpeak.`);
+      promotionPlanRef.current?.focus();
+      return;
+    }
+    if (!event.currentTarget.checkValidity()) {
+      event.currentTarget.reportValidity();
+      return;
+    }
     setStatus('submitting');
     setMessage('');
     try {
@@ -250,8 +263,13 @@ export const BetaCampaignPage: React.FC = () => {
                         {['Knitting', 'Crochet', 'Knitting and crochet', 'Fiber arts', 'Crafts and lifestyle', 'Other'].map((value) => <option key={value}>{value}</option>)}
                       </select>
                     </label>
-                    <label className="grid gap-2 text-sm font-bold sm:col-span-2">How would you share StitchSpeak with your audience?
-                      <textarea required rows={3} minLength={20} maxLength={600} placeholder="For example: a Reel showing a translated pattern, Stories during a project, or a review after testing…" value={form.promotionPlan} onChange={(e) => update('promotionPlan', e.target.value)} className="resize-y rounded-lg border border-outline bg-surface px-4 py-3 font-normal outline-none transition placeholder:text-outline focus:border-primary focus:ring-2 focus:ring-primary/20" />
+                    <label className="grid gap-2 text-sm font-bold sm:col-span-2">How would you share StitchSpeak with your audience? <span className="font-normal text-on-surface-variant">20 characters minimum</span>
+                      <textarea ref={promotionPlanRef} required rows={3} minLength={20} maxLength={600} aria-invalid={form.promotionPlan.length > 0 && form.promotionPlan.trim().length < 20} aria-describedby="promotion-plan-help" placeholder="For example: a Reel showing a translated pattern, Stories during a project, or a review after testing…" value={form.promotionPlan} onChange={(e) => update('promotionPlan', e.target.value)} className="resize-y rounded-lg border border-outline bg-surface px-4 py-3 font-normal outline-none transition placeholder:text-outline aria-invalid:border-error focus:border-primary focus:ring-2 focus:ring-primary/20" />
+                      <span id="promotion-plan-help" className={`text-xs font-normal ${form.promotionPlan.length > 0 && form.promotionPlan.trim().length < 20 ? 'text-error' : 'text-on-surface-variant'}`}>
+                        {form.promotionPlan.trim().length < 20
+                          ? `${20 - form.promotionPlan.trim().length} more characters needed`
+                          : `${form.promotionPlan.length}/600 characters`}
+                      </span>
                     </label>
                     <label className="grid gap-2 text-sm font-bold sm:col-span-2">Why do you want to test StitchSpeak? <span className="font-normal text-on-surface-variant">Optional</span>
                       <textarea rows={3} maxLength={600} placeholder="Tell us what interests you about the app or what you hope to explore." value={form.testingInterest} onChange={(e) => update('testingInterest', e.target.value)} className="resize-y rounded-lg border border-outline bg-surface px-4 py-3 font-normal outline-none transition placeholder:text-outline focus:border-primary focus:ring-2 focus:ring-primary/20" />

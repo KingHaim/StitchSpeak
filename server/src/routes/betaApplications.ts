@@ -48,7 +48,7 @@ router.post('/', applicationRateLimit, (req: Request, res: Response) => {
     return;
   }
   if (promotionPlan.length < 20) {
-    res.status(400).json({ error: 'Please briefly explain how you would share StitchSpeak.' });
+    res.status(400).json({ error: 'Please use at least 20 characters to explain how you would share StitchSpeak.' });
     return;
   }
   if (!promotionConfirmed) {

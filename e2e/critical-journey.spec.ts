@@ -77,3 +77,25 @@ test('signed-in user can upload a pattern and review its translation estimate', 
   await expect(dialog.getByRole('heading', { name: 'Translation estimate' })).toBeVisible();
   await expect(dialog.getByRole('button', { name: /Start translation/ })).toBeEnabled();
 });
+
+test('beta form explains a short promotion plan before submitting', async ({ page }) => {
+  let submissions = 0;
+  await page.route('**/api/beta-applications', async (route) => {
+    submissions += 1;
+    await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ ok: true, applicationId: 'e2e', message: 'Received.' }) });
+  });
+  await page.goto('/beta');
+
+  await page.getByLabel('Name').fill('Jaime');
+  await page.getByLabel('Email').fill('jaime@example.com');
+  await page.getByLabel('Instagram handle').fill('@haimganancia');
+  await page.getByLabel('Instagram audience').selectOption({ label: '1,000–5,000' });
+  await page.getByLabel('What do you create?').selectOption('Other');
+  await page.getByLabel('How would you share StitchSpeak with your audience?').fill('Through stories');
+  await page.getByRole('checkbox').check();
+  await page.locator('#beta-form').getByRole('button', { name: 'Apply for free beta access' }).click();
+
+  await expect(page.getByText('5 more characters needed')).toBeVisible();
+  await expect(page.getByRole('alert')).toContainText('Add 5 more characters');
+  expect(submissions).toBe(0);
+});
