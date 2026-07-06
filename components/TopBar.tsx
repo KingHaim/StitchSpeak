@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/auth-context';
 import { useCredits } from '../contexts/credit-context';
 import { BuyCreditsModal } from './BuyCreditsModal';
 import type { CreditPackage, PageId } from '../types';
+import { downloadAccountExport } from '../services/accountService';
 
 const PAGE_HEADER: Record<PageId, { kicker: string; title: string }> = {
   dashboard: { kicker: 'Translation Studio', title: 'Pattern Translator' },
@@ -15,11 +16,13 @@ interface TopBarProps {
 }
 
 export const TopBar: React.FC<TopBarProps> = ({ activePage }) => {
-  const { user, isAuthenticated, signOut } = useAuth();
+  const { user, idToken, isAuthenticated, signOut } = useAuth();
   const { balance, startCheckout } = useCredits();
   const [showBuyCredits, setShowBuyCredits] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false);
+  const [exportingData, setExportingData] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const displayName = isAuthenticated && user?.name
     ? user.name.split(' ')[0]
@@ -34,6 +37,20 @@ export const TopBar: React.FC<TopBarProps> = ({ activePage }) => {
 
   const handlePurchase = async (pack: CreditPackage) => {
     await startCheckout(pack.id);
+  };
+
+  const handleExportData = async () => {
+    if (!idToken || exportingData) return;
+    setExportingData(true);
+    setExportError(null);
+    try {
+      await downloadAccountExport(idToken);
+      setShowUserMenu(false);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Could not export your data.');
+    } finally {
+      setExportingData(false);
+    }
   };
 
   const { kicker, title } = PAGE_HEADER[activePage];
@@ -118,6 +135,16 @@ export const TopBar: React.FC<TopBarProps> = ({ activePage }) => {
                         <p className="text-sm font-semibold text-brand-800 truncate">{user.name ?? 'User'}</p>
                         {user.email && <p className="text-xs text-brand-400 truncate">{user.email}</p>}
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleExportData()}
+                        disabled={exportingData}
+                        className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-brand-700 transition-colors hover:bg-brand-50 disabled:opacity-60"
+                      >
+                        <span className="material-symbols-outlined text-lg" aria-hidden>download</span>
+                        {exportingData ? 'Preparing export…' : 'Download my data'}
+                      </button>
+                      {exportError && <p className="px-4 pb-2 text-xs text-red-600" role="alert">{exportError}</p>}
                       <button
                         type="button"
                         onClick={() => { setShowUserMenu(false); signOut(); }}

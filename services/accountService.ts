@@ -1,0 +1,24 @@
+function getApiUrl(): string {
+  return import.meta.env.VITE_API_URL || '';
+}
+
+export async function downloadAccountExport(idToken: string): Promise<void> {
+  const response = await fetch(`${getApiUrl()}/api/account/export`, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(typeof body.error === 'string' ? body.error : 'Could not export your account data.');
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const fileName = disposition.match(/filename="([^"]+)"/)?.[1] ?? 'stitchspeak-data.zip';
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
