@@ -3,7 +3,7 @@ import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { MobileBottomNav } from './MobileBottomNav';
 import type { PageId } from '../types';
-import { useCredits } from '../contexts/CreditContext';
+import { useCredits } from '../contexts/credit-context';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;

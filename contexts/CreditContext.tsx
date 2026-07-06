@@ -1,5 +1,5 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { useAuth } from './AuthContext';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useAuth } from './auth-context';
 import {
   getCreditState,
   createCheckoutSession,
@@ -11,24 +11,7 @@ import {
   readCheckoutExpectation,
   writeCheckoutExpectation,
 } from '../services/checkoutReconciliation';
-
-export type CheckoutReturnStatus = 'confirming' | 'confirmed' | 'delayed' | null;
-
-type CreditContextValue = {
-  balance: number;
-  betaAccess: boolean;
-  isLoading: boolean;
-  /** Set the balance directly from a server response (e.g. after a translation). */
-  applyBalance: (balance: number) => void;
-  refreshBalance: () => Promise<void>;
-  /** Redirect to hosted checkout for a credit pack. */
-  startCheckout: (packId: string) => Promise<void>;
-  checkoutReturnStatus: CheckoutReturnStatus;
-  retryCheckoutReconciliation: () => Promise<void>;
-  dismissCheckoutReturn: () => void;
-};
-
-const CreditContext = createContext<CreditContextValue | null>(null);
+import { CreditContext, type CheckoutReturnStatus, type CreditContextValue } from './credit-context';
 
 export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { idToken, isAuthenticated } = useAuth();
@@ -189,11 +172,3 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     <CreditContext.Provider value={value}>{children}</CreditContext.Provider>
   );
 };
-
-export function useCredits(): CreditContextValue {
-  const ctx = useContext(CreditContext);
-  if (!ctx) {
-    throw new Error('useCredits must be used within CreditProvider');
-  }
-  return ctx;
-}

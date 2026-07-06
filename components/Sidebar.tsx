@@ -2,8 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { CloseIcon } from './icons/CloseIcon';
 import { BuyCreditsModal } from './BuyCreditsModal';
 import { CreditsOverviewModal } from './CreditsOverviewModal';
-import { useAuth } from '../contexts/AuthContext';
-import { useCredits } from '../contexts/CreditContext';
+import { useAuth } from '../contexts/auth-context';
+import { useCredits } from '../contexts/credit-context';
 import { loadHistory } from '../services/historyService';
 import type { PageId, CreditPackage, TranslationRecord } from '../types';
 

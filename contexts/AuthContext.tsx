@@ -1,7 +1,5 @@
 import React, {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -22,6 +20,7 @@ import { getGoogleOAuthClientId } from '../auth/googleConfig';
 import { initializeGoogleIdentity } from '../auth/googleIdentity';
 import { migrateGuestHistoryToServerIfRemoteEmpty } from '../services/historyService';
 import { login, register } from '../services/api';
+import { AuthContext, type AuthContextValue } from './auth-context';
 
 // Begin silently renewing the Google ID token this long before it expires.
 const RENEW_BEFORE_MS = 5 * 60 * 1000;
@@ -30,18 +29,6 @@ const RENEW_BEFORE_MS = 5 * 60 * 1000;
 const EXPIRED_GRACE_MS = 60 * 1000;
 // Don't call google.accounts.id.prompt() more often than this.
 const PROMPT_THROTTLE_MS = 60 * 1000;
-
-type AuthContextValue = {
-  user: AuthenticatedUser | null;
-  idToken: string | null;
-  isAuthenticated: boolean;
-  googleIdentityReady: boolean;
-  signInWithGoogleCredential: (credential: string) => void;
-  signInWithEmail: (email: string, password: string, createAccount: boolean, name?: string) => Promise<{ verificationRequired: boolean; developmentVerificationUrl?: string }>;
-  signOut: () => void;
-};
-
-const AuthContext = createContext<AuthContextValue | null>(null);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -217,11 +204,3 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
   );
 };
-
-export function useAuth(): AuthContextValue {
-  const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return ctx;
-}

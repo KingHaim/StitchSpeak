@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { GLOSSARY_TERMS, GLOSSARY_LANGUAGES } from '../../data/glossary';
 import { lookupTermWithAI, type AiTermResult } from '../../services/glossaryService';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../contexts/auth-context';
 import { SearchIcon } from '../icons/NavIcons';
 
 export const GlossaryPage: React.FC = () => {

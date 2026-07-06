@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
-import { useCredits } from '../contexts/CreditContext';
+import { useAuth } from '../contexts/auth-context';
+import { useCredits } from '../contexts/credit-context';
 import { BuyCreditsModal } from './BuyCreditsModal';
 import type { CreditPackage, PageId } from '../types';
 

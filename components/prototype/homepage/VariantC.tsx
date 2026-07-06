@@ -3,7 +3,8 @@
  * Landing feels like the signed-in product: sidebar nav, studio preview, slim promo strip.
  */
 import React, { useState } from 'react';
-import { Icon, LANGUAGE_PILLS, PROTOTYPE_SAMPLE, PrototypeBadge } from './shared';
+import { Icon, PrototypeBadge } from './shared';
+import { LANGUAGE_PILLS, PROTOTYPE_SAMPLE } from './sharedData';
 
 export const displayName = 'App shell preview';
 

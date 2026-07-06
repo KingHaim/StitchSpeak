@@ -1,7 +1,7 @@
 import React from 'react';
 import type { PdfMetrics, PriceEstimate } from '../types';
 import { formatPrice } from '../services/pricingService';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/auth-context';
 
 interface PricePreviewProps {
   metrics: PdfMetrics;
