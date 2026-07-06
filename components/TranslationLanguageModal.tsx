@@ -1,11 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { LanguageSelector } from './LanguageSelector';
 import { CloseIcon } from './icons/CloseIcon';
 import { PricePreview } from './PricePreview';
 import { LANGUAGES, SOURCE_LANGUAGES } from '../constants';
 import type { Language, PdfMetrics, PriceEstimate } from '../types';
 import { useModalA11y } from '../hooks/useModalA11y';
-import { renderGoogleIdentityButton } from '../auth/googleIdentity';
+import { AuthDialog } from './AuthDialog';
 
 interface TranslationLanguageModalProps {
   isOpen: boolean;
@@ -30,52 +30,14 @@ interface TranslationLanguageModalProps {
 }
 
 const ModalGoogleSignInAction: React.FC<{ isReady: boolean }> = ({ isReady }) => {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const width = 230;
-
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host || !isReady) return;
-    renderGoogleIdentityButton(host, {
-      type: 'standard',
-      theme: 'outline',
-      size: 'large',
-      text: 'continue_with',
-      shape: 'rectangular',
-      logo_alignment: 'left',
-      width,
-    });
-  }, [isReady]);
-
-  if (!isReady) {
-    return (
-      <button
-        type="button"
-        disabled
-        className="min-h-[48px] rounded-xl bg-primary px-8 py-3.5 font-bold text-on-primary opacity-50"
-      >
-        Preparing sign-in…
-      </button>
-    );
-  }
+  void isReady;
+  const [open, setOpen] = useState(false);
 
   return (
-    <div
-      className="relative min-h-[48px] overflow-hidden rounded-xl shadow-lg shadow-primary/20 focus-within:ring-2 focus-within:ring-primary/35 focus-within:ring-offset-2"
-      style={{ width }}
-    >
-      <div
-        className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 bg-primary px-6 font-bold text-on-primary"
-        aria-hidden
-      >
-        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-background text-xs font-black text-primary">G</span>
-        Sign in to continue
-      </div>
-      <div
-        ref={hostRef}
-        className="absolute inset-0 z-10 overflow-hidden opacity-0 [&>div]:!flex [&>div]:!h-full [&>div]:!w-full [&>div]:!items-stretch [&_iframe]:!h-full [&_iframe]:!min-h-0 [&_iframe]:!w-full [&_iframe]:!shadow-none"
-      />
-    </div>
+    <>
+      <button type="button" onClick={() => setOpen(true)} className="min-h-[48px] rounded-xl bg-primary px-8 py-3.5 font-bold text-on-primary shadow-lg shadow-primary/20">Sign in to continue</button>
+      {open && <AuthDialog isOpen onClose={() => setOpen(false)} />}
+    </>
   );
 };
 

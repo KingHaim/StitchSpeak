@@ -9,6 +9,7 @@ import patternsRouter from './routes/patterns.js';
 import lemonSqueezyWebhookRouter from './routes/lemonSqueezyWebhook.js';
 import betaApplicationsRouter from './routes/betaApplications.js';
 import adminRouter from './routes/admin.js';
+import authRouter from './routes/auth.js';
 import {
   creditStoreHealth,
   paymentReconciliationHealth,
@@ -165,6 +166,7 @@ app.get('/health/payments', (_req, res) => {
 });
 
 app.use('/api/translate', translateRouter);
+app.use('/api/auth', authRouter);
 
 app.use('/api/chat', chatRouter);
 app.use('/api/credits', creditsRouter);

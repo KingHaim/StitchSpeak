@@ -17,8 +17,9 @@ import {
 } from '../services/patternStore.js';
 import { generateCoverThumbnailForPdf } from '../services/coverThumbnail.js';
 import { rateLimit } from '../middleware/rateLimit.js';
-import { deductCredits, addCredits } from '../services/creditStore.js';
+import { deductCredits, addCredits, getBalance } from '../services/creditStore.js';
 import { chatUnlockCost } from '../services/pricing.js';
+import { hasActiveBetaAccess } from '../services/betaApplicationStore.js';
 
 const router = Router();
 
@@ -273,7 +274,7 @@ router.post('/:id/chat', (req, res: Response) => {
 
 router.post('/:id/chat/unlock', unlockRateLimit, (req, res: Response) => {
   try {
-    const { userSub } = req as unknown as AuthenticatedRequest;
+    const { userSub, userEmail } = req as unknown as AuthenticatedRequest;
     const id = String(req.params.id);
     const by = Number(req.body?.by);
     if (!Number.isInteger(by) || by <= 0 || by > 1000) {
@@ -282,8 +283,10 @@ router.post('/:id/chat/unlock', unlockRateLimit, (req, res: Response) => {
     }
 
     // Charge for the extra chat allowance server-side before granting it.
-    const cost = chatUnlockCost(by);
-    const { ok, balance } = deductCredits(userSub, cost);
+    const cost = hasActiveBetaAccess(userEmail) ? 0 : chatUnlockCost(by);
+    const { ok, balance } = cost === 0
+      ? { ok: true, balance: getBalance(userSub) }
+      : deductCredits(userSub, cost);
     if (!ok) {
       res.status(402).json({ error: 'Insufficient credits.', balance, cost });
       return;
@@ -292,7 +295,7 @@ router.post('/:id/chat/unlock', unlockRateLimit, (req, res: Response) => {
     const state = bumpChatAllowance(userSub, id, by);
     if (!state) {
       // Refund: the pattern didn't exist, so nothing was unlocked.
-      addCredits(userSub, cost);
+      if (cost > 0) addCredits(userSub, cost);
       res.status(404).json({ error: 'Pattern not found.' });
       return;
     }

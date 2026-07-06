@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { OAuth2Client } from 'google-auth-library';
+import { verifyEmailSession } from '../services/emailAuth.js';
 
 export interface AuthenticatedRequest extends Request {
   userSub: string;
@@ -21,6 +22,14 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 
   const token = header.slice(7);
+
+  const emailSession = verifyEmailSession(token);
+  if (emailSession) {
+    (req as AuthenticatedRequest).userSub = emailSession.sub;
+    (req as AuthenticatedRequest).userEmail = emailSession.email;
+    next();
+    return;
+  }
 
   try {
     const ticket = await oauthClient.verifyIdToken({
@@ -59,6 +68,14 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
   }
 
   const token = header.slice(7);
+
+  const emailSession = verifyEmailSession(token);
+  if (emailSession) {
+    (req as AuthenticatedRequest).userSub = emailSession.sub;
+    (req as AuthenticatedRequest).userEmail = emailSession.email;
+    next();
+    return;
+  }
 
   try {
     const ticket = await oauthClient.verifyIdToken({

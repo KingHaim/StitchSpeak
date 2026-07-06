@@ -40,9 +40,9 @@ async function apiFetch(
   return data;
 }
 
-export async function getBalance(idToken: string): Promise<number> {
+export async function getCreditState(idToken: string): Promise<{ balance: number; betaAccess: boolean }> {
   const data = await apiFetch('/', idToken);
-  return typeof data.balance === 'number' ? data.balance : 0;
+  return { balance: typeof data.balance === 'number' ? data.balance : 0, betaAccess: data.betaAccess === true };
 }
 
 export interface CreditPackagesResponse {

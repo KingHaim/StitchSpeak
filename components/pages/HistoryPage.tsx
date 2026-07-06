@@ -20,7 +20,9 @@ import { CloseIcon } from '../icons/CloseIcon';
 import { PatternThumbnail } from '../PatternThumbnail';
 import { PatternViewer } from '../PatternViewer';
 import { OriginalPreview } from '../OriginalPreview';
+import { BilingualViewer } from '../BilingualViewer';
 import { abbreviationLanguageCodeFromTargetLabel } from '../../services/abbreviationService';
+import { hasAlignment } from '../../services/alignment';
 import { setAddTranslationHint } from '../../services/addTranslationHint';
 import { setOpenPatternHint } from '../../services/openPatternHint';
 import { languageFlagEmoji, sortedUniqueLanguageLabels } from '../../utils/languageFlags';
@@ -1145,6 +1147,18 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
               </div>
 
               <div className="p-4 sm:p-6 overflow-y-auto bg-background flex-1">
+                {fullViewHtml && hasAlignment(fullViewHtml) && !isFullViewLoading ? (
+                  <div className="space-y-3">
+                    <p className="px-1 text-xs text-on-surface-variant/70 italic">
+                      Hover over any paragraph or instruction to highlight its match in both versions.
+                    </p>
+                    <BilingualViewer
+                      html={fullViewHtml}
+                      sourceLabel={fullViewRecord.sourceLanguage || 'Original language'}
+                      targetLabel={fullViewRecord.targetLanguage}
+                    />
+                  </div>
+                ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
                   <section aria-labelledby="original-pattern-heading">
                     <div className="flex items-center justify-between mb-2 px-1">
@@ -1199,6 +1213,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
                     )}
                   </section>
                 </div>
+                )}
               </div>
             </div>
           </div>,

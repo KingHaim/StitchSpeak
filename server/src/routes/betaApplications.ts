@@ -10,7 +10,9 @@ const applicationRateLimit = rateLimit({
 });
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const allowedPatternTypes = new Set(['Sweater or cardigan', 'Accessory', 'Socks', 'Shawl', 'Other']);
+const INSTAGRAM_PATTERN = /^@?[A-Za-z0-9._]{1,30}$/;
+const allowedAudienceSizes = new Set(['Under 1,000', '1,000–5,000', '5,000–10,000', '10,000–50,000', '50,000+']);
+const allowedContentFocus = new Set(['Knitting', 'Crochet', 'Knitting and crochet', 'Fiber arts', 'Crafts and lifestyle', 'Other']);
 
 function text(value: unknown, maxLength: number): string {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
@@ -25,33 +27,44 @@ router.post('/', applicationRateLimit, (req: Request, res: Response) => {
 
   const name = text(req.body?.name, 80);
   const email = text(req.body?.email, 254).toLowerCase();
-  const sourceLanguage = text(req.body?.sourceLanguage, 60);
-  const targetLanguage = text(req.body?.targetLanguage, 60);
-  const patternType = text(req.body?.patternType, 60);
-  const note = text(req.body?.note, 800);
-  const personalUseConfirmed = req.body?.personalUseConfirmed === true;
+  const rawInstagramHandle = text(req.body?.instagramHandle, 31);
+  const instagramHandle = rawInstagramHandle.startsWith('@') ? rawInstagramHandle : `@${rawInstagramHandle}`;
+  const audienceSize = text(req.body?.audienceSize, 40);
+  const contentFocus = text(req.body?.contentFocus, 60);
+  const promotionPlan = text(req.body?.promotionPlan, 600);
+  const testingInterest = text(req.body?.testingInterest, 600);
+  const promotionConfirmed = req.body?.promotionConfirmed === true;
 
-  if (!name || !EMAIL_PATTERN.test(email) || !sourceLanguage || !targetLanguage) {
-    res.status(400).json({ error: 'Please complete your name, email, and both languages.' });
+  if (!name || !EMAIL_PATTERN.test(email)) {
+    res.status(400).json({ error: 'Please complete your name and email.' });
     return;
   }
-  if (!allowedPatternTypes.has(patternType)) {
-    res.status(400).json({ error: 'Please choose a pattern type.' });
+  if (!INSTAGRAM_PATTERN.test(rawInstagramHandle)) {
+    res.status(400).json({ error: 'Please enter a valid Instagram handle.' });
     return;
   }
-  if (!personalUseConfirmed) {
-    res.status(400).json({ error: 'Please confirm the pattern is for your personal use.' });
+  if (!allowedAudienceSizes.has(audienceSize) || !allowedContentFocus.has(contentFocus)) {
+    res.status(400).json({ error: 'Please tell us about your Instagram audience and content.' });
+    return;
+  }
+  if (promotionPlan.length < 20) {
+    res.status(400).json({ error: 'Please briefly explain how you would share StitchSpeak.' });
+    return;
+  }
+  if (!promotionConfirmed) {
+    res.status(400).json({ error: 'Please accept the beta participation agreement.' });
     return;
   }
 
   const result = createBetaApplication({
     name,
     email,
-    sourceLanguage,
-    targetLanguage,
-    patternType,
-    note,
-    personalUseConfirmed,
+    instagramHandle,
+    audienceSize,
+    contentFocus,
+    promotionPlan,
+    testingInterest,
+    promotionConfirmed,
   });
 
   if (!result.created) {
@@ -62,7 +75,7 @@ router.post('/', applicationRateLimit, (req: Request, res: Response) => {
   res.status(201).json({
     ok: true,
     applicationId: result.id,
-    message: 'You are on the beta list. We will review your application and email you if selected.',
+    message: 'Application received. We will review it and send access instructions if it is a good fit for this beta.',
   });
 });
 

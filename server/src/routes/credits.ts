@@ -3,6 +3,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 import { getBalance } from '../services/creditStore.js';
 import { CREDIT_PACKS, getCreditPack } from '../services/pricing.js';
+import { hasActiveBetaAccess } from '../services/betaApplicationStore.js';
 import {
   createLemonSqueezyCheckout,
   isLemonSqueezyConfigured,
@@ -16,8 +17,8 @@ router.use(requireAuth);
 const checkoutRateLimit = rateLimit({ windowMs: 60_000, max: 20, name: 'checkout' });
 
 router.get('/', (req, res: Response) => {
-  const { userSub } = req as AuthenticatedRequest;
-  res.json({ balance: getBalance(userSub) });
+  const { userSub, userEmail } = req as AuthenticatedRequest;
+  res.json({ balance: getBalance(userSub), betaAccess: hasActiveBetaAccess(userEmail) });
 });
 
 // Public catalogue of purchasable credit packs (server is the source of truth).

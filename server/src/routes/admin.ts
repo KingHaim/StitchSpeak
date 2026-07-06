@@ -3,12 +3,28 @@ import { requireAdmin } from '../middleware/admin.js';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
 import { adminOverview, adjustMemberCredits, getAdminMember, listAdminMembers } from '../services/adminStore.js';
 import { deletePattern } from '../services/patternStore.js';
+import { listBetaApplications, reviewBetaApplication, type BetaApplicationStatus } from '../services/betaApplicationStore.js';
 
 const router = Router();
 router.use(requireAdmin);
 
 router.get('/me', (req, res) => res.json({ admin: true, email: (req as AuthenticatedRequest).userEmail }));
 router.get('/overview', (_req, res) => res.json(adminOverview()));
+router.get('/beta-applications', (req, res) => {
+  const requested = typeof req.query.status === 'string' ? req.query.status : '';
+  const status = ['new', 'approved', 'rejected'].includes(requested) ? requested as BetaApplicationStatus : undefined;
+  res.json({ applications: listBetaApplications(status) });
+});
+router.patch('/beta-applications/:id', (req, res) => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const status = req.body?.status;
+  if (status !== 'approved' && status !== 'rejected') {
+    return void res.status(400).json({ error: 'Status must be approved or rejected.' });
+  }
+  const application = reviewBetaApplication(id, status, (req as unknown as AuthenticatedRequest).userEmail || 'unknown');
+  if (!application) return void res.status(404).json({ error: 'Beta application not found.' });
+  res.json({ application });
+});
 router.get('/members', (req, res) => res.json({ members: listAdminMembers(typeof req.query.q === 'string' ? req.query.q : '') }));
 router.get('/members/:sub', (req, res) => {
   const sub = Array.isArray(req.params.sub) ? req.params.sub[0] : req.params.sub;
