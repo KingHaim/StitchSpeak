@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 import { glossaryLookup } from '../services/gemini.js';
+import { boundedString } from '../services/requestValidation.js';
 
 const router = Router();
 
@@ -10,18 +11,20 @@ router.use(rateLimit({ windowMs: 60_000, max: 60, name: 'glossary' }));
 
 router.post('/lookup', async (req: Request, res: Response) => {
   try {
-    const { term, sourceLang, targetLang } = req.body;
+    const term = boundedString(req.body?.term, 200);
+    const sourceLang = boundedString(req.body?.sourceLang, 80);
+    const targetLang = boundedString(req.body?.targetLang, 80);
 
-    if (!term || typeof term !== 'string') {
-      res.status(400).json({ error: 'Missing "term" in request body.' });
+    if (!term) {
+      res.status(400).json({ error: 'term must be between 1 and 200 characters.' });
       return;
     }
-    if (!sourceLang || typeof sourceLang !== 'string') {
-      res.status(400).json({ error: 'Missing "sourceLang" in request body.' });
+    if (!sourceLang) {
+      res.status(400).json({ error: 'sourceLang must be between 1 and 80 characters.' });
       return;
     }
-    if (!targetLang || typeof targetLang !== 'string') {
-      res.status(400).json({ error: 'Missing "targetLang" in request body.' });
+    if (!targetLang) {
+      res.status(400).json({ error: 'targetLang must be between 1 and 80 characters.' });
       return;
     }
 

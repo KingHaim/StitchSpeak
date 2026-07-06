@@ -1,11 +1,6 @@
-import * as pdfjsLib from 'pdfjs-dist';
 import type { FileMetrics } from '../types';
 import { PRICING } from '../constants';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.mjs',
-  import.meta.url,
-).toString();
+import { loadPdfJs } from './pdfClient';
 
 const ACCEPTED_TYPES = new Set([
   'application/pdf',
@@ -28,6 +23,7 @@ export function getFileExtension(file: File): string {
 }
 
 async function analyzePdfFile(file: File): Promise<{ pages: number; text: string }> {
+  const pdfjsLib = await loadPdfJs();
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   const pages = pdf.numPages;

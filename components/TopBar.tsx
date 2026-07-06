@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useCredits } from '../contexts/CreditContext';
-import { MenuIcon } from './icons/NavIcons';
 import { BuyCreditsModal } from './BuyCreditsModal';
 import type { CreditPackage, PageId } from '../types';
 
@@ -12,11 +11,10 @@ const PAGE_HEADER: Record<PageId, { kicker: string; title: string }> = {
 };
 
 interface TopBarProps {
-  onMenuToggle: () => void;
   activePage: PageId;
 }
 
-export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, activePage }) => {
+export const TopBar: React.FC<TopBarProps> = ({ activePage }) => {
   const { user, isAuthenticated, signOut } = useAuth();
   const { balance, startCheckout } = useCredits();
   const [showBuyCredits, setShowBuyCredits] = useState(false);
@@ -43,21 +41,14 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, activePage }) => {
 
   return (
     <>
-      <div className="bg-surface-container-low/70 glass-nav border-b border-outline-variant/25 px-4 sm:px-6 lg:px-10 py-4">
-        <div className="flex justify-between gap-4 items-end sm:items-end">
+      <div className="bg-surface-container-low/85 glass-nav border-b border-outline-variant/25 px-4 sm:px-6 lg:px-10 py-3 sm:py-4">
+        <div className="flex justify-between gap-3 items-center sm:items-end">
           <div className="flex items-start gap-3 min-w-0">
-            <button
-              type="button"
-              onClick={onMenuToggle}
-              className="lg:hidden p-2 rounded-xl text-primary hover:bg-surface-container-high transition-colors shrink-0 mt-1"
-            >
-              <MenuIcon className="w-5 h-5" />
-            </button>
             <div className="min-w-0 pt-0.5">
-              <span className="text-primary font-medium tracking-widest text-xs uppercase mb-1 block">
+              <span className="text-primary font-medium tracking-widest text-[10px] sm:text-xs uppercase mb-0.5 sm:mb-1 block">
                 {kicker}
               </span>
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-headline italic text-on-surface leading-tight">
+              <h1 className="truncate text-2xl sm:text-4xl lg:text-5xl font-headline italic text-on-surface leading-tight">
                 {title}
               </h1>
             </div>
@@ -65,7 +56,7 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, activePage }) => {
 
           <div className="flex items-center gap-2 sm:gap-3 shrink-0 pb-0.5">
             {showStudioActions && (
-              <>
+              <div className="hidden sm:flex items-center gap-2">
                 <button
                   type="button"
                   className="p-3 rounded-full bg-surface-container-high text-on-surface-variant hover:bg-surface-variant transition-colors disabled:opacity-40"
@@ -84,13 +75,13 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, activePage }) => {
                 >
                   <span className="material-symbols-outlined text-xl">settings</span>
                 </button>
-              </>
+              </div>
             )}
             {isAuthenticated && (
               <button
                 type="button"
                 onClick={() => setShowBuyCredits(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/12 text-primary rounded-lg text-sm font-semibold hover:bg-primary/18 transition-colors"
+                className="flex min-h-10 items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-primary/12 text-primary rounded-lg text-sm font-semibold hover:bg-primary/18 transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
@@ -104,7 +95,7 @@ export const TopBar: React.FC<TopBarProps> = ({ onMenuToggle, activePage }) => {
                 <button
                   type="button"
                   onClick={() => setShowUserMenu((prev) => !prev)}
-                  className="h-9 w-9 rounded-full border-2 border-outline-variant/40 overflow-hidden hover:border-primary/50 transition-colors bg-surface-container-high flex items-center justify-center"
+                  className="h-10 w-10 rounded-full border-2 border-outline-variant/40 overflow-hidden hover:border-primary/50 transition-colors bg-surface-container-high flex items-center justify-center"
                   aria-label="Account menu"
                 >
                   {showAvatarImage ? (

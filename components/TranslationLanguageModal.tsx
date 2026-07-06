@@ -71,7 +71,7 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-on-background/40 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6 bg-on-background/40 backdrop-blur-sm"
       aria-hidden={!isOpen}
     >
       <div
@@ -79,7 +79,7 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
         role="dialog"
         aria-modal="true"
         aria-labelledby="translation-lang-modal-title"
-        className="bg-surface-container-lowest w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden relative border border-outline-variant/20 max-h-[min(90vh,900px)] flex flex-col"
+        className="bg-surface-container-lowest w-full max-w-2xl rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden relative border border-outline-variant/20 max-h-[94dvh] sm:max-h-[min(90vh,900px)] flex flex-col"
       >
         <button
           type="button"
@@ -90,10 +90,10 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
           <CloseIcon className="w-5 h-5" />
         </button>
 
-        <div className="px-6 sm:px-10 pt-10 sm:pt-12 pb-4 shrink-0">
+        <div className="px-5 sm:px-10 pt-8 sm:pt-12 pb-3 sm:pb-4 shrink-0">
           <h2
             id="translation-lang-modal-title"
-            className="font-headline text-3xl sm:text-4xl text-on-background font-bold tracking-tight"
+            className="pr-10 font-headline text-2xl sm:text-4xl text-on-background font-bold tracking-tight"
           >
             Select translation language
           </h2>
@@ -119,7 +119,7 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
           )}
         </div>
 
-        <div className="px-6 sm:px-10 py-6 space-y-8 overflow-y-auto flex-1 min-h-0">
+        <div className="px-5 sm:px-10 py-4 sm:py-6 space-y-6 sm:space-y-8 overflow-y-auto flex-1 min-h-0">
           {analyzeError && (
             <p className="text-sm text-error bg-error-container/40 border border-error/20 rounded-xl px-4 py-3">
               {analyzeError}

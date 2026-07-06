@@ -28,6 +28,10 @@ jobs:
         env:
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
+      # GitHub Pages has no rewrite rules. Serving the SPA shell as 404.html
+      # lets direct visits to /translate, /patterns, and /glossary hydrate and
+      # resolve client-side just like the Vercel deployment.
+      - run: cp dist/index.html dist/404.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

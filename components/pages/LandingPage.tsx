@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { CREDIT_PACKAGES, PENDING_BUY_CREDITS_PACK_INDEX_KEY } from '../../constants';
 import { CloseIcon } from '../icons/CloseIcon';
 import { AuthDialog } from '../AuthDialog';
@@ -120,9 +120,27 @@ const BrandLockup: React.FC<{ asButton?: boolean; onClick?: () => void }> = ({ a
 };
 
 export const LandingPage: React.FC = () => {
-  const [view, setView] = useState<LandingView>('home');
+  const [view, setView] = useState<LandingView>(() =>
+    window.location.pathname === '/translate' ? 'translate' : 'home',
+  );
   const [showCreditPurchaseModal, setShowCreditPurchaseModal] = useState(false);
   const [showAuthDialog, setShowAuthDialog] = useState(false);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setView(window.location.pathname === '/translate' ? 'translate' : 'home');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigateLanding = useCallback((nextView: LandingView) => {
+    const nextPath = nextView === 'translate' ? '/translate' : '/';
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({}, '', nextPath);
+    }
+    setView(nextView);
+  }, []);
 
   const clearPendingCreditPack = () => {
     try {
@@ -151,7 +169,7 @@ export const LandingPage: React.FC = () => {
       <div className="min-h-screen bg-background text-on-surface font-body">
         <header className="bg-background/95 dark:bg-on-surface/95 backdrop-blur-xl sticky top-0 z-50 shadow-sm dark:shadow-none border-b border-outline-variant/20">
           <div className="flex justify-between items-center px-6 sm:px-8 py-4 max-w-7xl mx-auto">
-            <BrandLockup asButton onClick={() => setView('home')} />
+            <BrandLockup asButton onClick={() => navigateLanding('home')} />
             <div className="flex items-center shrink-0">
               <LandingGoogleSignIn layout="header" onClick={() => setShowAuthDialog(true)} />
             </div>
@@ -198,7 +216,7 @@ export const LandingPage: React.FC = () => {
               StitchSpeak turns the instructions you found into the craft language your hands already know.
             </p>
             <div className="heroActions">
-              <button type="button" className="primary" onClick={() => setView('translate')}>
+              <button type="button" className="primary" onClick={() => navigateLanding('translate')}>
                 Start translating
               </button>
               <button type="button" className="secondary" onClick={() => scrollToId('pricing')}>
@@ -534,7 +552,7 @@ export const LandingPage: React.FC = () => {
             </div>
             <button
               type="button"
-              onClick={() => setView('translate')}
+              onClick={() => navigateLanding('translate')}
               className="shrink-0 rounded-xl bg-background px-6 py-3.5 font-bold text-primary transition-transform hover:-translate-y-0.5 active:translate-y-0"
             >
               Start translating

@@ -1,10 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.mjs',
-  import.meta.url,
-).toString();
+import { loadPdfJs } from '../services/pdfClient';
 
 interface FileThumbnailProps {
   file: File;
@@ -33,6 +28,7 @@ export const FileThumbnail: React.FC<FileThumbnailProps> = ({ file, fallbackText
         }
         if (!isPdf(file) || file.size === 0) return;
 
+        const pdfjsLib = await loadPdfJs();
         const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
         const page = await pdf.getPage(1);
         const naturalViewport = page.getViewport({ scale: 1 });

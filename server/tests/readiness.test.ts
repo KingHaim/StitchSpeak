@@ -8,6 +8,8 @@ const healthy = {
   lemonSqueezyWebhook: true,
   credits: true,
   patterns: true,
+  authSession: true,
+  authEmail: true,
 };
 
 describe('isProductionReady', () => {
@@ -21,5 +23,9 @@ describe('isProductionReady', () => {
 
   it('passes only when every revenue dependency is healthy', () => {
     expect(isProductionReady(healthy)).toBe(true);
+  });
+
+  it('fails when account recovery cannot send email', () => {
+    expect(isProductionReady({ ...healthy, authEmail: false })).toBe(false);
   });
 });

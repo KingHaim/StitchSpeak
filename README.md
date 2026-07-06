@@ -29,6 +29,9 @@ Server hosting needs:
 - `NODE_ENV=production`
 - `GEMINI_API_KEY`
 - `GOOGLE_CLIENT_ID` matching the frontend client ID
+- `AUTH_SESSION_SECRET` with a long random value for email-account sessions
+- `APP_URL` with the canonical frontend origin used in verification/reset links
+- `RESEND_API_KEY` and `AUTH_EMAIL_FROM` for verification and password-reset delivery
 - `FRONTEND_URL` with every public frontend origin, comma-separated
 - `DATA_DIR` on a persistent volume
 - `ADMIN_EMAILS` with the comma-separated Google accounts allowed to open `/admin`

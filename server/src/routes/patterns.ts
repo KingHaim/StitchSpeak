@@ -20,6 +20,7 @@ import { rateLimit } from '../middleware/rateLimit.js';
 import { deductCredits, addCredits, getBalance } from '../services/creditStore.js';
 import { chatUnlockCost } from '../services/pricing.js';
 import { hasActiveBetaAccess } from '../services/betaApplicationStore.js';
+import { boundedString, isStringWithin } from '../services/requestValidation.js';
 
 const router = Router();
 
@@ -71,24 +72,26 @@ router.post('/', (req, res: Response) => {
       html,
     } = req.body ?? {};
 
-    if (typeof fileName !== 'string' || !fileName.trim()) {
-      res.status(400).json({ error: 'fileName is required.' });
+    const cleanFileName = boundedString(fileName, 255);
+    const cleanTargetLanguage = boundedString(targetLanguage, 80);
+    if (!cleanFileName) {
+      res.status(400).json({ error: 'fileName must be between 1 and 255 characters.' });
       return;
     }
-    if (typeof targetLanguage !== 'string' || !targetLanguage.trim()) {
-      res.status(400).json({ error: 'targetLanguage is required.' });
+    if (!cleanTargetLanguage) {
+      res.status(400).json({ error: 'targetLanguage must be between 1 and 80 characters.' });
       return;
     }
-    if (typeof html !== 'string' || !html.trim()) {
-      res.status(400).json({ error: 'html is required.' });
+    if (!isStringWithin(html, 16 * 1024 * 1024)) {
+      res.status(400).json({ error: 'html must be non-empty and no larger than 16 MB.' });
       return;
     }
 
     const pattern = savePattern(userSub, {
-      fileName: fileName.trim(),
-      fileType: typeof fileType === 'string' ? fileType : null,
-      sourceLanguage: typeof sourceLanguage === 'string' ? sourceLanguage : null,
-      targetLanguage: targetLanguage.trim(),
+      fileName: cleanFileName,
+      fileType: boundedString(fileType, 120),
+      sourceLanguage: boundedString(sourceLanguage, 80),
+      targetLanguage: cleanTargetLanguage,
       pdfMetrics: pdfMetrics ?? null,
       cost: typeof cost === 'number' ? cost : 0,
       html,
@@ -248,12 +251,20 @@ router.post('/:id/chat', (req, res: Response) => {
       res.status(400).json({ error: 'messages must be a non-empty array.' });
       return;
     }
+    if (messages.length > 100) {
+      res.status(400).json({ error: 'No more than 100 messages can be appended at once.' });
+      return;
+    }
     const cleaned: { role: 'user' | 'model'; content: string }[] = [];
     for (const m of messages) {
       const role = m.role === 'user' || m.role === 'model' ? m.role : null;
       const content = typeof m.content === 'string' ? m.content : '';
       if (!role || !content.trim()) {
         res.status(400).json({ error: 'Each message needs a valid role and non-empty content.' });
+        return;
+      }
+      if (content.length > 100_000) {
+        res.status(400).json({ error: 'Each saved message must be no larger than 100,000 characters.' });
         return;
       }
       cleaned.push({ role, content });

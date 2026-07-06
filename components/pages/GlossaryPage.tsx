@@ -68,10 +68,10 @@ export const GlossaryPage: React.FC = () => {
   return (
     <div className="max-w-6xl mx-auto">
       {/* Tabs */}
-      <div className="flex gap-1 mb-3 bg-brand-100 p-1 rounded-xl w-fit">
+      <div className="grid grid-cols-2 gap-1 mb-3 bg-brand-100 p-1 rounded-xl w-full sm:w-fit">
         <button
           onClick={() => setActiveTab('knitting')}
-          className={`px-5 py-2 text-sm font-semibold rounded-lg transition-colors ${
+          className={`min-h-11 px-5 py-2 text-sm font-semibold rounded-lg transition-colors ${
             activeTab === 'knitting'
               ? 'bg-white text-brand-800 shadow-sm'
               : 'text-brand-500 hover:text-brand-700'
@@ -81,7 +81,7 @@ export const GlossaryPage: React.FC = () => {
         </button>
         <button
           onClick={() => setActiveTab('crochet')}
-          className={`px-5 py-2 text-sm font-semibold rounded-lg transition-colors ${
+          className={`min-h-11 px-5 py-2 text-sm font-semibold rounded-lg transition-colors ${
             activeTab === 'crochet'
               ? 'bg-white text-brand-800 shadow-sm'
               : 'text-brand-500 hover:text-brand-700'
@@ -96,7 +96,7 @@ export const GlossaryPage: React.FC = () => {
       </p>
 
       {/* Filters */}
-      <div className="bg-white p-5 rounded-2xl shadow-sm border border-brand-200 mb-6">
+      <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-brand-200 mb-6">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
             <label className="block text-xs font-semibold text-brand-500 uppercase tracking-wider mb-1.5">Source language</label>
@@ -110,11 +110,12 @@ export const GlossaryPage: React.FC = () => {
               ))}
             </select>
           </div>
-          <div className="flex items-end pb-2">
+          <div className="flex items-center justify-center sm:items-end sm:pb-2">
             <button
               onClick={() => { const tmp = sourceLang; setSourceLang(targetLang); setTargetLang(tmp); }}
-              className="p-2 rounded-lg text-brand-400 hover:bg-brand-100 transition-colors"
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-brand-500 hover:bg-brand-100 transition-colors"
               title="Swap languages"
+              aria-label="Swap source and target languages"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
@@ -149,7 +150,7 @@ export const GlossaryPage: React.FC = () => {
 
       {/* Term table */}
       <div className="bg-white rounded-2xl shadow-sm border border-brand-200 overflow-hidden mb-8">
-        <div className="overflow-x-auto">
+        <div className="hidden overflow-x-auto sm:block">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-brand-50 border-b border-brand-200">
@@ -183,17 +184,40 @@ export const GlossaryPage: React.FC = () => {
             </tbody>
           </table>
         </div>
-        <div className="px-4 py-2 bg-brand-50 border-t border-brand-200 text-xs text-brand-400">
+        <div className="divide-y divide-brand-100 sm:hidden">
+          {filtered.length === 0 ? (
+            <p className="px-4 py-10 text-center text-sm text-brand-400">No terms found. Try the AI lookup below.</p>
+          ) : filtered.map((term) => {
+            const src = term.terms[sourceLang];
+            const tgt = term.terms[targetLang];
+            return (
+              <article key={term.id} className="grid grid-cols-[1fr_auto_1fr] items-start gap-3 px-4 py-4">
+                <div className="min-w-0">
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-brand-400">{sourceName}</p>
+                  <p className="font-mono text-base font-bold text-brand-700">{src?.abbreviation || '—'}</p>
+                  <p className="mt-1 text-sm leading-snug text-brand-800">{src?.full || '—'}</p>
+                </div>
+                <span className="material-symbols-outlined mt-5 text-lg text-brand-300" aria-hidden>arrow_forward</span>
+                <div className="min-w-0">
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-brand-400">{targetName}</p>
+                  <p className="font-mono text-base font-bold text-brand-700">{tgt?.abbreviation || '—'}</p>
+                  <p className="mt-1 text-sm leading-snug text-brand-800">{tgt?.full || '—'}</p>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+        <div className="px-4 py-2 bg-brand-50 border-t border-brand-200 text-xs text-brand-500">
           Showing {filtered.length} of {GLOSSARY_TERMS.length} terms
         </div>
       </div>
 
       {/* AI Lookup */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-brand-200">
+      <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-brand-200">
         <h3 className="text-lg font-bold text-brand-800 mb-1">Can't find a term?</h3>
         <p className="text-sm text-brand-400 mb-4">Ask our AI to look it up for you.</p>
 
-        <div className="flex gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row">
           <input
             type="text"
             placeholder={search.trim() || 'Enter a knitting term...'}
@@ -205,7 +229,7 @@ export const GlossaryPage: React.FC = () => {
           <button
             onClick={handleAiLookup}
             disabled={aiLoading || (!aiQuery.trim() && !search.trim())}
-            className="px-5 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition-colors disabled:bg-brand-200 disabled:cursor-not-allowed"
+            className="min-h-11 px-5 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition-colors disabled:bg-brand-200 disabled:cursor-not-allowed"
           >
             {aiLoading ? 'Looking up...' : 'Ask AI'}
           </button>

@@ -1,5 +1,7 @@
 node_modules/
 dist/
+test-results/
+playwright-report/
 .env
 .cursor/mcp.json
 .env.local
@@ -7,3 +9,4 @@ dist/
 *.log
 .DS_Store
 server/data/
+.vercel
