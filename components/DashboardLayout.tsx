@@ -13,7 +13,7 @@ interface DashboardLayoutProps {
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activePage, onNavigate }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { checkoutReturnPending, dismissCheckoutReturn } = useCredits();
+  const { checkoutReturnStatus, dismissCheckoutReturn, retryCheckoutReconciliation } = useCredits();
 
   const isTranslate = activePage === 'dashboard';
 
@@ -36,24 +36,29 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
               : 'flex-1 overflow-y-auto overscroll-contain bg-background px-4 sm:px-6 lg:px-8 py-5 sm:py-6 lg:py-8 pb-28 sm:pb-28 lg:pb-14'
           }
         >
-          {checkoutReturnPending && (
+          {checkoutReturnStatus && (
             <div
               className="mx-auto mb-6 flex max-w-5xl items-start justify-between gap-4 rounded-xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-on-surface"
               role="status"
             >
               <div>
-                <p className="font-semibold">Checkout completed</p>
+                <p className="font-semibold">
+                  {checkoutReturnStatus === 'confirming' && 'Confirming your payment'}
+                  {checkoutReturnStatus === 'confirmed' && 'Credits added'}
+                  {checkoutReturnStatus === 'delayed' && 'Payment confirmation is taking longer'}
+                </p>
                 <p className="text-on-surface-variant">
-                  We’re confirming your payment and refreshing your credit balance. This can take a few seconds.
+                  {checkoutReturnStatus === 'confirming' && 'We’re refreshing your balance. This usually takes a few seconds.'}
+                  {checkoutReturnStatus === 'confirmed' && 'Your payment was confirmed and your balance is up to date.'}
+                  {checkoutReturnStatus === 'delayed' && 'Your payment may still be processing. Retry now or check again in a few minutes.'}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={dismissCheckoutReturn}
-                className="shrink-0 font-semibold text-primary hover:underline"
-              >
-                Dismiss
-              </button>
+              <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row">
+                {checkoutReturnStatus === 'delayed' && (
+                  <button type="button" onClick={() => void retryCheckoutReconciliation()} className="font-semibold text-primary hover:underline">Retry</button>
+                )}
+                <button type="button" onClick={dismissCheckoutReturn} className="font-semibold text-primary hover:underline">Dismiss</button>
+              </div>
             </div>
           )}
           {children}
