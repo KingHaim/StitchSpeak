@@ -3,11 +3,12 @@ import { apiCall } from './api';
 export interface BetaApplicationInput {
   name: string;
   email: string;
-  sourceLanguage: string;
-  targetLanguage: string;
-  patternType: string;
-  note: string;
-  personalUseConfirmed: boolean;
+  instagramHandle: string;
+  audienceSize: string;
+  contentFocus: string;
+  promotionPlan: string;
+  testingInterest: string;
+  promotionConfirmed: boolean;
   website: string;
 }
 

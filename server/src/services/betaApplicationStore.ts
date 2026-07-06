@@ -13,31 +13,50 @@ db.exec(`
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    source_language TEXT NOT NULL,
-    target_language TEXT NOT NULL,
-    pattern_type TEXT NOT NULL,
+    instagram_handle TEXT NOT NULL DEFAULT '',
+    source_language TEXT NOT NULL DEFAULT '',
+    target_language TEXT NOT NULL DEFAULT '',
+    pattern_type TEXT NOT NULL DEFAULT '',
     note TEXT NOT NULL DEFAULT '',
-    personal_use_confirmed INTEGER NOT NULL,
+    personal_use_confirmed INTEGER NOT NULL DEFAULT 0,
+    promotion_confirmed INTEGER NOT NULL DEFAULT 0,
+    audience_size TEXT NOT NULL DEFAULT '',
+    content_focus TEXT NOT NULL DEFAULT '',
+    promotion_plan TEXT NOT NULL DEFAULT '',
+    testing_interest TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'new',
     created_at TEXT NOT NULL
   )
 `);
 
+const columns = db.prepare('PRAGMA table_info(beta_applications)').all() as { name: string }[];
+const columnNames = new Set(columns.map((column) => column.name));
+if (!columnNames.has('reviewed_at')) db.exec('ALTER TABLE beta_applications ADD COLUMN reviewed_at TEXT');
+if (!columnNames.has('reviewed_by')) db.exec('ALTER TABLE beta_applications ADD COLUMN reviewed_by TEXT');
+if (!columnNames.has('instagram_handle')) db.exec("ALTER TABLE beta_applications ADD COLUMN instagram_handle TEXT NOT NULL DEFAULT ''");
+if (!columnNames.has('promotion_confirmed')) db.exec('ALTER TABLE beta_applications ADD COLUMN promotion_confirmed INTEGER NOT NULL DEFAULT 0');
+if (!columnNames.has('audience_size')) db.exec("ALTER TABLE beta_applications ADD COLUMN audience_size TEXT NOT NULL DEFAULT ''");
+if (!columnNames.has('content_focus')) db.exec("ALTER TABLE beta_applications ADD COLUMN content_focus TEXT NOT NULL DEFAULT ''");
+if (!columnNames.has('promotion_plan')) db.exec("ALTER TABLE beta_applications ADD COLUMN promotion_plan TEXT NOT NULL DEFAULT ''");
+if (!columnNames.has('testing_interest')) db.exec("ALTER TABLE beta_applications ADD COLUMN testing_interest TEXT NOT NULL DEFAULT ''");
+
 const insertApplication = db.prepare(`
   INSERT INTO beta_applications (
-    id, name, email, source_language, target_language, pattern_type,
-    note, personal_use_confirmed, created_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    id, name, email, instagram_handle, source_language, target_language, pattern_type,
+    note, personal_use_confirmed, promotion_confirmed, audience_size, content_focus,
+    promotion_plan, testing_interest, created_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 export type BetaApplication = {
   name: string;
   email: string;
-  sourceLanguage: string;
-  targetLanguage: string;
-  patternType: string;
-  note: string;
-  personalUseConfirmed: boolean;
+  instagramHandle: string;
+  audienceSize: string;
+  contentFocus: string;
+  promotionPlan: string;
+  testingInterest: string;
+  promotionConfirmed: boolean;
 };
 
 export function createBetaApplication(input: BetaApplication): {
@@ -50,11 +69,17 @@ export function createBetaApplication(input: BetaApplication): {
       id,
       input.name,
       input.email.toLowerCase(),
-      input.sourceLanguage,
-      input.targetLanguage,
-      input.patternType,
-      input.note,
-      input.personalUseConfirmed ? 1 : 0,
+      input.instagramHandle,
+      '',
+      '',
+      '',
+      '',
+      0,
+      input.promotionConfirmed ? 1 : 0,
+      input.audienceSize,
+      input.contentFocus,
+      input.promotionPlan,
+      input.testingInterest,
       new Date().toISOString(),
     );
     return { id, created: true };
@@ -64,4 +89,50 @@ export function createBetaApplication(input: BetaApplication): {
     }
     throw error;
   }
+}
+
+export type BetaApplicationStatus = 'new' | 'approved' | 'rejected';
+
+export type BetaApplicationAdmin = BetaApplication & {
+  id: string;
+  status: BetaApplicationStatus;
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+};
+
+export function listBetaApplications(status?: BetaApplicationStatus): BetaApplicationAdmin[] {
+  const where = status ? 'WHERE status = ?' : '';
+  const rows = db.prepare(`
+    SELECT id, name, email, instagram_handle instagramHandle, promotion_confirmed promotionConfirmed,
+           audience_size audienceSize, content_focus contentFocus, promotion_plan promotionPlan,
+           testing_interest testingInterest,
+           status, created_at createdAt, reviewed_at reviewedAt, reviewed_by reviewedBy
+    FROM beta_applications ${where}
+    ORDER BY CASE status WHEN 'new' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, created_at DESC
+  `).all(...(status ? [status] : [])) as Array<Record<string, unknown>>;
+
+  return rows.map((row) => ({
+    ...row,
+    promotionConfirmed: Boolean(row.promotionConfirmed),
+  })) as BetaApplicationAdmin[];
+}
+
+export function reviewBetaApplication(
+  id: string,
+  status: Exclude<BetaApplicationStatus, 'new'>,
+  reviewedBy: string,
+): BetaApplicationAdmin | null {
+  const result = db.prepare(`
+    UPDATE beta_applications SET status = ?, reviewed_at = ?, reviewed_by = ? WHERE id = ?
+  `).run(status, new Date().toISOString(), reviewedBy, id);
+  if (result.changes === 0) return null;
+  return listBetaApplications().find((application) => application.id === id) ?? null;
+}
+
+export function hasActiveBetaAccess(email?: string): boolean {
+  if (!email) return false;
+  return Boolean(db.prepare(`
+    SELECT 1 FROM beta_applications WHERE email = ? COLLATE NOCASE AND status = 'approved' LIMIT 1
+  `).get(email.trim()));
 }

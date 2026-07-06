@@ -1,12 +1,13 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useAuth } from './AuthContext';
 import {
-  getBalance as fetchBalance,
+  getCreditState,
   createCheckoutSession,
 } from '../services/creditService';
 
 type CreditContextValue = {
   balance: number;
+  betaAccess: boolean;
   isLoading: boolean;
   /** Set the balance directly from a server response (e.g. after a translation). */
   applyBalance: (balance: number) => void;
@@ -22,17 +23,20 @@ const CreditContext = createContext<CreditContextValue | null>(null);
 export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { idToken, isAuthenticated } = useAuth();
   const [balance, setBalance] = useState(0);
+  const [betaAccess, setBetaAccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [checkoutReturnPending, setCheckoutReturnPending] = useState(false);
 
   const refreshBalance = useCallback(async () => {
     if (!isAuthenticated || !idToken) {
       setBalance(0);
+      setBetaAccess(false);
       return;
     }
     try {
-      const bal = await fetchBalance(idToken);
-      setBalance(bal);
+      const state = await getCreditState(idToken);
+      setBalance(state.balance);
+      setBetaAccess(state.betaAccess);
     } catch (err) {
       console.error('[CreditContext] Failed to fetch balance:', err);
     }
@@ -41,6 +45,7 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     if (!isAuthenticated || !idToken) {
       setBalance(0);
+      setBetaAccess(false);
       return;
     }
     let cancelled = false;
@@ -96,6 +101,7 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const value = useMemo<CreditContextValue>(
     () => ({
       balance,
+      betaAccess,
       isLoading,
       applyBalance,
       refreshBalance,
@@ -105,6 +111,7 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }),
     [
       balance,
+      betaAccess,
       isLoading,
       applyBalance,
       refreshBalance,

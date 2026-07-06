@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .env
+.cursor/mcp.json
 .env.local
 .env.*.local
 *.log

@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import type { AuthenticatedUser } from '../auth/types';
+import type { AuthenticatedUser, GoogleIdTokenPayload } from '../auth/types';
 import {
   decodeGoogleIdToken,
   isPayloadExpired,
@@ -21,6 +21,7 @@ import {
 import { getGoogleOAuthClientId } from '../auth/googleConfig';
 import { initializeGoogleIdentity } from '../auth/googleIdentity';
 import { migrateGuestHistoryToServerIfRemoteEmpty } from '../services/historyService';
+import { login, register } from '../services/api';
 
 // Begin silently renewing the Google ID token this long before it expires.
 const RENEW_BEFORE_MS = 5 * 60 * 1000;
@@ -36,6 +37,7 @@ type AuthContextValue = {
   isAuthenticated: boolean;
   googleIdentityReady: boolean;
   signInWithGoogleCredential: (credential: string) => void;
+  signInWithEmail: (email: string, password: string, createAccount: boolean, name?: string) => Promise<void>;
   signOut: () => void;
 };
 
@@ -78,6 +80,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     [signOut],
   );
 
+  const signInWithEmail = useCallback(async (email: string, password: string, createAccount: boolean, name?: string) => {
+    const result = createAccount ? await register(email, password, name) : await login(email, password);
+    if (!result.token || !result.user) throw new Error('The server did not create a session.');
+    const nextUser = result.user as AuthenticatedUser;
+    setIdToken(result.token);
+    setUser(nextUser);
+  }, []);
+
   // Initialize the page-global GIS client exactly once. The script loads
   // asynchronously, so retry briefly until GoogleOAuthProvider has installed
   // window.google. All rendered buttons and silent renewal share this config.
@@ -108,9 +118,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       // Even if the stored token has expired, keep the user signed in and let
       // the renewal watchdog try to silently refresh it. It only signs the
       // user out if renewal fails within the grace window.
-      if (!isPayloadExpired(payload)) {
-        setUser(payloadToUser(payload));
-      }
+      if (!isPayloadExpired(payload)) setUser(payloadToUser(payload));
       setIdToken(stored);
     } catch {
       clearStoredIdToken();
@@ -123,6 +131,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   // expired). The user is only signed out if renewal genuinely fails.
   useEffect(() => {
     if (!idToken) return;
+
+    try {
+      const payload = decodeGoogleIdToken(idToken) as GoogleIdTokenPayload & { iss?: string };
+      if (payload.iss === 'stitchspeak') return;
+    } catch {
+      return;
+    }
 
     const tryRenew = () => {
       const now = Date.now();
@@ -185,9 +200,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       isAuthenticated: user != null && idToken != null,
       googleIdentityReady,
       signInWithGoogleCredential,
+      signInWithEmail,
       signOut,
     }),
-    [user, idToken, googleIdentityReady, signInWithGoogleCredential, signOut],
+    [user, idToken, googleIdentityReady, signInWithGoogleCredential, signInWithEmail, signOut],
   );
 
   return (

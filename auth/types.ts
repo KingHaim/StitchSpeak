@@ -16,3 +16,8 @@ export type AuthenticatedUser = {
   name?: string;
   picture?: string;
 };
+
+export type EmailAuthResult = {
+  token: string;
+  user: AuthenticatedUser;
+};

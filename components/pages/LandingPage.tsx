@@ -1,9 +1,7 @@
-import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
-import { getGoogleOAuthClientId } from '../../auth/googleConfig';
-import { renderGoogleIdentityButton } from '../../auth/googleIdentity';
+import React, { Suspense, lazy, useState } from 'react';
 import { CREDIT_PACKAGES, PENDING_BUY_CREDITS_PACK_INDEX_KEY } from '../../constants';
 import { CloseIcon } from '../icons/CloseIcon';
+import { AuthDialog } from '../AuthDialog';
 
 const DashboardPage = lazy(() =>
   import('./DashboardPage').then((module) => ({ default: module.DashboardPage })),
@@ -72,75 +70,26 @@ const JourneySection: React.FC = () => (
 
 interface LandingGoogleSignInProps {
   layout: 'header' | 'hero' | 'modal';
-  isReady: boolean;
+  onClick: () => void;
 }
 
 /** Match former header CTAs (~44px tall). */
 const LANDING_GOOGLE_BTN_HEIGHT_PX = 44;
 
-/** Multicolor G used on custom-styled sign-in; the real click target is Google's invisible rendered button. */
-function GoogleMark({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" aria-hidden>
-      <path
-        fill="#4285F4"
-        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-      />
-      <path
-        fill="#34A853"
-        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-      />
-      <path
-        fill="#EA4335"
-        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-      />
-    </svg>
-  );
-}
-
-const LandingGoogleSignIn: React.FC<LandingGoogleSignInProps> = ({ layout, isReady }) => {
+const LandingGoogleSignIn: React.FC<LandingGoogleSignInProps> = ({ layout, onClick }) => {
   const widthPx = layout === 'hero' ? 200 : layout === 'modal' ? 240 : 148;
-  const buttonHostRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const host = buttonHostRef.current;
-    if (!host || !isReady) return;
-    renderGoogleIdentityButton(host, {
-      type: 'standard',
-      theme: 'outline',
-      size: 'large',
-      text: 'signin',
-      shape: 'rectangular',
-      logo_alignment: 'left',
-      width: widthPx,
-    });
-  }, [isReady, widthPx]);
-
-  if (!isReady) return null;
 
   return (
-    <div
-      className={`relative inline-flex shrink-0 rounded-xl focus-within:ring-2 focus-within:ring-primary/35 focus-within:ring-offset-2 focus-within:ring-offset-background ${
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-on-primary shadow-lg shadow-primary/15 focus:ring-2 focus:ring-primary/35 focus:ring-offset-2 ${
         layout === 'modal' ? 'mx-auto' : ''
       }`}
       style={{ width: widthPx, height: LANDING_GOOGLE_BTN_HEIGHT_PX }}
     >
-      <div
-        className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-on-primary shadow-lg shadow-primary/15"
-        aria-hidden
-      >
-        <GoogleMark className="h-5 w-5 shrink-0" />
-        Sign in
-      </div>
-      <div
-        ref={buttonHostRef}
-        className="absolute inset-0 z-10 overflow-hidden opacity-0 [&>div]:!flex [&>div]:!h-full [&>div]:!w-full [&>div]:!items-stretch [&_iframe]:!h-full [&_iframe]:!min-h-0 [&_iframe]:!w-full [&_iframe]:!shadow-none"
-      />
-    </div>
+      Sign in
+    </button>
   );
 };
 
@@ -171,10 +120,9 @@ const BrandLockup: React.FC<{ asButton?: boolean; onClick?: () => void }> = ({ a
 };
 
 export const LandingPage: React.FC = () => {
-  const { googleIdentityReady } = useAuth();
-  const googleSignInConfigured = Boolean(getGoogleOAuthClientId());
   const [view, setView] = useState<LandingView>('home');
   const [showCreditPurchaseModal, setShowCreditPurchaseModal] = useState(false);
+  const [showAuthDialog, setShowAuthDialog] = useState(false);
 
   const clearPendingCreditPack = () => {
     try {
@@ -205,7 +153,7 @@ export const LandingPage: React.FC = () => {
           <div className="flex justify-between items-center px-6 sm:px-8 py-4 max-w-7xl mx-auto">
             <BrandLockup asButton onClick={() => setView('home')} />
             <div className="flex items-center shrink-0">
-              <LandingGoogleSignIn layout="header" isReady={googleIdentityReady} />
+              <LandingGoogleSignIn layout="header" onClick={() => setShowAuthDialog(true)} />
             </div>
           </div>
         </header>
@@ -220,6 +168,7 @@ export const LandingPage: React.FC = () => {
             <DashboardPage />
           </Suspense>
         </div>
+        <AuthDialog isOpen={showAuthDialog} onClose={() => setShowAuthDialog(false)} />
       </div>
     );
   }
@@ -230,7 +179,7 @@ export const LandingPage: React.FC = () => {
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:gap-4 sm:px-8 sm:py-4">
           <BrandLockup />
           <div className="flex shrink-0 items-center">
-            <LandingGoogleSignIn layout="header" isReady={googleIdentityReady} />
+            <LandingGoogleSignIn layout="header" onClick={() => setShowAuthDialog(true)} />
           </div>
         </div>
       </header>
@@ -340,7 +289,7 @@ export const LandingPage: React.FC = () => {
               </p>
               <div className="space-y-3">
                 {[
-                  { icon: 'upload_file', title: 'Upload PDF, DOCX, TXT, or RTF', body: 'Sign in with Google, then upload your pattern file.' },
+                  { icon: 'upload_file', title: 'Upload PDF, DOCX, TXT, or RTF', body: 'Sign in with Google or email, then upload your pattern file.' },
                   { icon: 'payments', title: 'Buy credits, then confirm the estimate', body: 'Translation costs credits. You see the price before anything is charged.' },
                   { icon: 'folder_special', title: 'Saved after completion', body: 'Finished translations live in My Patterns for export or chat.' },
                 ].map((item) => (
@@ -536,7 +485,7 @@ export const LandingPage: React.FC = () => {
             {[
               {
                 q: 'Is StitchSpeak free?',
-                a: 'No. Translations use credits, which you buy in packs starting at €7. You sign in with Google, purchase credits through secure checkout, and only spend them after you review the estimate for each pattern.',
+                a: 'No. Translations use credits, which you buy in packs starting at €7. Sign in with Google or email, purchase credits through secure checkout, and only spend them after you review the estimate for each pattern.',
               },
               {
                 q: 'What kinds of pattern files can I upload?',
@@ -623,17 +572,16 @@ export const LandingPage: React.FC = () => {
               </button>
             </div>
             <p className="text-sm text-on-surface-variant mb-6 leading-relaxed">
-              Continue with Google to open checkout. The credit pack you chose will be selected for you.
+              Sign in with Google or email to open checkout. The credit pack you chose will be selected for you.
             </p>
             <div className="flex justify-center">
-              <LandingGoogleSignIn layout="modal" isReady={googleIdentityReady} />
+              <LandingGoogleSignIn layout="modal" onClick={() => setShowAuthDialog(true)} />
             </div>
-            {!googleSignInConfigured && (
-              <p className="text-sm text-error mt-4 text-center">Google sign-in is not configured.</p>
-            )}
           </div>
         </div>
       )}
+
+      <AuthDialog isOpen={showAuthDialog} onClose={() => setShowAuthDialog(false)} />
 
       <footer className="bg-background dark:bg-on-surface border-t border-outline-variant/15 py-12">
         <div className="flex flex-col md:flex-row justify-between items-center px-6 sm:px-8 max-w-7xl mx-auto gap-6">
