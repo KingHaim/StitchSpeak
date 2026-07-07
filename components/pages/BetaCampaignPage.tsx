@@ -5,23 +5,23 @@ const DEMOS = [
   {
     number: '01',
     title: 'From upload to estimate',
-    description: 'See StitchSpeak detect a German pattern and show the cost before translation begins.',
+    description: 'Upload your pattern, choose a target market, and see the translation cost before you commit.',
     src: '/demos/upload-and-estimate.mp4',
     poster: '/demos/upload-and-estimate.jpg',
     duration: '0:24',
   },
   {
     number: '02',
-    title: 'Terminology that knits correctly',
-    description: 'Watch pattern instructions become familiar English abbreviations while row structure stays intact.',
+    title: 'Terminology that stays pattern-native',
+    description: 'Watch your instructions translate while rows, repeats, and abbreviations stay intact for release.',
     src: '/demos/terminology-translation.mp4',
     poster: '/demos/terminology-translation.jpg',
     duration: '0:26',
   },
   {
     number: '03',
-    title: 'Ask the pattern a question',
-    description: 'Use the pattern assistant to untangle an instruction without leaving your saved translation.',
+    title: 'Review before you publish',
+    description: 'Use the pattern assistant to clarify a line in the translated copy before it goes to customers.',
     src: '/demos/pattern-assistant.mp4',
     poster: '/demos/pattern-assistant.jpg',
     duration: '0:23',
@@ -109,12 +109,12 @@ export const BetaCampaignPage: React.FC = () => {
         <section className="hero">
           <div className="heroOverlay" />
           <div className="heroContent">
-              <p className="mb-4 text-xs font-bold uppercase tracking-[0.28em] text-primary">Pattern Rescue · Private beta</p>
+              <p className="mb-4 text-xs font-bold uppercase tracking-[0.28em] text-primary">Designer beta · Private access</p>
               <h1>
-                Knit the pattern.<br />Not the <span>language.</span>
+                Your <span>patterns,</span><br />ready for more markets.
               </h1>
               <p>
-                The pattern you love should not die in your downloads because its abbreviations speak another language. Bring it back to the needles.
+                Fast, affordable pattern translation for independent knitwear and crochet designers—free while the beta is active.
               </p>
               <div className="heroActions">
                 <button
@@ -134,9 +134,9 @@ export const BetaCampaignPage: React.FC = () => {
         <section className="border-b border-outline-variant/10 bg-surface">
           <div className="mx-auto grid max-w-7xl divide-y divide-outline-variant/15 px-6 sm:px-8 md:grid-cols-3 md:divide-x md:divide-y-0">
             {[
-              ['language', '13 languages', 'Including German, French, Japanese, and Nordic languages'],
-              ['receipt_long', 'Cost shown first', 'You approve the estimate before any credits are used'],
-              ['lock', 'Your private library', 'Patterns stay attached to your account'],
+              ['language', '13 languages', 'Reach knitters beyond your home market'],
+              ['receipt_long', 'Cost shown first', 'Approve the estimate before any credits are used'],
+              ['folder_special', 'Your translation workspace', 'Keep every language version in one private library'],
             ].map(([icon, title, body]) => (
               <div key={title} className="flex gap-4 py-6 md:px-7 first:md:pl-0 last:md:pr-0">
                 <Icon name={icon} className="text-2xl text-primary" />
@@ -149,25 +149,25 @@ export const BetaCampaignPage: React.FC = () => {
         <section className="border-b border-outline-variant/10 px-6 py-14 sm:px-8 sm:py-20">
           <div className="mx-auto grid max-w-7xl items-center gap-8 lg:grid-cols-[0.34fr_0.66fr] lg:gap-12">
             <div className="max-w-md">
-              <p className="mb-4 text-xs font-bold uppercase tracking-[0.28em] text-primary">Your pattern library</p>
+              <p className="mb-4 text-xs font-bold uppercase tracking-[0.28em] text-primary">Your translation workspace</p>
               <h2 className="font-headline text-3xl font-bold italic leading-tight sm:text-5xl">
-                Every rescued pattern, ready when you are.
+                Every language version, ready for your next release.
               </h2>
               <p className="mt-5 leading-relaxed text-on-surface-variant">
-                Finished translations stay together in your private collection, with their languages, files, and project details easy to find again.
+                Finished translations stay together in your private collection, with their languages, files, and release details easy to find again.
               </p>
             </div>
 
             <figure className="overflow-hidden rounded-2xl border border-outline-variant/20 bg-surface-container-low shadow-ambient">
               <img
                 src="/images/stitchspeak-beta-library.jpg"
-                alt="StitchSpeak pattern library displayed on a laptop beside yarn, knitting, and a project notebook"
+                alt="StitchSpeak translation workspace displayed on a laptop beside yarn, knitting, and a project notebook"
                 className="aspect-[16/9] w-full object-cover"
                 loading="lazy"
               />
               <figcaption className="flex items-center gap-3 border-t border-outline-variant/15 px-5 py-4 text-sm font-semibold text-on-surface-variant">
                 <Icon name="folder_special" className="text-xl text-primary" />
-                Reopen, review, and export from one tactile collection.
+                Reopen, review, and export every language version from one workspace.
               </figcaption>
             </figure>
           </div>
@@ -177,7 +177,7 @@ export const BetaCampaignPage: React.FC = () => {
           <div className="mx-auto max-w-7xl">
             <p className="mb-4 text-xs font-bold uppercase tracking-[0.28em] text-primary">Inside the app</p>
             <h2 className="max-w-[14ch] font-headline text-3xl font-bold leading-tight sm:text-5xl">Three minutes? We only need one.</h2>
-            <p className="mt-4 max-w-[58ch] leading-relaxed text-on-surface-variant">Three short, honest walkthroughs of the moments that matter before you trust a pattern translation.</p>
+            <p className="mt-4 max-w-[58ch] leading-relaxed text-on-surface-variant">Three short walkthroughs of the workflow independent designers use before trusting a translation for release.</p>
             <div className="mt-10 grid gap-6 lg:grid-cols-3">
               {DEMOS.map((demo) => (
                 <article key={demo.number} className="rounded-xl bg-surface p-5 shadow-ambient">
@@ -210,8 +210,8 @@ export const BetaCampaignPage: React.FC = () => {
               <h2 className="mt-6 font-headline text-3xl font-bold leading-tight sm:text-4xl">A translation is a starting point, not a substitute for judgment.</h2>
             </div>
             <div className="space-y-6 text-base leading-relaxed text-on-primary/80">
-              <p>StitchSpeak translations are intended for your personal use with patterns you have legally obtained. Do not redistribute or sell translated copies without the designer’s permission.</p>
-              <p>Always review the translated instructions, stitch counts, measurements, charts, and abbreviations before you begin knitting. If something looks inconsistent, compare it with the original pattern and contact the designer when appropriate.</p>
+              <p>StitchSpeak translations are intended for your own original patterns or patterns you have the rights to publish in additional languages. Do not redistribute translated copies of another designer&apos;s work without permission.</p>
+              <p>Always review translated instructions, stitch counts, measurements, charts, and abbreviations before publishing or releasing to customers. If something looks inconsistent, compare it with your source pattern and revise before launch.</p>
             </div>
           </div>
         </section>
@@ -219,10 +219,10 @@ export const BetaCampaignPage: React.FC = () => {
         <section id="beta-form" className="scroll-mt-20 px-5 py-20 sm:px-8 sm:py-28">
           <div className="mx-auto grid max-w-[1200px] gap-12 lg:grid-cols-[0.72fr_1.28fr] lg:gap-20">
             <div>
-              <h2 className="font-headline text-4xl font-semibold leading-tight tracking-[-0.03em] sm:text-5xl">Test it. Knit with it. Share it.</h2>
-              <p className="mt-5 text-lg leading-relaxed text-on-surface-variant">We’re inviting fiber creators to test StitchSpeak in real projects. Approved testers receive free access for the beta period in exchange for sharing an honest experience with their Instagram audience.</p>
+              <h2 className="font-headline text-4xl font-semibold leading-tight tracking-[-0.03em] sm:text-5xl">Test it. Translate it. Tell your audience.</h2>
+              <p className="mt-5 text-lg leading-relaxed text-on-surface-variant">We&apos;re inviting independent pattern designers to test StitchSpeak on real releases. Approved testers receive free access for the beta period in exchange for sharing an honest experience with their audience.</p>
               <ol className="mt-8 space-y-5">
-                {['Apply with your Instagram profile and promotion idea', 'We review audience fit and creator content', 'Selected creators receive free beta access and campaign guidelines'].map((step, index) => (
+                {['Apply with your brand and how you would reach new markets', 'We review your patterns, audience, and release plans', 'Selected designers receive free beta access and campaign guidelines'].map((step, index) => (
                   <li key={step} className="flex gap-4 text-sm leading-relaxed">
                     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-fixed font-mono text-xs font-bold text-on-primary-fixed">{index + 1}</span>
                     <span className="pt-1">{step}</span>
@@ -235,7 +235,7 @@ export const BetaCampaignPage: React.FC = () => {
               {status === 'success' ? (
                 <div className="flex min-h-[500px] flex-col items-center justify-center text-center" role="status">
                   <span className="flex h-16 w-16 items-center justify-center rounded-full bg-primary-fixed text-on-primary-fixed"><Icon name="check" className="text-3xl" /></span>
-                  <h3 className="mt-6 font-headline text-3xl font-semibold">Your pattern has a place in line.</h3>
+                  <h3 className="mt-6 font-headline text-3xl font-semibold">Your application is in review.</h3>
                   <p className="mt-3 max-w-md leading-relaxed text-on-surface-variant">{message}</p>
                   <a href="/" className="mt-8 rounded-xl border border-secondary/35 px-5 py-3 font-bold text-secondary">Return to StitchSpeak</a>
                 </div>
@@ -260,11 +260,11 @@ export const BetaCampaignPage: React.FC = () => {
                     <label className="grid gap-2 text-sm font-bold">What do you create?
                       <select required value={form.contentFocus} onChange={(e) => update('contentFocus', e.target.value)} className="rounded-lg border border-outline bg-surface px-4 py-3 font-normal outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
                         <option value="">Choose your main focus</option>
-                        {['Knitting', 'Crochet', 'Knitting and crochet', 'Fiber arts', 'Crafts and lifestyle', 'Other'].map((value) => <option key={value}>{value}</option>)}
+                        {['Pattern design', 'Knitting', 'Crochet', 'Knitting and crochet', 'Fiber arts', 'Crafts and lifestyle', 'Other'].map((value) => <option key={value}>{value}</option>)}
                       </select>
                     </label>
                     <label className="grid gap-2 text-sm font-bold sm:col-span-2">How would you share StitchSpeak with your audience? <span className="font-normal text-on-surface-variant">20 characters minimum</span>
-                      <textarea ref={promotionPlanRef} required rows={3} minLength={20} maxLength={600} aria-invalid={form.promotionPlan.length > 0 && form.promotionPlan.trim().length < 20} aria-describedby="promotion-plan-help" placeholder="For example: a Reel showing a translated pattern, Stories during a project, or a review after testing…" value={form.promotionPlan} onChange={(e) => update('promotionPlan', e.target.value)} className="resize-y rounded-lg border border-outline bg-surface px-4 py-3 font-normal outline-none transition placeholder:text-outline aria-invalid:border-error focus:border-primary focus:ring-2 focus:ring-primary/20" />
+                      <textarea ref={promotionPlanRef} required rows={3} minLength={20} maxLength={600} aria-invalid={form.promotionPlan.length > 0 && form.promotionPlan.trim().length < 20} aria-describedby="promotion-plan-help" placeholder="For example: announcing a French edition, showing your translation workflow in a Reel, or reviewing the process after a release…" value={form.promotionPlan} onChange={(e) => update('promotionPlan', e.target.value)} className="resize-y rounded-lg border border-outline bg-surface px-4 py-3 font-normal outline-none transition placeholder:text-outline aria-invalid:border-error focus:border-primary focus:ring-2 focus:ring-primary/20" />
                       <span id="promotion-plan-help" className={`text-xs font-normal ${form.promotionPlan.length > 0 && form.promotionPlan.trim().length < 20 ? 'text-error' : 'text-on-surface-variant'}`}>
                         {form.promotionPlan.trim().length < 20
                           ? `${20 - form.promotionPlan.trim().length} more characters needed`
@@ -272,13 +272,13 @@ export const BetaCampaignPage: React.FC = () => {
                       </span>
                     </label>
                     <label className="grid gap-2 text-sm font-bold sm:col-span-2">Why do you want to test StitchSpeak? <span className="font-normal text-on-surface-variant">Optional</span>
-                      <textarea rows={3} maxLength={600} placeholder="Tell us what interests you about the app or what you hope to explore." value={form.testingInterest} onChange={(e) => update('testingInterest', e.target.value)} className="resize-y rounded-lg border border-outline bg-surface px-4 py-3 font-normal outline-none transition placeholder:text-outline focus:border-primary focus:ring-2 focus:ring-primary/20" />
+                      <textarea rows={3} maxLength={600} placeholder="Tell us which languages or markets you want to reach, or what you hope to test before a release." value={form.testingInterest} onChange={(e) => update('testingInterest', e.target.value)} className="resize-y rounded-lg border border-outline bg-surface px-4 py-3 font-normal outline-none transition placeholder:text-outline focus:border-primary focus:ring-2 focus:ring-primary/20" />
                     </label>
                   </div>
 
                   <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-xl border border-primary/20 bg-primary-fixed/35 p-4 text-sm leading-relaxed">
                     <input required type="checkbox" checked={form.promotionConfirmed} onChange={(e) => update('promotionConfirmed', e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-primary" />
-                    <span><strong>Beta participation agreement:</strong> I understand that approved testers can use StitchSpeak free for the duration of the beta in exchange for promoting their experience on Instagram. Beta access may be revoked if I do not fulfill this commitment.</span>
+                    <span><strong>Beta participation agreement:</strong> I understand that approved designers can use StitchSpeak free for the duration of the beta in exchange for sharing their experience with their audience. Beta access may be revoked if I do not fulfill this commitment.</span>
                   </label>
 
                   <label className="absolute -left-[9999px]" aria-hidden="true">Website

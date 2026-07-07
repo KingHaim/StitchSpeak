@@ -49,17 +49,19 @@ export async function sendBetaApprovalEmail(applicant: BetaApplicant): Promise<v
   const url = appUrl();
   await send(
     applicant.email,
-    "You're in — StitchSpeak Pattern Rescue beta access",
+    "You're in — StitchSpeak designer beta access",
     `<p>Hi ${name},</p>
-<p>Your Pattern Rescue beta application has been approved. You now have free access to StitchSpeak translations and pattern chat for the beta period.</p>
+<p>Your designer beta application has been approved. You now have free access to StitchSpeak translations and pattern chat for the beta period.</p>
 <p><strong>How to get started</strong></p>
 <ol>
-<li>Sign in at <a href="${url}">${url}</a> using <strong>${email}</strong> — the same email you applied with.</li>
-<li>Upload a knitting or crochet pattern and try a translation.</li>
-<li>Share your honest experience on Instagram, as described in your application.</li>
+<li>Go to <a href="${url}">${url}</a>.</li>
+<li>Create a StitchSpeak account with <strong>${email}</strong> — the same email you applied with. Choose a password when prompted, or continue with Google if that address is linked to your Google account.</li>
+<li>If you create an email account, verify your inbox before signing in.</li>
+<li>Upload one of your patterns, choose a target language, and review the translation before your next release.</li>
+<li>Share your honest experience with your audience, as described in your application.</li>
 </ol>
-<p>Beta access stays free while the beta is active and your participation requirements are met. If you have questions, reply to this email.</p>
-<p>Happy stitching,<br>The StitchSpeak team</p>`,
+<p>Beta access only applies when you sign in with <strong>${email}</strong>. It stays free while the beta is active and your participation requirements are met. If you have questions, reply to this email.</p>
+<p>Happy designing,<br>The StitchSpeak team</p>`,
   );
 }
 
@@ -68,10 +70,10 @@ export async function sendBetaRejectionEmail(applicant: BetaApplicant): Promise<
   const url = appUrl();
   await send(
     applicant.email,
-    'Update on your StitchSpeak beta application',
+    'Update on your StitchSpeak designer beta application',
     `<p>Hi ${name},</p>
-<p>Thank you for applying to the StitchSpeak Pattern Rescue beta. We are keeping this cohort small, and we were not able to include your application in this round.</p>
-<p>You can still use StitchSpeak any time at <a href="${url}">${url}</a> with the standard credit-based flow.</p>
+<p>Thank you for applying to the StitchSpeak designer beta. We are keeping this cohort small, and we were not able to include your application in this round.</p>
+<p>You can still use StitchSpeak any time at <a href="${url}">${url}</a> to translate your patterns with the standard credit-based flow.</p>
 <p>We appreciate your interest and hope to hear from you again in the future.</p>
 <p>Best,<br>The StitchSpeak team</p>`,
   );
