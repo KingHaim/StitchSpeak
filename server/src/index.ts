@@ -24,6 +24,7 @@ import { isProductionReady } from './services/readiness.js';
 import { isAuthEmailConfigured } from './services/authEmail.js';
 import { installGracefulShutdown } from './services/gracefulShutdown.js';
 import { backupHealth, scheduleOffsiteBackups } from './services/offsiteBackup.js';
+import { requestGroup, requestMetrics } from './services/requestMetrics.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -124,8 +125,13 @@ app.use((req, res, next) => {
 
   res.on('finish', () => {
     const durationMs = Date.now() - startedAt;
+    const group = requestGroup(req.path);
+    if (!req.path.startsWith('/health')) requestMetrics.record(group, res.statusCode, durationMs);
     const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
-    const message = `[request] id=${requestId} method=${req.method} path=${req.originalUrl} status=${res.statusCode} durationMs=${durationMs}`;
+    const message = JSON.stringify({
+      event: 'http_request', requestId, method: req.method, group,
+      status: res.statusCode, durationMs,
+    });
     if (level === 'error') {
       console.error(message);
     } else if (level === 'warn') {
@@ -190,6 +196,14 @@ app.get('/health/payments', (_req, res) => {
 app.get('/health/backups', (_req, res) => {
   const health = backupHealth();
   res.status(health.ok ? 200 : 503).json({ status: health.ok ? 'ok' : 'attention_required', ...health });
+});
+
+app.get('/health/metrics', (_req, res) => {
+  const metrics = requestMetrics.snapshot();
+  res.status(metrics.ok ? 200 : 503).json({
+    status: metrics.ok ? 'ok' : 'attention_required',
+    ...metrics,
+  });
 });
 
 app.use('/api/translate', translateRouter);
