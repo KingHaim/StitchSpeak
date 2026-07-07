@@ -22,10 +22,12 @@ import {
 } from './services/lemonSqueezy.js';
 import { isProductionReady } from './services/readiness.js';
 import { isAuthEmailConfigured } from './services/authEmail.js';
+import { installGracefulShutdown } from './services/gracefulShutdown.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const IS_PROD = process.env.NODE_ENV === 'production';
+let draining = false;
 
 // Behind Railway/Vercel/Cloudflare there is a single proxy hop, so trust it to
 // get the real client IP from X-Forwarded-For (used by the rate limiter).
@@ -140,6 +142,10 @@ app.get('/health', (_req, res) => {
 });
 
 app.get('/health/deep', (_req, res) => {
+  if (draining) {
+    res.status(503).json({ status: 'draining' });
+    return;
+  }
   try {
     const checks = {
       config: {
@@ -214,6 +220,10 @@ app.use(
   },
 );
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`[StitchSpeak Server] listening on port ${PORT}`);
+});
+
+installGracefulShutdown(server, () => {
+  draining = true;
 });
