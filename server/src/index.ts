@@ -23,6 +23,7 @@ import {
 import { isProductionReady } from './services/readiness.js';
 import { isAuthEmailConfigured } from './services/authEmail.js';
 import { installGracefulShutdown } from './services/gracefulShutdown.js';
+import { backupHealth, scheduleOffsiteBackups } from './services/offsiteBackup.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -186,6 +187,11 @@ app.get('/health/payments', (_req, res) => {
   }
 });
 
+app.get('/health/backups', (_req, res) => {
+  const health = backupHealth();
+  res.status(health.ok ? 200 : 503).json({ status: health.ok ? 'ok' : 'attention_required', ...health });
+});
+
 app.use('/api/translate', translateRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/account', accountRouter);
@@ -227,3 +233,4 @@ const server = app.listen(PORT, () => {
 installGracefulShutdown(server, () => {
   draining = true;
 });
+scheduleOffsiteBackups();

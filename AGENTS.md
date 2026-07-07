@@ -31,6 +31,12 @@ StitchSpeak is a React 19 + TypeScript + Tailwind CSS v4 frontend (Vite) with an
 | `PORT` | `server/.env` | Port the Express server listens on (default `3001`) |
 | `FRONTEND_URL` | `server/.env` | Comma-separated extra CORS origins (localhost dev ports are always allowed) |
 | `DATA_DIR` | `server/.env` | Directory for persistent data like the credits DB (default `./data`) |
+| `BACKUP_S3_ENDPOINT` | `server/.env` | External S3-compatible endpoint for encrypted daily backups |
+| `BACKUP_S3_REGION` | `server/.env` | S3 region (use `auto` for Cloudflare R2) |
+| `BACKUP_S3_BUCKET` | `server/.env` | External backup bucket name |
+| `BACKUP_S3_ACCESS_KEY_ID` | `server/.env` | Write/list/delete credential for the backup bucket |
+| `BACKUP_S3_SECRET_ACCESS_KEY` | `server/.env` | Secret for the backup bucket credential |
+| `BACKUP_ENCRYPTION_KEY` | `server/.env` | Base64-encoded 32-byte AES key; store separately for disaster recovery |
 | `ADMIN_EMAILS` | `server/.env` | Comma-separated Google emails allowed to access the server-enforced admin console |
 | `AUTH_SESSION_SECRET` | `server/.env` | Long random secret used to sign and revoke email-account sessions |
 | `APP_URL` | `server/.env` | Canonical frontend URL used for verification and password-reset links |
