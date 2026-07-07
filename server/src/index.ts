@@ -125,8 +125,9 @@ app.use((req, res, next) => {
 
   res.on('finish', () => {
     const durationMs = Date.now() - startedAt;
-    const group = requestGroup(req.path);
-    if (!req.path.startsWith('/health')) requestMetrics.record(group, res.statusCode, durationMs);
+    const pathname = req.originalUrl.split('?')[0];
+    const group = requestGroup(pathname);
+    if (!pathname.startsWith('/health')) requestMetrics.record(group, res.statusCode, durationMs);
     const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
     const message = JSON.stringify({
       event: 'http_request', requestId, method: req.method, group,
