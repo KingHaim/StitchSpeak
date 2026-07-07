@@ -634,7 +634,7 @@ h1, h2, h3, h4, h5, h6 {
     min-height: calc(100dvh - 81px);
     padding: 64px 24px 360px;
     background-size: auto 390px;
-    background-position: bottom right -115px;
+    background-position: bottom right;
   }
 
   .heroOverlay {
@@ -664,7 +664,7 @@ h1, h2, h3, h4, h5, h6 {
   .hero {
     padding: 48px 20px 300px;
     background-size: auto 325px;
-    background-position: bottom right -105px;
+    background-position: bottom right;
   }
 
   .hero h1 {

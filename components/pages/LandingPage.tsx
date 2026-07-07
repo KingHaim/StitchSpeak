@@ -14,16 +14,16 @@ const scrollToId = (id: string) => {
 };
 
 const TRUST_POINTS = [
-  { icon: 'translate', title: '13 languages', text: 'Craft terminology, not generic prose' },
-  { icon: 'receipt_long', title: 'Cost shown first', text: 'Approve every translation before spending' },
-  { icon: 'lock', title: 'Private files', text: 'Your patterns stay in your library' },
+  { icon: 'translate', title: '13 markets, one upload', text: 'Translate into any supported language' },
+  { icon: 'verified', title: 'Made for patterns', text: 'Reviewed by knitters, not generic prose' },
+  { icon: 'all_inclusive', title: 'Credits never expire', text: 'Use them when your next release is ready' },
 ];
 
 const JOURNEY_STEPS = [
   {
     icon: 'upload_file',
-    title: 'Upload your pattern',
-    desc: 'Add a PDF, DOCX, TXT, or RTF file. StitchSpeak detects the source language.',
+    title: 'Upload once',
+    desc: 'Add your PDF, DOCX, TXT, or RTF file and choose one of 13 target languages.',
   },
   {
     icon: 'payments',
@@ -32,8 +32,8 @@ const JOURNEY_STEPS = [
   },
   {
     icon: 'check_circle',
-    title: 'Translate and cast on',
-    desc: 'Review, save, and export the finished pattern from your personal library.',
+    title: 'Translate and publish',
+    desc: 'Review the translated copy, save it to your library, then place it in your own pattern layout.',
   },
 ];
 
@@ -47,8 +47,8 @@ const JourneySection: React.FC = () => (
   <section className="border-b border-outline-variant/10 px-6 py-14 sm:px-8 sm:py-18">
     <div className="mx-auto max-w-7xl">
       <div className="mb-10 max-w-2xl sm:mb-12">
-        <h2 className="font-headline text-3xl font-bold sm:text-4xl">From pattern to project</h2>
-        <p className="mt-3 text-on-surface-variant">Three clear steps, with the price visible before translation begins.</p>
+        <h2 className="font-headline text-3xl font-bold sm:text-4xl">From one pattern to a wider market</h2>
+        <p className="mt-3 text-on-surface-variant">One upload, 13 language options, and a clear price before translation begins.</p>
       </div>
       <div className="grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-10">
         {JOURNEY_STEPS.map(({ icon, title, desc }, index) => (
@@ -207,13 +207,12 @@ export const LandingPage: React.FC = () => {
           <div className="heroOverlay" />
           <div className="heroContent">
             <h1>
-              The soul of a <span>pattern,</span>
+              Your <span>patterns,</span>
               <br />
-              translated.
+              ready for more markets.
             </h1>
             <p>
-              A brilliant pattern should never become an abandoned project just because it speaks the wrong language.
-              StitchSpeak turns the instructions you found into the craft language your hands already know.
+              Fast, affordable pattern translation for independent knitwear and crochet designers—built by makers, for makers.
             </p>
             <div className="heroActions">
               <button type="button" className="primary" onClick={() => navigateLanding('translate')}>
@@ -248,16 +247,16 @@ export const LandingPage: React.FC = () => {
         <section className="bg-surface-container-low px-6 py-14 sm:px-8 sm:py-20">
           <div className="max-w-7xl mx-auto">
             <div className="mb-10 max-w-2xl sm:mb-12">
-              <h2 className="text-3xl sm:text-4xl font-headline font-bold mb-4">Crafted for the Modern Maker</h2>
-              <p className="text-on-surface-variant">Where tradition meets technological precision.</p>
+              <h2 className="text-3xl sm:text-4xl font-headline font-bold mb-4">Like a translator that speaks knitting</h2>
+              <p className="text-on-surface-variant">Purpose-built for independent designers who want to sell beyond one language.</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="md:col-span-2 bg-surface p-8 rounded-xl flex flex-col justify-between min-h-[320px] sm:min-h-[400px]">
                 <div>
                   <Icon name="translate" className="text-primary text-4xl mb-6" />
-                  <h3 className="text-2xl sm:text-3xl font-headline font-bold mb-4">Precision Translation Engine</h3>
+                  <h3 className="text-2xl sm:text-3xl font-headline font-bold mb-4">Pattern language, not generic prose</h3>
                   <p className="text-on-surface-variant max-w-md">
-                    Our neural network understands the nuances of &quot;yarn overs&quot; and &quot;slip-stitch-pass-overs&quot; across 13 languages.
+                    StitchSpeak understands rows, repeats, abbreviations, and terms such as &quot;yarn over&quot; and &quot;slip stitch&quot;. Its terminology has been reviewed by knitters.
                   </p>
                 </div>
                 <div className="mt-8 flex flex-wrap gap-2">
@@ -285,9 +284,9 @@ export const LandingPage: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex flex-1 flex-col justify-center p-8 text-center">
-                  <h3 className="text-2xl font-headline font-bold mb-2">Saved Pattern Library</h3>
+                  <h3 className="text-2xl font-headline font-bold mb-2">Your translation workspace</h3>
                   <p className="opacity-85">
-                    Keep translated patterns in one place, reopen them later, and export when you are ready to cast on.
+                    Keep every translation in one place, reopen it later, and prepare the copy for your next release.
                   </p>
                 </div>
               </div>
@@ -303,13 +302,13 @@ export const LandingPage: React.FC = () => {
                 What you actually use.
               </h2>
               <p className="text-on-surface-variant leading-relaxed mb-8">
-                Upload a pattern, confirm the language and credit estimate, then review the translated file in your saved library.
+                Upload one pattern, choose a market, confirm the estimate, and review the translated copy in your saved library.
               </p>
               <div className="space-y-3">
                 {[
                   { icon: 'upload_file', title: 'Upload PDF, DOCX, TXT, or RTF', body: 'Sign in with Google or email, then upload your pattern file.' },
                   { icon: 'payments', title: 'Buy credits, then confirm the estimate', body: 'Translation costs credits. You see the price before anything is charged.' },
-                  { icon: 'folder_special', title: 'Saved after completion', body: 'Finished translations live in My Patterns for export or chat.' },
+                  { icon: 'folder_special', title: 'Reuse one upload', body: 'Return to My Patterns and translate the same source for another market.' },
                 ].map((item) => (
                   <div key={item.title} className="flex items-start gap-3">
                     <span className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-fixed text-on-primary-fixed">
@@ -432,8 +431,8 @@ export const LandingPage: React.FC = () => {
         <section id="pricing" className="bg-surface-container-high px-6 py-14 scroll-mt-24 sm:px-8 sm:py-20">
           <div className="max-w-5xl mx-auto">
             <div className="text-center mb-12 sm:mb-16">
-	              <h2 className="text-3xl sm:text-4xl font-headline font-bold mb-4">Choose Your Pace</h2>
-	              <p className="text-on-surface-variant">Every translation uses credits. Buy packs when you need them; larger packs lower your cost per credit, and credits never expire.</p>
+		              <h2 className="text-3xl sm:text-4xl font-headline font-bold mb-4">Simple credits, no surprises</h2>
+		              <p className="mx-auto max-w-3xl text-on-surface-variant">A standard pattern often starts around 6.5 credits. Longer or more complex files cost more; you always see the exact estimate before confirming. Credits never expire.</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {CREDIT_PACKAGES.map((pack, idx) => {
@@ -511,7 +510,7 @@ export const LandingPage: React.FC = () => {
               },
               {
                 q: 'Will I see the credit cost before translation starts?',
-                a: 'Yes. After you choose the target language, StitchSpeak shows an estimated credit cost and your balance before you confirm. If you do not have enough credits, the app tells you before spending anything.',
+                a: 'Yes. A standard pattern often starts around 6.5 credits, while longer or more complex files cost more. After you choose the target language, StitchSpeak shows the exact estimate and your balance before you confirm. Your purchased credits never expire.',
               },
               {
                 q: 'Will knitting abbreviations like SSK, YO, C6F, or BOR translate correctly?',
@@ -519,7 +518,7 @@ export const LandingPage: React.FC = () => {
               },
               {
                 q: 'Does it preserve the original layout?',
-                a: 'For supported document formats, the app aims to preserve the structure and make the translated result easy to review and export. Very complex scans, charts, handwritten notes, or image-only PDFs may need manual checking.',
+                a: 'StitchSpeak delivers translated pattern copy that is easy to review and export; it does not recreate your finished pattern design. You place the translation back into your own layout, which keeps the service fast and affordable. Always proofread before publishing, especially charts, scans, and unusual notation.',
               },
               {
                 q: 'Can I ask questions about a translated pattern?',
@@ -545,9 +544,9 @@ export const LandingPage: React.FC = () => {
         <section className="bg-primary px-6 py-14 text-on-primary sm:px-8 sm:py-18">
           <div className="mx-auto flex max-w-5xl flex-col items-start justify-between gap-8 md:flex-row md:items-center">
             <div className="max-w-2xl">
-              <h2 className="font-headline text-3xl font-bold sm:text-4xl">Ready when your next pattern is.</h2>
+              <h2 className="font-headline text-3xl font-bold sm:text-4xl">Give your next pattern a bigger market.</h2>
               <p className="mt-3 max-w-xl text-on-primary/80">
-                Upload the file, check the cost, and translate with terminology made for knitters and crocheters.
+                Upload once, check the cost, and translate into any of 13 languages with terminology made for makers.
               </p>
             </div>
             <button
