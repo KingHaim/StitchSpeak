@@ -2,24 +2,25 @@ import { Router, type NextFunction, type Request, type Response } from 'express'
 import { ZipArchive } from 'archiver';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rateLimit.js';
-import { getBalance } from '../services/creditStore.js';
+import { deleteCreditAccount, getBalance } from '../services/creditStore.js';
+import { deleteEmailAccount } from '../services/emailAuth.js';
 import {
   getChatState,
   getPattern,
   getSourceFile,
   getThumbnailFile,
   listPatterns,
+  deleteAllPatterns,
 } from '../services/patternStore.js';
 
 const router = Router();
 router.use(requireAuth);
-router.use(rateLimit({ windowMs: 60 * 60 * 1000, max: 3, name: 'account-export' }));
 
 function safeName(value: string): string {
   return value.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'pattern';
 }
 
-router.get('/export', (req: Request, res: Response, next: NextFunction) => {
+router.get('/export', rateLimit({ windowMs: 60 * 60 * 1000, max: 3, name: 'account-export' }), (req: Request, res: Response, next: NextFunction) => {
   const { userSub, userEmail, identityProvider, emailVerified } = req as AuthenticatedRequest;
   const archive = new ZipArchive({ zlib: { level: 6 } });
 
@@ -57,6 +58,22 @@ router.get('/export', (req: Request, res: Response, next: NextFunction) => {
   }
 
   void archive.finalize();
+});
+
+router.delete('/', rateLimit({ windowMs: 60 * 60 * 1000, max: 5, name: 'account-delete' }), (req: Request, res: Response) => {
+  const { userSub } = req as AuthenticatedRequest;
+  if (req.body?.confirmation !== 'DELETE') {
+    res.status(400).json({ error: 'Type DELETE to confirm permanent account deletion.' });
+    return;
+  }
+
+  // Each operation is idempotent, so an interrupted request can be retried safely.
+  // Financial ledgers are retained under an irreversible pseudonymous identifier.
+  const financial = deleteCreditAccount(userSub);
+  const patternsDeleted = deleteAllPatterns(userSub);
+  const credentialsDeleted = deleteEmailAccount(userSub);
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ok: true, patternsDeleted, credentialsDeleted, ...financial });
 });
 
 export default router;

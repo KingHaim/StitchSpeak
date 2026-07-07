@@ -73,4 +73,21 @@ describe('payment refund reconciliation', () => {
     store.recordPaymentAnomaly('rejected_paid_order', 'order-3');
     expect(store.paymentReconciliationHealth()).toEqual({ ok: false, recentAnomalies: 1 });
   });
+
+  it('deletes balances, anonymizes orders, and blocks late payment credits', () => {
+    store.recordPurchaseAndGrantCredits({
+      eventId: 'order_created:deleted', orderId: 'deleted-order', sub: 'user-delete',
+      credits: 12, amountPaidCents: 1200,
+    });
+    expect(store.deleteCreditAccount('user-delete')).toEqual({ creditsDeleted: true, ordersAnonymized: 1 });
+    expect(store.getBalance('user-delete')).toBe(0);
+    expect(store.recordPurchaseAndGrantCredits({
+      eventId: 'order_created:late', orderId: 'late-order', sub: 'user-delete',
+      credits: 8, amountPaidCents: 800,
+    })).toEqual({ applied: false, balance: 0 });
+    expect(store.getBalance('user-delete')).toBe(0);
+    expect(store.applyOrderRefund('order_refunded:deleted', 'deleted-order', 1200)).toMatchObject({
+      applied: true, balance: 0, revoked: 12,
+    });
+  });
 });

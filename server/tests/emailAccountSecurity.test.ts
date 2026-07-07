@@ -47,4 +47,16 @@ describe('email account security', () => {
     expect(await auth.authenticateEmailAccount('maker@example.com', 'correct-horse-battery')).toBeNull();
     expect(await auth.authenticateEmailAccount('maker@example.com', 'a-brand-new-password')).not.toBeNull();
   });
+
+  it('removes credentials, tokens, and active sessions when an account is deleted', async () => {
+    const account = await auth.createEmailAccount('delete-me@example.com', 'correct-horse-battery');
+    const verified = auth.verifyEmailToken(auth.issueVerificationToken(account));
+    const session = auth.signEmailSession(verified!);
+    auth.issuePasswordResetToken(account.email);
+
+    expect(auth.deleteEmailAccount(account.sub)).toBe(true);
+    expect(auth.deleteEmailAccount(account.sub)).toBe(false);
+    expect(auth.verifyEmailSession(session)).toBeNull();
+    expect(await auth.authenticateEmailAccount(account.email, 'correct-horse-battery')).toBeNull();
+  });
 });

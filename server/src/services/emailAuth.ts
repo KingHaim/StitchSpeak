@@ -197,3 +197,10 @@ export async function resetPasswordWithToken(token: string, password: string): P
   db.prepare('DELETE FROM email_auth_tokens WHERE sub = ?').run(consumed.sub);
   return result.changes === 1;
 }
+
+export function deleteEmailAccount(sub: string): boolean {
+  return db.transaction(() => {
+    db.prepare('DELETE FROM email_auth_tokens WHERE sub = ?').run(sub);
+    return db.prepare('DELETE FROM email_accounts WHERE sub = ?').run(sub).changes === 1;
+  })();
+}

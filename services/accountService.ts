@@ -22,3 +22,18 @@ export async function downloadAccountExport(idToken: string): Promise<void> {
   anchor.remove();
   URL.revokeObjectURL(url);
 }
+
+export async function deleteAccount(idToken: string, confirmation: string): Promise<void> {
+  const response = await fetch(`${getApiUrl()}/api/account`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ confirmation }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(typeof body.error === 'string' ? body.error : 'Could not delete your account.');
+  }
+}
