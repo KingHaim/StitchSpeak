@@ -5,13 +5,13 @@ import { getToken, SS_TOKEN_KEY } from './api';
 describe('getToken', () => {
   beforeEach(() => localStorage.clear());
 
-  it('uses the current Google ID token when the legacy token is absent', () => {
+  it('never reads a Google credential from localStorage', () => {
     localStorage.setItem('stitchspeak_google_id_token', 'google-id-token');
-    expect(getToken()).toBe('google-id-token');
+    expect(getToken()).toBeNull();
   });
 
-  it('keeps legacy sessions compatible', () => {
+  it('never sends a legacy bearer token from localStorage', () => {
     localStorage.setItem(SS_TOKEN_KEY, 'legacy-token');
-    expect(getToken()).toBe('legacy-token');
+    expect(getToken()).toBeNull();
   });
 });

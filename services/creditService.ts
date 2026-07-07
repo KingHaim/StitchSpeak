@@ -1,7 +1,7 @@
 import type { CreditPackage } from '../types';
 
 function getApiUrl(): string {
-  return import.meta.env.VITE_API_URL || '';
+  return '';
 }
 
 async function apiFetch(
@@ -13,7 +13,7 @@ async function apiFetch(
   const headers: Record<string, string> = {
     Authorization: `Bearer ${idToken}`,
   };
-  const init: RequestInit = { method, headers };
+  const init: RequestInit = { method, headers, credentials: 'include' };
 
   if (body) {
     headers['Content-Type'] = 'application/json';

@@ -1,7 +1,7 @@
 import type { TranslationRecord } from '../types';
 
 function getApiUrl(): string {
-  return import.meta.env.VITE_API_URL || '';
+  return '';
 }
 
 interface ServerPattern {
@@ -34,7 +34,7 @@ async function apiFetch<T>(
   const headers: Record<string, string> = {
     Authorization: `Bearer ${idToken}`,
   };
-  const init: RequestInit = { method, headers };
+  const init: RequestInit = { method, headers, credentials: 'include' };
 
   if (body !== undefined) {
     headers['Content-Type'] = 'application/json';
@@ -156,6 +156,7 @@ export async function uploadPatternSource(
       `${getApiUrl()}/api/patterns/${encodeURIComponent(id)}/source`,
       {
         method: 'POST',
+        credentials: 'include',
         headers: { Authorization: `Bearer ${idToken}` },
         body: form,
       },
@@ -190,6 +191,7 @@ export async function fetchPatternSource(
     res = await fetch(
       `${getApiUrl()}/api/patterns/${encodeURIComponent(id)}/source`,
       {
+        credentials: 'include',
         headers: { Authorization: `Bearer ${idToken}` },
       },
     );
@@ -234,6 +236,7 @@ export async function uploadPatternThumbnail(
     `${getApiUrl()}/api/patterns/${encodeURIComponent(id)}/thumb`,
     {
       method: 'POST',
+      credentials: 'include',
       headers: { Authorization: `Bearer ${idToken}` },
       body: form,
     },
@@ -262,6 +265,7 @@ export async function fetchPatternThumbnail(
   const res = await fetch(
     `${getApiUrl()}/api/patterns/${encodeURIComponent(id)}/thumb`,
     {
+      credentials: 'include',
       headers: { Authorization: `Bearer ${idToken}` },
     },
   );

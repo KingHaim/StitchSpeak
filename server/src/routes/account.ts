@@ -4,6 +4,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 import { deleteCreditAccount, getBalance } from '../services/creditStore.js';
 import { deleteEmailAccount } from '../services/emailAuth.js';
+import { revokeAllSessionsForSub } from '../services/sessionStore.js';
 import {
   getChatState,
   getPattern,
@@ -71,6 +72,7 @@ router.delete('/', rateLimit({ windowMs: 60 * 60 * 1000, max: 5, name: 'account-
   // Financial ledgers are retained under an irreversible pseudonymous identifier.
   const financial = deleteCreditAccount(userSub);
   const patternsDeleted = deleteAllPatterns(userSub);
+  revokeAllSessionsForSub(userSub);
   const credentialsDeleted = deleteEmailAccount(userSub);
   res.setHeader('Cache-Control', 'no-store');
   res.json({ ok: true, patternsDeleted, credentialsDeleted, ...financial });

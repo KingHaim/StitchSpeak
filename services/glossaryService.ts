@@ -7,7 +7,7 @@ export interface AiTermResult {
 }
 
 function getApiUrl(): string {
-  return import.meta.env.VITE_API_URL || '';
+  return '';
 }
 
 export async function lookupTermWithAI(
@@ -18,6 +18,7 @@ export async function lookupTermWithAI(
 ): Promise<AiTermResult> {
   const res = await fetch(`${getApiUrl()}/api/glossary/lookup`, {
     method: 'POST',
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${idToken}`,

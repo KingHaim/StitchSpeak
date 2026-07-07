@@ -1,9 +1,10 @@
 function getApiUrl(): string {
-  return import.meta.env.VITE_API_URL || '';
+  return '';
 }
 
 export async function downloadAccountExport(idToken: string): Promise<void> {
   const response = await fetch(`${getApiUrl()}/api/account/export`, {
+    credentials: 'include',
     headers: { Authorization: `Bearer ${idToken}` },
   });
   if (!response.ok) {
@@ -26,6 +27,7 @@ export async function downloadAccountExport(idToken: string): Promise<void> {
 export async function deleteAccount(idToken: string, confirmation: string): Promise<void> {
   const response = await fetch(`${getApiUrl()}/api/account`, {
     method: 'DELETE',
+    credentials: 'include',
     headers: {
       Authorization: `Bearer ${idToken}`,
       'Content-Type': 'application/json',

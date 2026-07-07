@@ -1,7 +1,7 @@
 import type { TranslationResult } from '../types';
 
 function getApiUrl(): string {
-  return import.meta.env.VITE_API_URL || '';
+  return '';
 }
 
 class TranslationError extends Error {
@@ -22,7 +22,7 @@ async function checkedFetch(
 ): Promise<Response> {
   let response: Response;
   try {
-    response = await fetch(input, init);
+    response = await fetch(input, { ...init, credentials: 'include' });
   } catch (err) {
     if (err instanceof TypeError) {
       throw new TranslationError(
