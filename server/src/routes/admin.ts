@@ -3,6 +3,7 @@ import { requireAdmin } from '../middleware/admin.js';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
 import { adminOverview, adjustMemberCredits, getAdminMember, listAdminMembers } from '../services/adminStore.js';
 import { deletePattern } from '../services/patternStore.js';
+import { sendBetaApprovalEmail, sendBetaRejectionEmail } from '../services/betaApplicationEmail.js';
 import { listBetaApplications, reviewBetaApplication, type BetaApplicationStatus } from '../services/betaApplicationStore.js';
 
 const router = Router();
@@ -15,7 +16,7 @@ router.get('/beta-applications', (req, res) => {
   const status = ['new', 'approved', 'rejected'].includes(requested) ? requested as BetaApplicationStatus : undefined;
   res.json({ applications: listBetaApplications(status) });
 });
-router.patch('/beta-applications/:id', (req, res) => {
+router.patch('/beta-applications/:id', async (req, res) => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const status = req.body?.status;
   if (status !== 'approved' && status !== 'rejected') {
@@ -23,7 +24,18 @@ router.patch('/beta-applications/:id', (req, res) => {
   }
   const application = reviewBetaApplication(id, status, (req as unknown as AuthenticatedRequest).userEmail || 'unknown');
   if (!application) return void res.status(404).json({ error: 'Beta application not found.' });
-  res.json({ application });
+
+  let emailSent = false;
+  try {
+    const applicant = { name: application.name, email: application.email };
+    if (status === 'approved') await sendBetaApprovalEmail(applicant);
+    else await sendBetaRejectionEmail(applicant);
+    emailSent = true;
+  } catch (error) {
+    console.error('[beta-applications] Review notification email failed:', error);
+  }
+
+  res.json({ application, emailSent });
 });
 router.get('/members', (req, res) => res.json({ members: listAdminMembers(typeof req.query.q === 'string' ? req.query.q : '') }));
 router.get('/members/:sub', (req, res) => {

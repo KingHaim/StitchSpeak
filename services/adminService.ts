@@ -12,4 +12,4 @@ export const getAdminMember=(sub:string)=>apiCall<AdminMemberDetail>(`/admin/mem
 export const adjustAdminCredits=(sub:string,delta:number,reason:string)=>apiCall<{balance:number}>(`/admin/members/${encodeURIComponent(sub)}/credits`,'POST',{delta,reason});
 export const deleteAdminUpload=(sub:string,id:string)=>apiCall<void>(`/admin/members/${encodeURIComponent(sub)}/uploads/${encodeURIComponent(id)}`,'DELETE');
 export const getAdminBetaApplications=(status?:BetaApplicationStatus)=>apiCall<{applications:AdminBetaApplication[]}>(`/admin/beta-applications${status?`?status=${status}`:''}`);
-export const reviewAdminBetaApplication=(id:string,status:'approved'|'rejected')=>apiCall<{application:AdminBetaApplication}>(`/admin/beta-applications/${encodeURIComponent(id)}`,'PATCH',{status});
+export const reviewAdminBetaApplication=(id:string,status:'approved'|'rejected')=>apiCall<{application:AdminBetaApplication;emailSent:boolean}>(`/admin/beta-applications/${encodeURIComponent(id)}`,'PATCH',{status});
