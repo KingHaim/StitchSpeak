@@ -12,7 +12,7 @@ const applicationRateLimit = rateLimit({
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const INSTAGRAM_PATTERN = /^@?[A-Za-z0-9._]{1,30}$/;
 const allowedAudienceSizes = new Set(['Under 1,000', '1,000–5,000', '5,000–10,000', '10,000–50,000', '50,000+']);
-const allowedContentFocus = new Set(['Knitting', 'Crochet', 'Knitting and crochet', 'Fiber arts', 'Crafts and lifestyle', 'Other']);
+const allowedContentFocus = new Set(['Pattern design', 'Knitting', 'Crochet', 'Knitting and crochet', 'Fiber arts', 'Crafts and lifestyle', 'Other']);
 
 function text(value: unknown, maxLength: number): string {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
@@ -75,7 +75,7 @@ router.post('/', applicationRateLimit, (req: Request, res: Response) => {
   res.status(201).json({
     ok: true,
     applicationId: result.id,
-    message: 'Application received. We will review it and send access instructions if it is a good fit for this beta.',
+    message: 'Application received. We will review it and email access instructions if your brand is a good fit for this designer beta.',
   });
 });
 
