@@ -7,6 +7,11 @@ import { addCredits, deductCredits, getBalance } from '../services/creditStore.j
 import { computeDocumentMetrics, translationCostFromMetrics } from '../services/pricing.js';
 import { hasActiveBetaAccess } from '../services/betaApplicationStore.js';
 import { externalErrorStatus } from '../services/externalDeadline.js';
+import {
+  acquireTranslationLease,
+  releaseTranslationLease,
+  renewTranslationLease,
+} from '../services/translationLeaseStore.js';
 
 const router = Router();
 
@@ -49,6 +54,19 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
     res.status(400).json({ error: 'Missing or invalid "language" field.' });
     return;
   }
+
+  const leaseId = acquireTranslationLease(userSub);
+  if (!leaseId) {
+    res.status(409).json({
+      error: 'A translation is already running for this account. Wait for it to finish before starting another.',
+      code: 'TRANSLATION_IN_PROGRESS',
+    });
+    return;
+  }
+  const leaseHeartbeat = setInterval(() => renewTranslationLease(userSub, leaseId), 60_000);
+  leaseHeartbeat.unref();
+
+  try {
 
   // Server-authoritative billing: compute the price from the uploaded bytes and
   // deduct credits BEFORE doing any expensive Gemini work. The client never
@@ -168,6 +186,10 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
     res.end();
   } finally {
     clearInterval(heartbeat);
+  }
+  } finally {
+    clearInterval(leaseHeartbeat);
+    releaseTranslationLease(userSub, leaseId);
   }
 });
 

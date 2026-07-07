@@ -67,6 +67,13 @@ async function checkedFetch(
         429,
       );
     }
+    if (response.status === 409) {
+      throw new TranslationError(
+        serverMsg || 'A translation is already running. Wait for it to finish before starting another.',
+        'server',
+        409,
+      );
+    }
     if (response.status >= 500) {
       throw new TranslationError(
         serverMsg || 'The server encountered an error. Please try again later.',
