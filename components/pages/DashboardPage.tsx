@@ -27,8 +27,8 @@ import {
   exportPatternHtml,
   exportPatternText,
 } from '../../services/pdfExport';
-import { useAuth } from '../../contexts/AuthContext';
-import { useCredits } from '../../contexts/CreditContext';
+import { useAuth } from '../../contexts/auth-context';
+import { useCredits } from '../../contexts/credit-context';
 import {
   type AddTranslationHint,
   clearAddTranslationHint,

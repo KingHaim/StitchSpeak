@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { extractImages, buildImageCatalog, replaceImageMarkers } from './pdfImages.js';
 import { extractTypographyHints, buildTypographyCatalog } from './pdfTypography.js';
 import { detectSourceKind, extractDocumentHtml } from './documentExtract.js';
+import { withExternalDeadline } from './externalDeadline.js';
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -29,8 +30,14 @@ const RETRYABLE_UNDICI_CODES = new Set([
 ]);
 const MAX_RETRIES = 2;
 const BASE_DELAY_MS = 1000;
+const TRANSLATION_DEADLINE_MS = 4 * 60 * 1000;
+const CHAT_DEADLINE_MS = 45 * 1000;
+const GLOSSARY_DEADLINE_MS = 20 * 1000;
 
 function isRetryableError(err: any): boolean {
+  for (let current: any = err; current; current = current.cause) {
+    if (current?.name === 'AbortError' || current?.name === 'TimeoutError') return false;
+  }
   const status = err?.status ?? err?.httpStatusCode;
   if (RETRYABLE_STATUS.has(Number(status))) return true;
 
@@ -220,6 +227,7 @@ async function translatePdf(
   language: string,
   sourceLanguage?: string,
   options: TranslatePatternOptions = {},
+  signal?: AbortSignal,
 ): Promise<{ html: string; usage: TranslationUsage | null }> {
   const base64Data = fileBuffer.toString('base64');
   const systemInstruction = createSystemInstruction(language, sourceLanguage);
@@ -249,6 +257,7 @@ async function translatePdf(
     const stream = await getAI().models.generateContentStream({
       model: TRANSLATION_MODEL,
       config: {
+        abortSignal: signal,
         systemInstruction,
         temperature: 0.1,
         thinkingConfig: TRANSLATION_THINKING_CONFIG,
@@ -383,6 +392,7 @@ async function translateDocumentHtml(
   language: string,
   sourceLanguage?: string,
   options: TranslatePatternOptions = {},
+  signal?: AbortSignal,
 ): Promise<{ html: string; usage: TranslationUsage | null }> {
   const { marked, srcs } = protectImages(sourceHtml);
   const systemInstruction = createDocumentSystemInstruction(language, sourceLanguage);
@@ -395,6 +405,7 @@ async function translateDocumentHtml(
     const stream = await getAI().models.generateContentStream({
       model: TRANSLATION_MODEL,
       config: {
+        abortSignal: signal,
         systemInstruction,
         temperature: 0.1,
         thinkingConfig: TRANSLATION_THINKING_CONFIG,
@@ -455,7 +466,9 @@ export async function translatePattern(
   const kind = detectSourceKind(fileBuffer, mimeType, fileName);
 
   if (kind === 'pdf') {
-    return translatePdf(fileBuffer, mimeType, language, sourceLanguage, options);
+    return withExternalDeadline('Gemini translation', TRANSLATION_DEADLINE_MS, (signal) =>
+      translatePdf(fileBuffer, mimeType, language, sourceLanguage, options, signal),
+    );
   }
 
   const sourceHtml = await extractDocumentHtml(fileBuffer, kind);
@@ -465,7 +478,9 @@ export async function translatePattern(
     );
   }
 
-  return translateDocumentHtml(sourceHtml, language, sourceLanguage, options);
+  return withExternalDeadline('Gemini translation', TRANSLATION_DEADLINE_MS, (signal) =>
+    translateDocumentHtml(sourceHtml, language, sourceLanguage, options, signal),
+  );
 }
 
 // --- Chat session management ---
@@ -560,7 +575,9 @@ export async function sendChatMessage(
   }
 
   session.createdAt = Date.now();
-  const response = await withRetry(() => session.chat.sendMessage({ message }));
+  const response = await withExternalDeadline('Gemini chat', CHAT_DEADLINE_MS, (signal) =>
+    withRetry(() => session.chat.sendMessage({ message, config: { abortSignal: signal } })),
+  );
   return response.text || '';
 }
 
@@ -594,12 +611,12 @@ Respond ONLY with valid JSON (no markdown fences):
   "explanation": "A brief (1-2 sentence) explanation of this term in context of knitting/crochet"
 }`;
 
-  const response = await withRetry(() =>
-    getAI().models.generateContent({
+  const response = await withExternalDeadline('Gemini glossary', GLOSSARY_DEADLINE_MS, (signal) =>
+    withRetry(() => getAI().models.generateContent({
       model: 'gemini-2.0-flash',
-      config: { temperature: 0.2, maxOutputTokens: 300 },
+      config: { temperature: 0.2, maxOutputTokens: 300, abortSignal: signal },
       contents: [{ parts: [{ text: prompt }] }],
-    }),
+    })),
   );
 
   const text = response.text || '';

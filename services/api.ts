@@ -2,15 +2,7 @@
  * Backend API client (pattern copied from BeatingHeart `src/services/replicate.js`).
  * Point `VITE_API_URL` at your own API when you add one; until then these helpers are unused by the app.
  */
-import { readStoredIdToken } from '../auth/sessionStorage';
-
-const isLocalhost =
-  typeof window !== 'undefined' &&
-  ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
-
-const API_BASE = isLocalhost
-  ? '/api'
-  : `${(import.meta.env.VITE_API_URL || '').replace(/\/$/, '')}/api`;
+const API_BASE = '/api';
 
 export const SS_TOKEN_KEY = 'ss_token';
 
@@ -39,10 +31,7 @@ export function getDeviceFingerprint(): string | null {
 }
 
 export function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  // `SS_TOKEN_KEY` belonged to the retired email/password auth flow. Current
-  // sessions are Google ID tokens, stored by AuthProvider.
-  return localStorage.getItem(SS_TOKEN_KEY) || readStoredIdToken();
+  return null;
 }
 
 export async function apiCall<T = unknown>(
@@ -54,7 +43,7 @@ export async function apiCall<T = unknown>(
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const options: RequestInit = { method, headers };
+  const options: RequestInit = { method, headers, credentials: 'include' };
   if (body) options.body = JSON.stringify(body);
 
   const response = await fetch(`${API_BASE}${endpoint}`, options);
@@ -99,14 +88,11 @@ export async function register(
       deviceFingerprint: getDeviceFingerprint(),
     },
   );
-  if (data.token) localStorage.setItem(SS_TOKEN_KEY, data.token);
   return data;
 }
 
-export async function verifyEmail(token: string): Promise<{ token: string; user: unknown }> {
-  const data = await apiCall<{ token: string; user: unknown }>('/auth/verify-email', 'POST', { token });
-  localStorage.setItem(SS_TOKEN_KEY, data.token);
-  return data;
+export async function verifyEmail(token: string): Promise<{ user: unknown }> {
+  return apiCall<{ user: unknown }>('/auth/verify-email', 'POST', { token });
 }
 
 export async function requestPasswordReset(email: string): Promise<{ ok: boolean; developmentResetUrl?: string }> {
@@ -134,7 +120,6 @@ export async function login(
       deviceFingerprint: getDeviceFingerprint(),
     },
   );
-  if (data.token) localStorage.setItem(SS_TOKEN_KEY, data.token);
   return data;
 }
 
@@ -149,22 +134,17 @@ export async function googleLogin(
     'POST',
     body,
   );
-  if (data.token) localStorage.setItem(SS_TOKEN_KEY, data.token);
   return data;
 }
 
 export async function getMe(): Promise<{ user: unknown }> {
-  return apiCall<{ user: unknown }>('/auth/me', 'GET', null);
+  return apiCall<{ user: unknown }>('/auth/session', 'GET', null);
 }
 
 export async function updateMyName(name: string): Promise<{ user: unknown }> {
   return apiCall<{ user: unknown }>('/auth/me/name', 'PUT', { name });
 }
 
-export function logout(): void {
-  try {
-    localStorage.removeItem(SS_TOKEN_KEY);
-  } catch {
-    /* ignore */
-  }
+export async function logout(): Promise<void> {
+  await apiCall('/auth/logout', 'POST', null);
 }

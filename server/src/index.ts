@@ -10,6 +10,7 @@ import lemonSqueezyWebhookRouter from './routes/lemonSqueezyWebhook.js';
 import betaApplicationsRouter from './routes/betaApplications.js';
 import adminRouter from './routes/admin.js';
 import authRouter from './routes/auth.js';
+import accountRouter from './routes/account.js';
 import {
   creditStoreHealth,
   paymentReconciliationHealth,
@@ -21,10 +22,13 @@ import {
 } from './services/lemonSqueezy.js';
 import { isProductionReady } from './services/readiness.js';
 import { isAuthEmailConfigured } from './services/authEmail.js';
+import { installGracefulShutdown } from './services/gracefulShutdown.js';
+import { backupHealth, scheduleOffsiteBackups } from './services/offsiteBackup.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const IS_PROD = process.env.NODE_ENV === 'production';
+let draining = false;
 
 // Behind Railway/Vercel/Cloudflare there is a single proxy hop, so trust it to
 // get the real client IP from X-Forwarded-For (used by the rate limiter).
@@ -139,6 +143,10 @@ app.get('/health', (_req, res) => {
 });
 
 app.get('/health/deep', (_req, res) => {
+  if (draining) {
+    res.status(503).json({ status: 'draining' });
+    return;
+  }
   try {
     const checks = {
       config: {
@@ -179,8 +187,14 @@ app.get('/health/payments', (_req, res) => {
   }
 });
 
+app.get('/health/backups', (_req, res) => {
+  const health = backupHealth();
+  res.status(health.ok ? 200 : 503).json({ status: health.ok ? 'ok' : 'attention_required', ...health });
+});
+
 app.use('/api/translate', translateRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/account', accountRouter);
 
 app.use('/api/chat', chatRouter);
 app.use('/api/credits', creditsRouter);
@@ -212,6 +226,11 @@ app.use(
   },
 );
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`[StitchSpeak Server] listening on port ${PORT}`);
 });
+
+installGracefulShutdown(server, () => {
+  draining = true;
+});
+scheduleOffsiteBackups();

@@ -1,7 +1,7 @@
 import type { TranslationResult } from '../types';
 
 function getApiUrl(): string {
-  return import.meta.env.VITE_API_URL || '';
+  return '';
 }
 
 class TranslationError extends Error {
@@ -22,7 +22,7 @@ async function checkedFetch(
 ): Promise<Response> {
   let response: Response;
   try {
-    response = await fetch(input, init);
+    response = await fetch(input, { ...init, credentials: 'include' });
   } catch (err) {
     if (err instanceof TypeError) {
       throw new TranslationError(
@@ -65,6 +65,13 @@ async function checkedFetch(
         'Too many requests — please wait a moment and try again.',
         'server',
         429,
+      );
+    }
+    if (response.status === 409) {
+      throw new TranslationError(
+        serverMsg || 'A translation is already running. Wait for it to finish before starting another.',
+        'server',
+        409,
       );
     }
     if (response.status >= 500) {

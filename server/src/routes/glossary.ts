@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 import { glossaryLookup } from '../services/gemini.js';
 import { boundedString } from '../services/requestValidation.js';
+import { externalErrorStatus } from '../services/externalDeadline.js';
 
 const router = Router();
 
@@ -32,7 +33,7 @@ router.post('/lookup', async (req: Request, res: Response) => {
     res.json(result);
   } catch (err: any) {
     console.error('[glossary/lookup] Error:', err);
-    res.status(500).json({ error: err.message || 'Glossary lookup failed.' });
+    res.status(externalErrorStatus(err)).json({ error: err.message || 'Glossary lookup failed.' });
   }
 });
 

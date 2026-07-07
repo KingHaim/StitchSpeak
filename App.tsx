@@ -1,6 +1,6 @@
 
 import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
-import { useAuth } from './contexts/AuthContext';
+import { useAuth } from './contexts/auth-context';
 import { DashboardLayout } from './components/DashboardLayout';
 import { LandingPage } from './components/pages/LandingPage';
 import { BetaCampaignPage } from './components/pages/BetaCampaignPage';

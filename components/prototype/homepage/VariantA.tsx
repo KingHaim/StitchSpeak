@@ -3,7 +3,8 @@
  * Long-form marketing page: hero story, feature grid, pattern demo lower on the page.
  */
 import React, { useState } from 'react';
-import { Icon, LANGUAGE_PILLS, PROTOTYPE_SAMPLE, PrototypeBadge } from './shared';
+import { Icon, PrototypeBadge } from './shared';
+import { LANGUAGE_PILLS, PROTOTYPE_SAMPLE } from './sharedData';
 
 export const displayName = 'Editorial landing';
 

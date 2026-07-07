@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -57,6 +58,17 @@ db.exec(`
   )
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS deleted_accounts (
+    sub_hash   TEXT PRIMARY KEY,
+    deleted_at INTEGER NOT NULL
+  )
+`);
+
+function subHash(sub: string): string {
+  return crypto.createHash('sha256').update(sub).digest('hex');
+}
+
 const stmts = {
   getBalance: db.prepare<[string]>(
     'SELECT balance FROM credits WHERE sub = ?',
@@ -105,6 +117,10 @@ const stmts = {
   recentAnomalies: db.prepare<[number]>(`
     SELECT COUNT(*) AS count FROM payment_anomalies WHERE created_at >= ?
   `),
+  deleteCredits: db.prepare<[string]>('DELETE FROM credits WHERE sub = ?'),
+  anonymizeOrders: db.prepare<[string, string]>('UPDATE payment_orders SET sub = ? WHERE sub = ?'),
+  markDeleted: db.prepare<[string, number]>('INSERT OR IGNORE INTO deleted_accounts (sub_hash, deleted_at) VALUES (?, ?)'),
+  isDeleted: db.prepare<[string]>('SELECT 1 FROM deleted_accounts WHERE sub_hash = ?'),
 } as const;
 
 function round(n: number): number {
@@ -117,6 +133,7 @@ export function getBalance(sub: string): number {
 }
 
 export function addCredits(sub: string, amount: number, email?: string): number {
+  if (stmts.isDeleted.get(subHash(sub))) return 0;
   stmts.upsertAdd.run(sub, round(amount), Date.now(), email ?? null);
   return getBalance(sub);
 }
@@ -139,6 +156,7 @@ const grantTx = db.transaction(
       return { applied: false, balance: round(getBalance(sub)) };
     }
     stmts.markEvent.run(eventId, Date.now());
+    if (stmts.isDeleted.get(subHash(sub))) return { applied: false, balance: 0 };
     stmts.upsertAdd.run(sub, round(amount), Date.now(), email ?? null);
     return { applied: true, balance: round(getBalance(sub)) };
   },
@@ -171,14 +189,16 @@ const purchaseTx = db.transaction((params: {
 
   const now = Date.now();
   stmts.markEvent.run(params.eventId, now);
+  const deleted = Boolean(stmts.isDeleted.get(subHash(params.sub)));
   stmts.insertOrder.run(
     params.orderId,
-    params.sub,
+    deleted ? `deleted:${subHash(params.sub)}` : params.sub,
     round(params.credits),
     Math.max(1, Math.round(params.amountPaidCents)),
     now,
     now,
   );
+  if (deleted) return { applied: false, balance: 0 };
   stmts.upsertAdd.run(params.sub, round(params.credits), now, params.email ?? null);
   return { applied: true, balance: round(getBalance(params.sub)) };
 });
@@ -236,7 +256,7 @@ const refundTx = db.transaction(
 
     stmts.markEvent.run(eventId, now);
     stmts.updateRefund.run(cumulativeRefund, targetRevoked, now, orderId);
-    if (delta > 0) stmts.upsertAdd.run(order.sub, -delta, now, null);
+    if (delta > 0 && !order.sub.startsWith('deleted:')) stmts.upsertAdd.run(order.sub, -delta, now, null);
 
     return {
       applied: true,
@@ -273,4 +293,24 @@ export function creditStoreHealth(): { ok: boolean } {
   return {
     ok: fs.existsSync(DATA_DIR) && fs.existsSync(DB_PATH),
   };
+}
+
+export function deleteCreditAccount(sub: string): { creditsDeleted: boolean; ordersAnonymized: number } {
+  const hash = subHash(sub);
+  const anonymousSub = `deleted:${hash}`;
+  return db.transaction(() => {
+    stmts.markDeleted.run(hash, Date.now());
+    const orders = stmts.anonymizeOrders.run(anonymousSub, sub).changes;
+    const credits = stmts.deleteCredits.run(sub).changes;
+
+    // Admin adjustments are financial audit records stored in this same DB.
+    // Older installations may not have initialized the admin table yet.
+    const hasAdjustments = db.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'admin_credit_adjustments'",
+    ).get();
+    if (hasAdjustments) {
+      db.prepare('UPDATE admin_credit_adjustments SET sub = ? WHERE sub = ?').run(anonymousSub, sub);
+    }
+    return { creditsDeleted: credits > 0, ordersAnonymized: orders };
+  })();
 }

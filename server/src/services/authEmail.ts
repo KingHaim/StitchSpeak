@@ -1,4 +1,5 @@
 import type { EmailAccount } from './emailAuth.js';
+import { withExternalDeadline } from './externalDeadline.js';
 
 function appUrl(): string {
   return (process.env.APP_URL || process.env.FRONTEND_URL?.split(',')[0] || 'http://localhost:5173').replace(/\/$/, '');
@@ -19,11 +20,14 @@ async function send(account: EmailAccount, subject: string, html: string): Promi
     if (process.env.NODE_ENV === 'production') throw new Error('Authentication email delivery is not configured.');
     return;
   }
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from, to: [account.email], subject, html }),
-  });
+  const response = await withExternalDeadline('Email delivery', 10_000, (signal) =>
+    fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      signal,
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from, to: [account.email], subject, html }),
+    }),
+  );
   if (!response.ok) throw new Error('Authentication email could not be sent.');
 }
 

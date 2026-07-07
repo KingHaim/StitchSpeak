@@ -6,6 +6,12 @@ import { translatePattern } from '../services/gemini.js';
 import { addCredits, deductCredits, getBalance } from '../services/creditStore.js';
 import { computeDocumentMetrics, translationCostFromMetrics } from '../services/pricing.js';
 import { hasActiveBetaAccess } from '../services/betaApplicationStore.js';
+import { externalErrorStatus } from '../services/externalDeadline.js';
+import {
+  acquireTranslationLease,
+  releaseTranslationLease,
+  renewTranslationLease,
+} from '../services/translationLeaseStore.js';
 
 const router = Router();
 
@@ -49,6 +55,19 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
     return;
   }
 
+  const leaseId = acquireTranslationLease(userSub);
+  if (!leaseId) {
+    res.status(409).json({
+      error: 'A translation is already running for this account. Wait for it to finish before starting another.',
+      code: 'TRANSLATION_IN_PROGRESS',
+    });
+    return;
+  }
+  const leaseHeartbeat = setInterval(() => renewTranslationLease(userSub, leaseId), 60_000);
+  leaseHeartbeat.unref();
+
+  try {
+
   // Server-authoritative billing: compute the price from the uploaded bytes and
   // deduct credits BEFORE doing any expensive Gemini work. The client never
   // decides the amount, and a request without enough credits is rejected here.
@@ -87,7 +106,7 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
     } catch (err: any) {
       console.error('[translate] Error:', err);
       const newBalance = refund();
-      res.status(500).json({ error: err.message || 'Translation failed.', balance: newBalance });
+      res.status(externalErrorStatus(err)).json({ error: err.message || 'Translation failed.', balance: newBalance });
     }
     return;
   }
@@ -156,7 +175,7 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
     if (!res.headersSent) {
       // Headers weren't flushed yet (rare — flushHeaders above runs before
       // translatePattern). Fall back to a regular JSON error.
-      res.status(500).json({ error: err.message || 'Translation failed.', balance: newBalance });
+      res.status(externalErrorStatus(err)).json({ error: err.message || 'Translation failed.', balance: newBalance });
       return;
     }
     writeEvent({
@@ -167,6 +186,10 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
     res.end();
   } finally {
     clearInterval(heartbeat);
+  }
+  } finally {
+    clearInterval(leaseHeartbeat);
+    releaseTranslationLease(userSub, leaseId);
   }
 });
 

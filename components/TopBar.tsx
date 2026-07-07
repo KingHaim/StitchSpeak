@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
-import { useCredits } from '../contexts/CreditContext';
+import { useAuth } from '../contexts/auth-context';
+import { useCredits } from '../contexts/credit-context';
 import { BuyCreditsModal } from './BuyCreditsModal';
 import type { CreditPackage, PageId } from '../types';
+import { deleteAccount, downloadAccountExport } from '../services/accountService';
+import { DeleteAccountModal } from './DeleteAccountModal';
 
 const PAGE_HEADER: Record<PageId, { kicker: string; title: string }> = {
   dashboard: { kicker: 'Translation Studio', title: 'Pattern Translator' },
@@ -15,11 +17,16 @@ interface TopBarProps {
 }
 
 export const TopBar: React.FC<TopBarProps> = ({ activePage }) => {
-  const { user, isAuthenticated, signOut } = useAuth();
+  const { user, idToken, isAuthenticated, signOut } = useAuth();
   const { balance, startCheckout } = useCredits();
   const [showBuyCredits, setShowBuyCredits] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false);
+  const [exportingData, setExportingData] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const displayName = isAuthenticated && user?.name
     ? user.name.split(' ')[0]
@@ -34,6 +41,35 @@ export const TopBar: React.FC<TopBarProps> = ({ activePage }) => {
 
   const handlePurchase = async (pack: CreditPackage) => {
     await startCheckout(pack.id);
+  };
+
+  const handleDeleteAccount = async (confirmation: string) => {
+    if (!idToken || deletingAccount) return;
+    setDeletingAccount(true);
+    setDeleteError(null);
+    try {
+      await deleteAccount(idToken, confirmation);
+      setShowDeleteAccount(false);
+      signOut();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Could not delete your account.');
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
+  const handleExportData = async () => {
+    if (!idToken || exportingData) return;
+    setExportingData(true);
+    setExportError(null);
+    try {
+      await downloadAccountExport(idToken);
+      setShowUserMenu(false);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Could not export your data.');
+    } finally {
+      setExportingData(false);
+    }
   };
 
   const { kicker, title } = PAGE_HEADER[activePage];
@@ -120,6 +156,24 @@ export const TopBar: React.FC<TopBarProps> = ({ activePage }) => {
                       </div>
                       <button
                         type="button"
+                        onClick={() => void handleExportData()}
+                        disabled={exportingData}
+                        className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-brand-700 transition-colors hover:bg-brand-50 disabled:opacity-60"
+                      >
+                        <span className="material-symbols-outlined text-lg" aria-hidden>download</span>
+                        {exportingData ? 'Preparing export…' : 'Download my data'}
+                      </button>
+                      {exportError && <p className="px-4 pb-2 text-xs text-red-600" role="alert">{exportError}</p>}
+                      <button
+                        type="button"
+                        onClick={() => { setShowUserMenu(false); setDeleteError(null); setShowDeleteAccount(true); }}
+                        className="flex w-full items-center gap-2 border-t border-brand-100 px-4 py-2.5 text-left text-sm text-red-700 transition-colors hover:bg-red-50"
+                      >
+                        <span className="material-symbols-outlined text-lg" aria-hidden>delete_forever</span>
+                        Delete account
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => { setShowUserMenu(false); signOut(); }}
                         className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2"
                       >
@@ -141,6 +195,13 @@ export const TopBar: React.FC<TopBarProps> = ({ activePage }) => {
         isOpen={showBuyCredits}
         onClose={() => setShowBuyCredits(false)}
         onPurchase={handlePurchase}
+      />
+      <DeleteAccountModal
+        isOpen={showDeleteAccount}
+        isDeleting={deletingAccount}
+        error={deleteError}
+        onClose={() => setShowDeleteAccount(false)}
+        onConfirm={(confirmation) => void handleDeleteAccount(confirmation)}
       />
     </>
   );

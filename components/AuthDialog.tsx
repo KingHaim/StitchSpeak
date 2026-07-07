@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { renderGoogleIdentityButton } from '../auth/googleIdentity';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/auth-context';
 import { CloseIcon } from './icons/CloseIcon';
 import { requestPasswordReset, resendVerification } from '../services/api';
 

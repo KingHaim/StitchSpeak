@@ -3,7 +3,8 @@
  * Upload workspace is the hero; marketing is a compact side rail, not a scroll story.
  */
 import React, { useState } from 'react';
-import { Icon, PROTOTYPE_SAMPLE, PrototypeBadge } from './shared';
+import { Icon, PrototypeBadge } from './shared';
+import { PROTOTYPE_SAMPLE } from './sharedData';
 
 export const displayName = 'Tool-first workshop';
 

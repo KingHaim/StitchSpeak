@@ -1,16 +1,57 @@
 import type { Request, Response, NextFunction } from 'express';
 import { OAuth2Client } from 'google-auth-library';
 import { verifyEmailSession } from '../services/emailAuth.js';
+import { verifySession } from '../services/sessionStore.js';
 
 export interface AuthenticatedRequest extends Request {
   userSub: string;
   userEmail?: string;
+  userName?: string;
+  userPicture?: string;
   identityProvider: 'google' | 'email';
   emailVerified: boolean;
 }
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const oauthClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+export const SESSION_COOKIE = process.env.NODE_ENV === 'production' ? '__Host-ss_session' : 'ss_session';
+
+function cookieValue(req: Request, name: string): string | null {
+  const raw = req.headers.cookie;
+  if (!raw) return null;
+  for (const item of raw.split(';')) {
+    const [key, ...value] = item.trim().split('=');
+    if (key === name) return decodeURIComponent(value.join('='));
+  }
+  return null;
+}
+
+export function requestSessionToken(req: Request): string | null {
+  return cookieValue(req, SESSION_COOKIE);
+}
+
+function csrfOriginAllowed(req: Request): boolean {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return true;
+  const origin = req.headers.origin;
+  if (!origin) return false;
+  const configured = (process.env.FRONTEND_URL || '').split(',').map((value) => value.trim().replace(/\/$/, ''));
+  return ['https://stitchspeak.com', 'https://www.stitchspeak.com', 'http://localhost:5173', 'http://localhost:4173', ...configured]
+    .includes(origin.replace(/\/$/, ''));
+}
+
+function attachSession(req: Request, token: string): boolean {
+  const identity = verifySession(token);
+  if (!identity) return false;
+  if (!csrfOriginAllowed(req)) return false;
+  const authenticated = req as AuthenticatedRequest;
+  authenticated.userSub = identity.sub;
+  authenticated.userEmail = identity.email;
+  authenticated.userName = identity.name;
+  authenticated.userPicture = identity.picture;
+  authenticated.identityProvider = identity.identityProvider;
+  authenticated.emailVerified = identity.emailVerified;
+  return true;
+}
 
 /**
  * Auth middleware that cryptographically verifies Google ID tokens
@@ -18,8 +59,17 @@ const oauthClient = new OAuth2Client(GOOGLE_CLIENT_ID);
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   const header = req.headers.authorization;
+  const sessionToken = requestSessionToken(req);
+  if (sessionToken) {
+    if (attachSession(req, sessionToken)) {
+      next();
+      return;
+    }
+    res.status(401).json({ error: csrfOriginAllowed(req) ? 'Session expired. Please sign in again.' : 'Invalid request origin.' });
+    return;
+  }
   if (!header?.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Missing authorization token.' });
+    res.status(401).json({ error: 'Missing authentication session.' });
     return;
   }
 
@@ -70,6 +120,11 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
  */
 export async function optionalAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
   const header = req.headers.authorization;
+  const sessionToken = requestSessionToken(req);
+  if (sessionToken && attachSession(req, sessionToken)) {
+    next();
+    return;
+  }
   if (!header?.startsWith('Bearer ')) {
     next();
     return;

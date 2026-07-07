@@ -15,7 +15,7 @@ import {
   exportPatternText,
 } from '../../services/pdfExport';
 import type { TranslationRecord } from '../../types';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../contexts/auth-context';
 import { CloseIcon } from '../icons/CloseIcon';
 import { PatternThumbnail } from '../PatternThumbnail';
 import { PatternViewer } from '../PatternViewer';

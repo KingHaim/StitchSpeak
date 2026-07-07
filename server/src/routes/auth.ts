@@ -1,11 +1,11 @@
-import { Router } from 'express';
+import { Router, type Response } from 'express';
+import { OAuth2Client } from 'google-auth-library';
 import {
   authenticateEmailAccount,
   createEmailAccount,
   issuePasswordResetToken,
   issueVerificationToken,
   resetPasswordWithToken,
-  signEmailSession,
   verifyEmailToken,
 } from '../services/emailAuth.js';
 import { rateLimit } from '../middleware/rateLimit.js';
@@ -15,8 +15,11 @@ import {
   sendVerificationEmail,
   verificationUrl,
 } from '../services/authEmail.js';
+import { SESSION_COOKIE, requestSessionToken, requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { createSession, revokeSession, type SessionIdentity } from '../services/sessionStore.js';
 
 const router = Router();
+const oauthClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID || '');
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const registerRateLimit = rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -33,6 +36,55 @@ const recoveryRateLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, name: 'a
 function developmentUrl(url: string): string | undefined {
   return process.env.NODE_ENV === 'production' ? undefined : url;
 }
+
+function setSessionCookie(res: Response, identity: SessionIdentity): void {
+  const token = createSession(identity);
+  res.cookie(SESSION_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+  });
+}
+
+function publicUser(identity: SessionIdentity) {
+  return { sub: identity.sub, email: identity.email, name: identity.name, picture: identity.picture };
+}
+
+router.post('/google', loginRateLimit, async (req, res) => {
+  const credential = typeof req.body?.credential === 'string' ? req.body.credential : '';
+  try {
+    const ticket = await oauthClient.verifyIdToken({ idToken: credential, audience: process.env.GOOGLE_CLIENT_ID || undefined });
+    const payload = ticket.getPayload();
+    if (!payload?.sub) return void res.status(401).json({ error: 'Invalid Google credential.' });
+    const identity: SessionIdentity = {
+      sub: payload.sub,
+      email: payload.email,
+      name: payload.name,
+      picture: payload.picture,
+      identityProvider: 'google',
+      emailVerified: payload.email_verified === true,
+    };
+    setSessionCookie(res, identity);
+    res.json({ user: publicUser(identity) });
+  } catch {
+    res.status(401).json({ error: 'Invalid Google credential.' });
+  }
+});
+
+router.get('/session', requireAuth, (req, res) => {
+  const auth = req as AuthenticatedRequest;
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ user: { sub: auth.userSub, email: auth.userEmail, name: auth.userName, picture: auth.userPicture } });
+});
+
+router.post('/logout', (req, res) => {
+  const token = requestSessionToken(req);
+  if (token) revokeSession(token);
+  res.clearCookie(SESSION_COOKIE, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/' });
+  res.json({ ok: true });
+});
 
 router.post('/register', registerRateLimit, async (req, res) => {
   const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
@@ -62,14 +114,16 @@ router.post('/login', loginRateLimit, async (req, res) => {
   const user = await authenticateEmailAccount(email, password);
   if (!user) return void res.status(401).json({ error: 'Email or password is incorrect.' });
   if (!user.emailVerified) return void res.status(403).json({ error: 'Verify your email before signing in.', code: 'EMAIL_NOT_VERIFIED' });
-  res.json({ token: signEmailSession(user), user });
+  setSessionCookie(res, { ...user, identityProvider: 'email', emailVerified: true });
+  res.json({ user });
 });
 
 router.post('/verify-email', recoveryRateLimit, (req, res) => {
   const token = typeof req.body?.token === 'string' ? req.body.token : '';
   const user = token ? verifyEmailToken(token) : null;
   if (!user) return void res.status(400).json({ error: 'This verification link is invalid or expired.' });
-  res.json({ token: signEmailSession(user), user });
+  setSessionCookie(res, { ...user, identityProvider: 'email', emailVerified: true });
+  res.json({ user });
 });
 
 router.post('/verification/resend', recoveryRateLimit, async (req, res) => {
