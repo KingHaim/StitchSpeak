@@ -6,6 +6,7 @@ import { translatePattern } from '../services/gemini.js';
 import { addCredits, deductCredits, getBalance } from '../services/creditStore.js';
 import { computeDocumentMetrics, translationCostFromMetrics } from '../services/pricing.js';
 import { hasActiveBetaAccess } from '../services/betaApplicationStore.js';
+import { externalErrorStatus } from '../services/externalDeadline.js';
 
 const router = Router();
 
@@ -87,7 +88,7 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
     } catch (err: any) {
       console.error('[translate] Error:', err);
       const newBalance = refund();
-      res.status(500).json({ error: err.message || 'Translation failed.', balance: newBalance });
+      res.status(externalErrorStatus(err)).json({ error: err.message || 'Translation failed.', balance: newBalance });
     }
     return;
   }
@@ -156,7 +157,7 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
     if (!res.headersSent) {
       // Headers weren't flushed yet (rare — flushHeaders above runs before
       // translatePattern). Fall back to a regular JSON error.
-      res.status(500).json({ error: err.message || 'Translation failed.', balance: newBalance });
+      res.status(externalErrorStatus(err)).json({ error: err.message || 'Translation failed.', balance: newBalance });
       return;
     }
     writeEvent({
