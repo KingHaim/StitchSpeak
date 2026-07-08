@@ -32,13 +32,16 @@ export interface SessionIdentity {
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const hash = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
 
-export function createSession(identity: SessionIdentity): string {
+export function createSession(identity: SessionIdentity, now = Date.now()): string {
   const token = crypto.randomBytes(32).toString('base64url');
-  const now = Date.now();
   db.prepare('INSERT INTO auth_sessions(token_hash,sub,user_json,expires_at,created_at) VALUES(?,?,?,?,?)')
     .run(hash(token), identity.sub, JSON.stringify(identity), now + SESSION_TTL_MS, now);
   db.prepare('DELETE FROM auth_sessions WHERE expires_at <= ?').run(now);
   return token;
+}
+
+export function cleanupExpiredSessions(now = Date.now()): number {
+  return db.prepare('DELETE FROM auth_sessions WHERE expires_at <= ?').run(now).changes;
 }
 
 export function verifySession(token: string): SessionIdentity | null {

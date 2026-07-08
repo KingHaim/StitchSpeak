@@ -110,6 +110,7 @@ export const translatePattern = async (
   if (sourceLanguage) {
     formData.append('sourceLanguage', sourceLanguage);
   }
+  formData.append('aiAcknowledged', 'true');
 
   const response = await checkedFetch(
     `${getApiUrl()}/api/translate`,
@@ -167,6 +168,7 @@ export const translatePatternStream = async (
   if (sourceLanguage) {
     formData.append('sourceLanguage', sourceLanguage);
   }
+  formData.append('aiAcknowledged', 'true');
 
   const response = await checkedFetch(
     `${getApiUrl()}/api/translate`,

@@ -204,3 +204,7 @@ export function deleteEmailAccount(sub: string): boolean {
     return db.prepare('DELETE FROM email_accounts WHERE sub = ?').run(sub).changes === 1;
   })();
 }
+
+export function cleanupExpiredEmailAuthTokens(now = Date.now()): number {
+  return db.prepare('DELETE FROM email_auth_tokens WHERE expires_at <= ?').run(now).changes;
+}

@@ -50,6 +50,9 @@ jobs:
           check 'API readiness' 'https://stitchspeak-production.up.railway.app/health/deep'
           check 'Payment reconciliation' 'https://stitchspeak-production.up.railway.app/health/payments'
           check 'Encrypted offsite backups' 'https://stitchspeak-production.up.railway.app/health/backups'
+          check 'API error rate and latency' 'https://stitchspeak-production.up.railway.app/health/metrics'
+          check 'Expired-data cleanup' 'https://stitchspeak-production.up.railway.app/health/maintenance'
+          check 'Backup recovery drill' 'https://stitchspeak-production.up.railway.app/health/recovery'
 
           if [[ "$failed" -eq 0 ]]; then
             echo 'healthy=true' >> "$GITHUB_OUTPUT"

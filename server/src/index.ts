@@ -24,6 +24,9 @@ import { isProductionReady } from './services/readiness.js';
 import { isAuthEmailConfigured } from './services/authEmail.js';
 import { installGracefulShutdown } from './services/gracefulShutdown.js';
 import { backupHealth, scheduleOffsiteBackups } from './services/offsiteBackup.js';
+import { requestGroup, requestMetrics } from './services/requestMetrics.js';
+import { operationalCleanupHealth, scheduleOperationalCleanup } from './services/operationalCleanup.js';
+import { recoveryDrillHealth, scheduleRecoveryDrills } from './services/recoveryDrill.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -124,8 +127,14 @@ app.use((req, res, next) => {
 
   res.on('finish', () => {
     const durationMs = Date.now() - startedAt;
+    const pathname = req.originalUrl.split('?')[0];
+    const group = requestGroup(pathname);
+    if (!pathname.startsWith('/health')) requestMetrics.record(group, res.statusCode, durationMs);
     const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
-    const message = `[request] id=${requestId} method=${req.method} path=${req.originalUrl} status=${res.statusCode} durationMs=${durationMs}`;
+    const message = JSON.stringify({
+      event: 'http_request', requestId, method: req.method, group,
+      status: res.statusCode, durationMs,
+    });
     if (level === 'error') {
       console.error(message);
     } else if (level === 'warn') {
@@ -192,6 +201,30 @@ app.get('/health/backups', (_req, res) => {
   res.status(health.ok ? 200 : 503).json({ status: health.ok ? 'ok' : 'attention_required', ...health });
 });
 
+app.get('/health/metrics', (_req, res) => {
+  const metrics = requestMetrics.snapshot();
+  res.status(metrics.ok ? 200 : 503).json({
+    status: metrics.ok ? 'ok' : 'attention_required',
+    ...metrics,
+  });
+});
+
+app.get('/health/maintenance', (_req, res) => {
+  const health = operationalCleanupHealth();
+  res.status(health.ok ? 200 : 503).json({
+    status: health.ok ? 'ok' : 'attention_required',
+    ...health,
+  });
+});
+
+app.get('/health/recovery', (_req, res) => {
+  const health = recoveryDrillHealth();
+  res.status(health.ok ? 200 : 503).json({
+    status: health.ok ? 'ok' : 'attention_required',
+    ...health,
+  });
+});
+
 app.use('/api/translate', translateRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/account', accountRouter);
@@ -234,3 +267,5 @@ installGracefulShutdown(server, () => {
   draining = true;
 });
 scheduleOffsiteBackups();
+scheduleOperationalCleanup();
+scheduleRecoveryDrills();
