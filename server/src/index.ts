@@ -39,6 +39,10 @@ app.set('trust proxy', 1);
 
 // Don't advertise the server stack (removes the default `X-Powered-By: Express`).
 app.disable('x-powered-by');
+// API responses contain account-specific balances, patterns and admin data.
+// Never allow browsers or intermediary caches to reuse them or turn a fresh
+// request into a body-less 304 response.
+app.disable('etag');
 
 // Baseline security headers on every response. The API only ever returns JSON,
 // so it can use a fully locked-down CSP and deny framing outright.
@@ -47,6 +51,14 @@ app.use((_req, res, next) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
+  next();
+});
+
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.vary('Cookie');
+  res.vary('Authorization');
   next();
 });
 

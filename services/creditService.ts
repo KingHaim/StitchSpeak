@@ -10,9 +10,10 @@ async function apiFetch(
   method = 'GET',
   body?: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${idToken}`,
-  };
+  const headers: Record<string, string> = {};
+  // Modern sessions are HttpOnly cookies. `cookie-session` is only a React
+  // state marker and must never be sent as though it were a bearer credential.
+  if (idToken !== 'cookie-session') headers.Authorization = `Bearer ${idToken}`;
   const init: RequestInit = { method, headers, credentials: 'include' };
 
   if (body) {
