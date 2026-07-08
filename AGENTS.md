@@ -15,6 +15,7 @@ StitchSpeak is a React 19 + TypeScript + Tailwind CSS v4 frontend (Vite) with an
 | Lint | `npm run lint` | repo root |
 | Build frontend | `npm run build` | repo root |
 | Build server | `npm run build` | `server/` |
+| API load smoke test | `npm run load:smoke` | `server/` |
 | Preview frontend build | `npm run preview` | repo root |
 | Type-check frontend | `npx tsc -b` | repo root |
 

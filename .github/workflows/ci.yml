@@ -29,3 +29,24 @@ jobs:
       - run: npm run test:e2e
       - run: npm run build
         working-directory: server
+      - name: Run API load smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DATA_DIR="$RUNNER_TEMP/stitchspeak-load-data"
+          export PORT=3101
+          npm start --prefix server > "$RUNNER_TEMP/load-server.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+
+          for _ in {1..30}; do
+            if curl --fail --silent "http://127.0.0.1:$PORT/health" > /dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          if ! LOAD_TEST_URL="http://127.0.0.1:$PORT" npm run load:smoke --prefix server; then
+            cat "$RUNNER_TEMP/load-server.log"
+            exit 1
+          fi

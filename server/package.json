@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "backup:restore": "tsx src/scripts/restoreBackup.ts",
-    "backup:drill": "tsx src/scripts/backupDrill.ts"
+    "backup:drill": "tsx src/scripts/backupDrill.ts",
+    "load:smoke": "tsx src/scripts/loadSmoke.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1080.0",
