@@ -12,7 +12,7 @@ describe('credit service session authentication', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(getCreditState('cookie-session')).resolves.toEqual({ balance: 12.5, betaAccess: true });
-    expect(fetchMock).toHaveBeenCalledWith('/api/credits/', expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledWith('/api/credits', expect.objectContaining({
       credentials: 'include',
       headers: {},
     }));

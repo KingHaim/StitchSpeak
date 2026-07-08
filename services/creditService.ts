@@ -42,7 +42,7 @@ async function apiFetch(
 }
 
 export async function getCreditState(idToken: string): Promise<{ balance: number; betaAccess: boolean }> {
-  const data = await apiFetch('/', idToken);
+  const data = await apiFetch('', idToken);
   return { balance: typeof data.balance === 'number' ? data.balance : 0, betaAccess: data.betaAccess === true };
 }
 
