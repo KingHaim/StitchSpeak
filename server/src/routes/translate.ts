@@ -12,6 +12,7 @@ import {
   releaseTranslationLease,
   renewTranslationLease,
 } from '../services/translationLeaseStore.js';
+import { recordAiProcessingAcknowledgement } from '../services/legalAcknowledgementStore.js';
 
 const router = Router();
 
@@ -54,6 +55,14 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
     res.status(400).json({ error: 'Missing or invalid "language" field.' });
     return;
   }
+  if (req.body?.aiAcknowledged !== 'true') {
+    res.status(400).json({
+      error: 'Confirm the AI processing notice before starting a translation.',
+      code: 'AI_PROCESSING_ACKNOWLEDGEMENT_REQUIRED',
+    });
+    return;
+  }
+  recordAiProcessingAcknowledgement(userSub);
 
   const leaseId = acquireTranslationLease(userSub);
   if (!leaseId) {

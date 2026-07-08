@@ -48,4 +48,30 @@ describe('TranslationLanguageModal authentication action', () => {
 
     await act(async () => root.unmount());
   });
+
+  it('requires the AI-processing acknowledgement before translation', async () => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <TranslationLanguageModal
+          isOpen fileNames={['pattern.pdf']} isAnalyzing={false} analyzeError={null}
+          pdfMetrics={null} priceEstimate={null} sourceLanguage={AUTO_DETECT_LANGUAGE}
+          targetLanguage={LANGUAGES[0]} onSourceChange={() => undefined}
+          onTargetChange={() => undefined} onClose={() => undefined} onStart={() => undefined}
+          startLabel="Start translation" startDisabled={false} requiresSignIn={false}
+          googleIdentityReady
+        />,
+      );
+    });
+    const checkbox = container.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    const start = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent?.includes('Start translation'))!;
+    expect(start.disabled).toBe(true);
+    await act(async () => {
+      checkbox.click();
+    });
+    expect(start.disabled).toBe(false);
+    await act(async () => root.unmount());
+  });
 });

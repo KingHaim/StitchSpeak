@@ -75,6 +75,8 @@ test('signed-in user can upload a pattern and review its translation estimate', 
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText('weekend-scarf.txt')).toBeVisible();
   await expect(dialog.getByRole('heading', { name: 'Translation estimate' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: /Start translation/ })).toBeDisabled();
+  await dialog.getByRole('checkbox').check();
   await expect(dialog.getByRole('button', { name: /Start translation/ })).toBeEnabled();
 });
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { LanguageSelector } from './LanguageSelector';
 import { CloseIcon } from './icons/CloseIcon';
 import { PricePreview } from './PricePreview';
@@ -63,6 +63,11 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
   googleIdentityReady,
 }) => {
   const dialogRef = useModalA11y(isOpen, onClose);
+  const [aiAcknowledged, setAiAcknowledged] = useState(false);
+
+  useEffect(() => {
+    setAiAcknowledged(false);
+  }, [isOpen, fileNames]);
 
   if (!isOpen) return null;
 
@@ -205,6 +210,21 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
               </p>
             </div>
           </div>
+
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-outline-variant/25 bg-surface px-4 py-4 text-sm leading-relaxed text-on-surface-variant">
+            <input
+              type="checkbox"
+              checked={aiAcknowledged}
+              onChange={(event) => setAiAcknowledged(event.target.checked)}
+              className="mt-0.5 h-5 w-5 shrink-0 accent-primary"
+            />
+            <span>
+              I understand that my selected pattern and extracted content will be sent to Google Gemini to create the translation. I have the right to process this file and will not upload unnecessary personal or confidential information. AI output can contain errors and must be reviewed.{' '}
+              <a className="font-semibold text-primary underline" href="/privacy.html" target="_blank" rel="noreferrer">Privacy details</a>
+              {' · '}
+              <a className="font-semibold text-primary underline" href="/terms.html" target="_blank" rel="noreferrer">Terms</a>
+            </span>
+          </label>
         </div>
 
         <div className="px-6 sm:px-10 py-6 sm:py-8 bg-surface-container-low/60 border-t border-outline-variant/15 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 shrink-0">
@@ -222,7 +242,7 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
               <button
                 type="button"
                 onClick={onStart}
-                disabled={startDisabled}
+                disabled={startDisabled || !aiAcknowledged}
                 aria-busy={startBusy}
                 className="bg-primary hover:bg-primary-container text-on-primary px-8 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 min-h-[48px]"
               >

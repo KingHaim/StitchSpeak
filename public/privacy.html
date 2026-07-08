@@ -19,7 +19,7 @@
     <main>
       <p><a href="/">Back to StitchSpeak</a></p>
       <h1>Privacy Policy</h1>
-      <p class="updated">Last updated: June 25, 2026</p>
+      <p class="updated">Last updated: July 8, 2026</p>
       <p>
         StitchSpeak is operated by <strong>Innovai Studio S.L.</strong> ("StitchSpeak",
         "we", "us"). This policy explains how we handle personal data when you use
@@ -42,11 +42,12 @@
 
       <h2>2. Information we process</h2>
       <ul>
-        <li><strong>Account data:</strong> basic Google account information used to identify your account, such as your Google user ID, name, email address, and profile image if provided by Google.</li>
+        <li><strong>Account data:</strong> your email address and name, plus a password hash for email accounts; or basic Google account information such as Google user ID, name, email address, and profile image.</li>
         <li><strong>Pattern files:</strong> files you upload for translation, including PDFs, DOCX, TXT, or RTF files.</li>
         <li><strong>Generated content:</strong> translated HTML, extracted text, thumbnails, export metadata, glossary lookups, and chat messages about a translated pattern.</li>
         <li><strong>Credit and payment records:</strong> credit balance, checkout session references, Lemon Squeezy webhook event IDs, order references, and transaction metadata needed to grant credits and avoid duplicate grants.</li>
-        <li><strong>Technical data:</strong> browser storage, local history, logs, error messages, timestamps, and basic request metadata needed to operate and secure the service.</li>
+        <li><strong>Technical data:</strong> secure session identifiers, local guest history, aggregated metrics, error status, timestamps, and request IDs needed to operate and secure the service. Request logs do not intentionally include pattern content or resource identifiers.</li>
+        <li><strong>Legal acknowledgements:</strong> the version and timestamp of the AI-processing notice confirmed before a translation.</li>
       </ul>
 
       <h2>3. Why we use your data</h2>
@@ -73,6 +74,15 @@
         are not exposed in the browser. Uploaded files and extracted pattern content
         may be sent to the AI provider solely to provide the requested feature.
       </p>
+      <p>
+        Before translation starts, StitchSpeak shows an in-context notice and requires
+        you to acknowledge this transfer and the need to review AI output. Under the
+        current Gemini API terms applicable in the EEA, Google states that prompts,
+        files, and responses handled under Paid Services are not used to improve its
+        products. Google may retain limited data for abuse monitoring under its terms.
+        See Google's <a href="https://ai.google.dev/gemini-api/terms">Gemini API terms</a>
+        and <a href="https://ai.google.dev/gemini-api/docs/zdr">data-retention documentation</a>.
+      </p>
 
       <h2>6. Payments</h2>
       <p>
@@ -86,28 +96,39 @@
       <p>
         If you are signed in, StitchSpeak may store your source files, translated
         patterns, thumbnails, chat history, and credit balance so they are available
-        across sessions. Guest history may be stored locally in your browser. We keep
-        data for as long as needed to provide the service, comply with legal obligations,
-        resolve disputes, and maintain reliable records. You can request deletion by
-        contacting us.
+        across sessions. Guest history may be stored locally in your browser. Active
+        account data is kept until you delete it or your account, subject to legal needs.
+        Account deletion removes credentials, patterns, chats, source files, thumbnails,
+        acknowledgements, and remaining credits. Required payment records are retained
+        with an anonymized identifier. Encrypted disaster-recovery backups are retained
+        for up to 30 days, so deleted data may remain inaccessible within a backup until
+        it expires. You can download your data or delete your account from the account menu.
       </p>
 
       <h2>8. Local storage and cookies</h2>
       <p>
-        StitchSpeak uses browser storage for authentication state, local history,
-        temporary workflow hints, and app preferences. Payment and sign-in providers
-        may use their own cookies or storage when you interact with their services.
+        StitchSpeak uses a Secure, HttpOnly, SameSite authentication cookie that
+        JavaScript cannot read. Browser storage is used for guest history, temporary
+        workflow hints, and preferences, not authentication secrets. Payment and sign-in
+        providers may use their own cookies or storage when you interact with them.
       </p>
 
       <h2>9. Sharing and subprocessors</h2>
       <p>
         We do not sell your personal data. We share data only with providers needed
-        to operate StitchSpeak, including hosting/infrastructure providers, Google
-        services for sign-in and Gemini AI processing, and Lemon Squeezy for checkout
-        and payment reconciliation.
+        to operate StitchSpeak: Railway and Vercel for hosting, Cloudflare R2 for
+        encrypted backups, Google for sign-in and Gemini processing, Resend for account
+        email, and Lemon Squeezy for checkout and payment reconciliation.
       </p>
 
-      <h2>10. Your rights</h2>
+      <h2>10. International transfers</h2>
+      <p>
+        Some providers may process data outside Spain or the European Economic Area.
+        Where required, transfers use an adequacy decision, Standard Contractual
+        Clauses, or another lawful safeguard offered by the provider.
+      </p>
+
+      <h2>11. Your rights</h2>
       <p>
         Depending on where you live, you may request access, correction, deletion,
         portability, restriction, or objection to processing of your personal data.
@@ -118,7 +139,14 @@
         <a href="https://www.aepd.es">aepd.es</a>.
       </p>
 
-      <h2>11. Changes</h2>
+      <h2>12. Automated decisions</h2>
+      <p>
+        StitchSpeak does not use personal data to make decisions producing legal or
+        similarly significant effects. AI generates assistance; you decide whether
+        and how to use the output.
+      </p>
+
+      <h2>13. Changes</h2>
       <p>
         We may update this policy as StitchSpeak evolves. The date above shows the
         latest version.

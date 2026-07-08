@@ -5,6 +5,7 @@ import { rateLimit } from '../middleware/rateLimit.js';
 import { deleteCreditAccount, getBalance } from '../services/creditStore.js';
 import { deleteEmailAccount } from '../services/emailAuth.js';
 import { revokeAllSessionsForSub } from '../services/sessionStore.js';
+import { deleteLegalAcknowledgements, listLegalAcknowledgements } from '../services/legalAcknowledgementStore.js';
 import {
   getChatState,
   getPattern,
@@ -38,6 +39,7 @@ router.get('/export', rateLimit({ windowMs: 60 * 60 * 1000, max: 3, name: 'accou
     exportedAt: new Date().toISOString(),
     account: { sub: userSub, email: userEmail ?? null, identityProvider, emailVerified },
     credits: { balance: getBalance(userSub) },
+    legalAcknowledgements: listLegalAcknowledgements(userSub),
     patternCount: patterns.length,
   }, null, 2), { name: 'account.json' });
 
@@ -73,6 +75,7 @@ router.delete('/', rateLimit({ windowMs: 60 * 60 * 1000, max: 5, name: 'account-
   const financial = deleteCreditAccount(userSub);
   const patternsDeleted = deleteAllPatterns(userSub);
   revokeAllSessionsForSub(userSub);
+  deleteLegalAcknowledgements(userSub);
   const credentialsDeleted = deleteEmailAccount(userSub);
   res.setHeader('Cache-Control', 'no-store');
   res.json({ ok: true, patternsDeleted, credentialsDeleted, ...financial });
