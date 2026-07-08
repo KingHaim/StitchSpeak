@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { AuthenticatedRequest } from './auth.js';
+import { incrementRateLimit } from '../services/rateLimitStore.js';
 
 interface RateLimitOptions {
   /** Sliding window length in milliseconds. */
@@ -10,44 +11,17 @@ interface RateLimitOptions {
   name: string;
 }
 
-interface Bucket {
-  count: number;
-  resetAt: number;
-}
-
 /**
- * Minimal dependency-free, in-memory rate limiter. Keyed by authenticated user
+ * Persistent rate limiter keyed by authenticated user
  * (`userSub`) when available, otherwise by client IP. This caps abuse of the
  * expensive Gemini-backed and credit-mutating endpoints (cost / DoS-by-cost).
- *
- * Note: state is per-process, so behind multiple instances each replica gets
- * its own budget. That is acceptable as a first line of defense; move to a
- * shared store (e.g. Redis) if the app is scaled horizontally.
  */
 export function rateLimit({ windowMs, max, name }: RateLimitOptions) {
-  const buckets = new Map<string, Bucket>();
-
-  // Periodically drop expired buckets so the map can't grow unbounded.
-  const sweep = setInterval(() => {
-    const now = Date.now();
-    for (const [key, bucket] of buckets) {
-      if (now > bucket.resetAt) buckets.delete(key);
-    }
-  }, windowMs);
-  sweep.unref?.();
-
   return function rateLimitMiddleware(req: Request, res: Response, next: NextFunction): void {
     const sub = (req as AuthenticatedRequest).userSub;
     const key = `${name}:${sub || req.ip || 'unknown'}`;
     const now = Date.now();
-
-    let bucket = buckets.get(key);
-    if (!bucket || now > bucket.resetAt) {
-      bucket = { count: 0, resetAt: now + windowMs };
-      buckets.set(key, bucket);
-    }
-
-    bucket.count += 1;
+    const bucket = incrementRateLimit(key, windowMs, now);
 
     const remaining = Math.max(0, max - bucket.count);
     res.setHeader('RateLimit-Limit', String(max));

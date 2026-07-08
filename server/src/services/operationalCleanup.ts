@@ -1,6 +1,7 @@
 import { cleanupExpiredEmailAuthTokens } from './emailAuth.js';
 import { cleanupExpiredSessions } from './sessionStore.js';
 import { cleanupExpiredTranslationLeases } from './translationLeaseStore.js';
+import { cleanupExpiredRateLimits } from './rateLimitStore.js';
 
 const CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const HEALTH_MAX_AGE_MS = 12 * 60 * 60 * 1000;
@@ -10,6 +11,7 @@ interface CleanupResult {
   sessions: number;
   emailTokens: number;
   translationLeases: number;
+  rateLimits: number;
   total: number;
 }
 
@@ -21,12 +23,14 @@ export function runOperationalCleanup(now = Date.now()): CleanupResult {
   const sessions = cleanupExpiredSessions(now);
   const emailTokens = cleanupExpiredEmailAuthTokens(now);
   const translationLeases = cleanupExpiredTranslationLeases(now);
+  const rateLimits = cleanupExpiredRateLimits(now);
   lastResult = {
     ranAt: new Date(now).toISOString(),
     sessions,
     emailTokens,
     translationLeases,
-    total: sessions + emailTokens + translationLeases,
+    rateLimits,
+    total: sessions + emailTokens + translationLeases + rateLimits,
   };
   lastError = null;
   return lastResult;
