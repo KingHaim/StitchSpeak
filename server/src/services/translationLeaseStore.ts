@@ -39,3 +39,7 @@ export function renewTranslationLease(sub: string, leaseId: string, now = Date.n
 export function releaseTranslationLease(sub: string, leaseId: string): void {
   db.prepare('DELETE FROM translation_leases WHERE sub = ? AND lease_id = ?').run(sub, leaseId);
 }
+
+export function cleanupExpiredTranslationLeases(now = Date.now()): number {
+  return db.prepare('DELETE FROM translation_leases WHERE expires_at <= ?').run(now).changes;
+}
