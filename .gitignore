@@ -3,10 +3,11 @@ dist/
 test-results/
 playwright-report/
 .env
-.cursor/mcp.json
+.cursor/
 .env.local
 .env.*.local
 *.log
 .DS_Store
 server/data/
-.vercel
+.vercel/
+performance_report.md

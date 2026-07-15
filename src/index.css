@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/material-symbols-outlined.ttf') format('truetype');
+}
+
 @theme {
   --color-brand-50:  #FAF6F1;
   --color-brand-100: #F0E6DC;

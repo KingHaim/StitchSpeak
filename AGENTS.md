@@ -24,6 +24,7 @@ StitchSpeak is a React 19 + TypeScript + Tailwind CSS v4 frontend (Vite) with an
 |----------|-------|---------|
 | `GEMINI_API_KEY` | `server/.env` | Server-side Gemini key for translation, chat & glossary |
 | `GOOGLE_CLIENT_ID` | `server/.env` | Same Google OAuth client ID as `VITE_GOOGLE_CLIENT_ID` — used server-side to verify ID tokens |
+| `AUTH_SESSION_SECRET` | `server/.env` | Long stable secret used to sign StitchSpeak email/password session tokens |
 | `LEMON_SQUEEZY_API_KEY` | `server/.env` | Lemon Squeezy API key for credit-pack checkout sessions (payments disabled if unset) |
 | `LEMON_SQUEEZY_STORE_ID` | `server/.env` | Lemon Squeezy store ID used when creating checkout sessions |
 | `LEMON_SQUEEZY_VARIANT_ID` | `server/.env` | Lemon Squeezy variant ID for the StitchSpeak credits product; server overrides price per pack |

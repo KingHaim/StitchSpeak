@@ -1,5 +1,5 @@
 {
   "name": "StitchSpeak",
-  "description": "An intelligent knitting pattern translator that accurately converts patterns into different languages using the correct, localized knitting terminology and abbreviations.",
+  "description": "Self-service pattern-writing software for knitwear designers: a web application with automated tools, subscription access and no bespoke or manually fulfilled services.",
   "requestFramePermissions": []
 }

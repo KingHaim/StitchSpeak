@@ -97,7 +97,7 @@ const BrandLockup: React.FC<{ asButton?: boolean; onClick?: () => void }> = ({ a
   const content = (
     <>
       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-outline-variant/20 bg-surface-container-lowest shadow-sm sm:h-12 sm:w-12">
-        <img src="/logo.png" alt="" className="h-8 w-8 object-contain sm:h-9 sm:w-9" />
+        <img src="/logo-optimized.png" alt="" className="h-8 w-8 object-contain sm:h-9 sm:w-9" />
       </span>
       <span className="font-headline text-xl font-black tracking-normal text-on-surface dark:text-background sm:text-2xl">
         StitchSpeak
@@ -276,7 +276,7 @@ export const LandingPage: React.FC = () => {
                   <img
                     className="h-full w-full object-cover opacity-85"
                     alt=""
-                    src="/landing-library.jpg"
+                    src="/landing-library-optimized.jpg"
                   />
                   <div className="absolute inset-0 bg-primary/35" aria-hidden />
                   <div className="absolute bottom-4 left-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-surface/90 text-primary shadow-ambient">

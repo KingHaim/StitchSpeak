@@ -1,38 +1,35 @@
 # StitchSpeak
 
-**Knitting patterns that speak every language.**
+**Self-service pattern-writing software for knitwear designers.**
 
-Upload any knitting pattern PDF.  
-Pick your language.  
-Get a perfect translation in seconds — with every SSK, YO, K2tog, and cable exactly right.
+StitchSpeak is self-service pattern-writing software for knitwear designers.
+Use the web application and automated tools yourself to prepare, review, translate, and export pattern work.
 
-No more waiting weeks for a translator.  
-No more broken stitch names in Spanish or French.
+StitchSpeak is a software platform, not a knitting design service.
+There are no bespoke pattern-design projects, manually fulfilled services, or "we help design your patterns" offers.
 
 ## Why designers love it
 
-- **Instant** — Translation in seconds, not days
-- **Accurate** — Built for knitting, not generic AI
-- **Your brand** — Keep your logo, layout, and name on every file
-- **Multi-language** — Spanish, French, German, Italian, and more coming soon
+- **Self-service** — Work inside the web application whenever you need it
+- **Automated tools** — Pattern-writing, terminology, review, and export workflows run in software
+- **Subscription access** — Pricing is for access to the platform and its tools
+- **No manual fulfillment** — No bespoke or manually fulfilled services are included
 
 ## How it works
 
-1. Drag & drop your PDF pattern
-2. Choose target language
-3. Download the perfectly translated version
-
-First page is completely free.
+1. Sign in to the StitchSpeak web application
+2. Use automated tools for pattern-writing and review workflows
+3. Export your finished pattern materials yourself
 
 ## Try it now
 [Upload your first pattern →](https://stitchspeak.com/upload)
 
 ## Pricing
 
-- **Free** — 1 page, no card needed
-- **Pay-as-you-go** — Buy credits, use them anytime
-- **Monthly** — For designers who translate often
+- **Subscription access** — Access to the self-service software platform
+- **Credits** — Use credits for eligible automated tools
+- **No services** — No bespoke pattern design, manual editing, or manually fulfilled services
 
 ---
 
-Built with love for knitters and pattern designers everywhere.
+Built for knitwear designers who want self-service software, not a manual design service.
