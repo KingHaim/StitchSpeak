@@ -3,11 +3,10 @@ import type { AuthenticatedUser } from '../auth/types';
 import { clearStoredIdToken } from '../auth/sessionStorage';
 import { getGoogleOAuthClientId } from '../auth/googleConfig';
 import { initializeGoogleIdentity } from '../auth/googleIdentity';
+import { COOKIE_SESSION_AUTH_MARKER } from '../services/apiBase';
 import { migrateGuestHistoryToServerIfRemoteEmpty } from '../services/historyService';
 import { getMe, googleLogin, login, logout, register } from '../services/api';
 import { AuthContext, type AuthContextValue } from './auth-context';
-
-const COOKIE_SESSION = 'cookie-session';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
@@ -29,7 +28,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!result.user) throw new Error('The server did not create a session.');
       clearStoredIdToken();
       setUser(result.user as AuthenticatedUser);
-      setIdToken(COOKIE_SESSION);
+      setIdToken(COOKIE_SESSION_AUTH_MARKER);
     }).catch(() => signOut());
   }, [signOut]);
 
@@ -43,7 +42,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const result = await login(email, password);
     if (!result.user) throw new Error('The server did not create a session.');
     clearStoredIdToken();
-    setIdToken(COOKIE_SESSION);
+    setIdToken(COOKIE_SESSION_AUTH_MARKER);
     setUser(result.user as AuthenticatedUser);
     return { verificationRequired: false };
   }, []);
@@ -53,7 +52,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!result.user) return;
       clearStoredIdToken();
       setUser(result.user as AuthenticatedUser);
-      setIdToken(COOKIE_SESSION);
+      setIdToken(COOKIE_SESSION_AUTH_MARKER);
     }).catch(() => clearStoredIdToken());
   }, []);
 

@@ -1,5 +1,5 @@
 import type { CreditPackage } from '../types';
-import { apiUrl } from './apiBase';
+import { apiUrl, authHeaders } from './apiBase';
 
 async function apiFetch(
   path: string,
@@ -7,9 +7,7 @@ async function apiFetch(
   method = 'GET',
   body?: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${idToken}`,
-  };
+  const headers: Record<string, string> = authHeaders(idToken);
   const init: RequestInit = { method, headers, credentials: 'include' };
 
   if (body) {

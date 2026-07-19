@@ -1,4 +1,4 @@
-import { apiUrl } from './apiBase';
+import { apiUrl, authHeaders } from './apiBase';
 
 export interface AiTermResult {
   sourceAbbreviation: string;
@@ -19,7 +19,7 @@ export async function lookupTermWithAI(
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${idToken}`,
+      ...authHeaders(idToken),
     },
     body: JSON.stringify({ term, sourceLang, targetLang }),
   });

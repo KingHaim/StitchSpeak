@@ -1,9 +1,9 @@
-import { apiUrl } from './apiBase';
+import { apiUrl, authHeaders } from './apiBase';
 
 export async function downloadAccountExport(idToken: string): Promise<void> {
   const response = await fetch(apiUrl('/account/export'), {
     credentials: 'include',
-    headers: { Authorization: `Bearer ${idToken}` },
+    headers: authHeaders(idToken),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
@@ -27,7 +27,7 @@ export async function deleteAccount(idToken: string, confirmation: string): Prom
     method: 'DELETE',
     credentials: 'include',
     headers: {
-      Authorization: `Bearer ${idToken}`,
+      ...authHeaders(idToken),
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ confirmation }),

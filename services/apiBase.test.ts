@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { apiUrl, getApiUrl } from './apiBase';
+import { apiUrl, authHeaders, getApiUrl, resolveApiUrl } from './apiBase';
 import { getCreditState } from './creditService';
 import { listPatterns } from './patternsService';
 
@@ -26,11 +26,16 @@ describe('apiBase', () => {
     expect(apiUrl('/')).toBe('/api');
   });
 
-  it('uses VITE_API_URL when the frontend is hosted separately from the API', () => {
-    vi.stubEnv('VITE_API_URL', 'https://stitchspeak-production.up.railway.app/');
+  it('keeps Vite dev on same-origin even when VITE_API_URL points at a remote API', () => {
+    expect(
+      resolveApiUrl('https://stitchspeak-production.up.railway.app/', true),
+    ).toBe('');
+  });
 
-    expect(getApiUrl()).toBe('https://stitchspeak-production.up.railway.app');
-    expect(apiUrl('/patterns')).toBe('https://stitchspeak-production.up.railway.app/api/patterns');
+  it('uses VITE_API_URL in production builds when the frontend is hosted separately from the API', () => {
+    expect(
+      resolveApiUrl('https://stitchspeak-production.up.railway.app/', false),
+    ).toBe('https://stitchspeak-production.up.railway.app');
   });
 
   it('does not add trailing slashes to root collection endpoints', async () => {
@@ -40,9 +45,17 @@ describe('apiBase', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ patterns: [] }));
     await listPatterns('cookie-session');
     expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/patterns');
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit).headers).not.toHaveProperty('Authorization');
 
     fetchMock.mockResolvedValueOnce(jsonResponse({ balance: 24, betaAccess: false }));
     await getCreditState('cookie-session');
     expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/credits');
+    expect((fetchMock.mock.calls[1]?.[1] as RequestInit).headers).not.toHaveProperty('Authorization');
+  });
+
+  it('does not send the cookie-session marker as a bearer token', () => {
+    expect(authHeaders('cookie-session')).toEqual({});
+    expect(authHeaders(null)).toEqual({});
+    expect(authHeaders('real-token')).toEqual({ Authorization: 'Bearer real-token' });
   });
 });

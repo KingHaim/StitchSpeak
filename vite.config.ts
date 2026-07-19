@@ -1,11 +1,55 @@
 
-import { loadEnv } from 'vite';
+import { loadEnv, type ProxyOptions } from 'vite';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
+const LOCAL_SESSION_COOKIE = 'ss_session';
+const HOST_SESSION_COOKIE = '__Host-ss_session';
+
+function isRemoteApiTarget(target: string): boolean {
+  try {
+    const { hostname } = new URL(target);
+    return hostname !== 'localhost' && hostname !== '127.0.0.1';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Production sets an `__Host-` Secure cookie that browsers will not store on
+ * http://localhost. When the Vite proxy targets a remote API, rewrite the
+ * cookie to a first-party localhost cookie and map it back on the way out.
+ */
+function remoteSessionCookieProxy(): Pick<ProxyOptions, 'configure'> {
+  return {
+    configure(proxy) {
+      proxy.on('proxyReq', (proxyReq, req) => {
+        const cookie = req.headers.cookie;
+        if (!cookie?.includes(`${LOCAL_SESSION_COOKIE}=`)) return;
+        proxyReq.setHeader(
+          'cookie',
+          cookie.replaceAll(`${LOCAL_SESSION_COOKIE}=`, `${HOST_SESSION_COOKIE}=`),
+        );
+      });
+      proxy.on('proxyRes', (proxyRes) => {
+        const setCookie = proxyRes.headers['set-cookie'];
+        if (!setCookie) return;
+        const cookies = Array.isArray(setCookie) ? setCookie : [setCookie];
+        proxyRes.headers['set-cookie'] = cookies.map((value) =>
+          value
+            .replaceAll(`${HOST_SESSION_COOKIE}=`, `${LOCAL_SESSION_COOKIE}=`)
+            .replace(/;\s*Secure/gi, '')
+            .replace(/;\s*SameSite=None/gi, '; SameSite=Lax'),
+        );
+      });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
+  const apiTarget = env.VITE_API_URL || 'http://localhost:3001';
 
   return {
     plugins: [react(), tailwindcss()],
@@ -38,13 +82,14 @@ export default defineConfig(({ mode }) => {
       },
       proxy: {
         '/api': {
-          target: env.VITE_API_URL || 'http://localhost:3001',
+          target: apiTarget,
           changeOrigin: true,
           // Gemini 3 Pro can spend several minutes on a long pattern; the
           // proxy must stay open at least that long or local dev sees an
           // ECONNRESET while the API is still legitimately working.
           timeout: 10 * 60 * 1000,
           proxyTimeout: 10 * 60 * 1000,
+          ...(isRemoteApiTarget(apiTarget) ? remoteSessionCookieProxy() : {}),
         },
       },
     },

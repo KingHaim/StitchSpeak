@@ -1,5 +1,5 @@
 import type { TranslationResult } from '../types';
-import { apiUrl } from './apiBase';
+import { apiUrl, authHeaders } from './apiBase';
 
 class TranslationError extends Error {
   constructor(
@@ -86,11 +86,6 @@ async function checkedFetch(
   }
 
   return response;
-}
-
-function authHeaders(idToken: string | null): Record<string, string> {
-  if (!idToken) return {};
-  return { Authorization: `Bearer ${idToken}` };
 }
 
 export { TranslationError };

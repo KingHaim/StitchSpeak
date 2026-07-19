@@ -15,6 +15,7 @@ export interface AuthenticatedRequest extends Request {
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const oauthClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 export const SESSION_COOKIE = process.env.NODE_ENV === 'production' ? '__Host-ss_session' : 'ss_session';
+const COOKIE_SESSION_AUTH_MARKER = 'cookie-session';
 
 function cookieValue(req: Request, name: string): string | null {
   const raw = req.headers.cookie;
@@ -80,6 +81,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 
   const token = header.slice(7);
+  if (token === COOKIE_SESSION_AUTH_MARKER) {
+    res.status(401).json({ error: 'Missing authentication session.' });
+    return;
+  }
 
   const emailSession = verifyEmailSession(token);
   if (emailSession) {
