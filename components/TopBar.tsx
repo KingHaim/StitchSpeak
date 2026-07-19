@@ -70,17 +70,6 @@ export const TopBar: React.FC<TopBarProps> = ({ activePage, onNavigate }) => {
                 </button>
               </div>
             )}
-            {activePage !== 'settings' && (
-              <button
-                type="button"
-                onClick={() => onNavigate('settings')}
-                className="hidden sm:flex p-3 rounded-full bg-surface-container-high text-on-surface-variant hover:bg-surface-variant transition-colors"
-                aria-label="Settings"
-                title="Settings"
-              >
-                <span className="material-symbols-outlined text-xl">settings</span>
-              </button>
-            )}
             {isAuthenticated && (
               <button
                 type="button"
