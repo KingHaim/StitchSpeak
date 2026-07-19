@@ -7,8 +7,9 @@
  *   - `data-o="…"`   — the original, untranslated source text of that block
  *     (HTML-escaped plain text), used to build the left-hand "original" pane.
  *
- * Everything outside the bilingual viewer (export, chat context, saved
- * patterns) should use the cleaned HTML so these attributes never leak.
+ * Exports and chat context should use cleaned HTML so these attributes never
+ * leak into downloads. Saved patterns keep the attributes so History can
+ * rebuild the original ↔ translation view.
  */
 
 const CODE_FENCE_OPEN = /^```html\n?/;

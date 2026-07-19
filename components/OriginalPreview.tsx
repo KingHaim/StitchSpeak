@@ -1,13 +1,79 @@
 import React, { useEffect, useState } from 'react';
 import { loadPdfJs } from '../services/pdfClient';
+import { sanitizePatternHtml } from '../services/sanitizePatternHtml';
 
 interface OriginalPreviewProps {
   file: File;
   variant?: 'card' | 'studio';
 }
 
+function getExtension(file: File): string {
+  const idx = file.name.lastIndexOf('.');
+  return idx >= 0 ? file.name.slice(idx).toLowerCase() : '';
+}
+
 function isPdfFile(file: File): boolean {
-  return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  return file.type === 'application/pdf' || getExtension(file) === '.pdf';
+}
+
+function isDocxFile(file: File): boolean {
+  const ext = getExtension(file);
+  return (
+    ext === '.docx' ||
+    ext === '.doc' ||
+    file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    file.type === 'application/msword'
+  );
+}
+
+function isPlainTextFile(file: File): boolean {
+  const ext = getExtension(file);
+  return (
+    ext === '.txt' ||
+    ext === '.rtf' ||
+    file.type === 'text/plain' ||
+    file.type === 'text/rtf' ||
+    file.type === 'application/rtf'
+  );
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function plainTextToHtml(text: string): string {
+  const blocks = text
+    .replace(/\r\n/g, '\n')
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  if (blocks.length === 0) {
+    return `<p>${escapeHtml(text.trim())}</p>`;
+  }
+
+  return blocks
+    .map((block) => `<p>${escapeHtml(block).replace(/\n/g, '<br>')}</p>`)
+    .join('');
+}
+
+async function extractOriginalHtml(file: File): Promise<string> {
+  if (isDocxFile(file)) {
+    const mammoth = await import('mammoth');
+    const arrayBuffer = await file.arrayBuffer();
+    const result = await mammoth.convertToHtml({ arrayBuffer });
+    return result.value?.trim() ?? '';
+  }
+
+  if (isPlainTextFile(file)) {
+    const text = await file.text();
+    return plainTextToHtml(text);
+  }
+
+  return '';
 }
 
 const PdfCanvasPreview: React.FC<{ file: File; variant: 'card' | 'studio' }> = ({ file, variant }) => {
@@ -109,6 +175,85 @@ const PdfCanvasPreview: React.FC<{ file: File; variant: 'card' | 'studio' }> = (
   );
 };
 
+const TextDocumentPreview: React.FC<{ file: File; variant: 'card' | 'studio' }> = ({ file, variant }) => {
+  const [html, setHtml] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      setLoading(true);
+      setError(null);
+      setHtml(null);
+
+      try {
+        const extracted = await extractOriginalHtml(file);
+        if (cancelled) return;
+        const clean = sanitizePatternHtml(extracted);
+        if (!clean.trim()) {
+          setError('Could not extract text from this file');
+          return;
+        }
+        setHtml(clean);
+      } catch {
+        if (!cancelled) setError('Could not load original text');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [file]);
+
+  const containerClass =
+    variant === 'studio'
+      ? 'w-full min-h-[min(500px,70vh)] lg:min-h-[500px] lg:h-[500px] bg-white/95 border border-outline-variant/15 rounded-lg overflow-y-auto shadow-inner'
+      : 'w-full h-[32rem] bg-white border border-brand-200 rounded-xl overflow-y-auto shadow-inner';
+
+  if (loading) {
+    return (
+      <div className={`${containerClass} flex items-center justify-center`}>
+        <p className={`text-sm ${variant === 'studio' ? 'text-on-surface-variant' : 'text-brand-400'}`}>
+          Loading original text…
+        </p>
+      </div>
+    );
+  }
+
+  if (error || !html) {
+    return (
+      <div className={`${containerClass} flex flex-col items-center justify-center text-center p-6`}>
+        <svg
+          className={`w-10 h-10 mb-3 ${variant === 'studio' ? 'text-on-surface-variant' : 'text-brand-400'}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={1.5}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+        </svg>
+        <p className={`text-sm font-medium ${variant === 'studio' ? 'text-on-surface' : 'text-brand-500'}`}>{file.name}</p>
+        <p className={`text-xs mt-1 ${variant === 'studio' ? 'text-on-surface-variant' : 'text-brand-400'}`}>
+          {error ?? `${(file.size / 1024).toFixed(1)} KB`}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`${containerClass} px-4 sm:px-6 py-4 sm:py-6 text-sm sm:text-base text-on-surface leading-relaxed pattern-rendered ${
+        variant === 'studio' ? 'pattern-rendered--studio' : ''
+      }`}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+};
+
 export const OriginalPreview: React.FC<OriginalPreviewProps> = ({ file, variant = 'card' }) => {
   const sizeLabel = `${(file.size / 1024).toFixed(1)} KB`;
 
@@ -143,6 +288,10 @@ export const OriginalPreview: React.FC<OriginalPreviewProps> = ({ file, variant 
         <PdfCanvasPreview file={file} variant={variant} />
       </>
     );
+  }
+
+  if (isDocxFile(file) || isPlainTextFile(file)) {
+    return <TextDocumentPreview file={file} variant={variant} />;
   }
 
   return (

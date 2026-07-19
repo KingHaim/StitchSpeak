@@ -427,7 +427,8 @@ export const DashboardPage: React.FC = () => {
               fileType: file.type || 'unknown',
               sourceLanguage: sourceLanguage.name,
               targetLanguage: targetLanguage.name,
-              translatedHtml: stripTranslatedHtml(result.html),
+              // Keep data-seg / data-o so History can rebuild the original column.
+              translatedHtml: stripCodeFences(result.html),
               pdfMetrics,
               cost: result.cost ?? priceEstimate.translationCost,
               sourceFile: file,
