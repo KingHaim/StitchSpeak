@@ -23,6 +23,11 @@ const HistoryPage = lazy(() =>
     default: module.HistoryPage,
   })),
 );
+const SettingsPage = lazy(() =>
+  import('./components/pages/SettingsPage').then((module) => ({
+    default: module.SettingsPage,
+  })),
+);
 const AdminPage = lazy(() =>
   import('./components/pages/AdminPage').then((module) => ({ default: module.AdminPage })),
 );
@@ -82,6 +87,8 @@ const App: React.FC = () => {
         return <GlossaryPage />;
       case 'history':
         return <HistoryPage onNavigateToTranslate={() => navigate('dashboard')} />;
+      case 'settings':
+        return <SettingsPage />;
     }
   };
 

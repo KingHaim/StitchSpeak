@@ -6,6 +6,7 @@ describe('application navigation', () => {
     expect(pageFromPath('/translate')).toBe('dashboard');
     expect(pageFromPath('/patterns')).toBe('history');
     expect(pageFromPath('/glossary/')).toBe('glossary');
+    expect(pageFromPath('/settings')).toBe('settings');
   });
 
   it('falls back safely for the homepage and unknown paths', () => {
@@ -17,5 +18,6 @@ describe('application navigation', () => {
     expect(pathForPage('dashboard')).toBe('/translate');
     expect(pathForPage('history')).toBe('/patterns');
     expect(pathForPage('glossary')).toBe('/glossary');
+    expect(pathForPage('settings')).toBe('/settings');
   });
 });

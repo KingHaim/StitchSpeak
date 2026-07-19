@@ -18,6 +18,7 @@ const navItems: { label: string; icon: string; pageId: PageId }[] = [
   { label: 'Translate', icon: 'translate', pageId: 'dashboard' },
   { label: 'My Patterns', icon: 'folder_open', pageId: 'history' },
   { label: 'Glossary', icon: 'grid_view', pageId: 'glossary' },
+  { label: 'Settings', icon: 'settings', pageId: 'settings' },
 ];
 
 const RAIL_COLLAPSED_W = 'lg:w-20';

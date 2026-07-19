@@ -45,7 +45,7 @@ export interface TranslationResult {
   balance?: number;
 }
 
-export type PageId = 'dashboard' | 'glossary' | 'history';
+export type PageId = 'dashboard' | 'glossary' | 'history' | 'settings';
 
 export interface GlossaryTerm {
   id: string;

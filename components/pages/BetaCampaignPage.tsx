@@ -4,14 +4,6 @@ import { submitBetaApplication, type BetaApplicationInput, type BetaAttributionI
 const DEMOS = [
   {
     number: '01',
-    title: 'From upload to estimate',
-    description: 'Upload your pattern, choose a target market, and see the translation cost before you commit.',
-    src: '/demos/upload-and-estimate.mp4',
-    poster: '/demos/upload-and-estimate.jpg',
-    duration: '0:24',
-  },
-  {
-    number: '02',
     title: 'Terminology that stays pattern-native',
     description: 'Watch your instructions translate while rows, repeats, and abbreviations stay intact for release.',
     src: '/demos/terminology-translation.mp4',
@@ -19,7 +11,7 @@ const DEMOS = [
     duration: '0:26',
   },
   {
-    number: '03',
+    number: '02',
     title: 'Review before you publish',
     description: 'Use the pattern assistant to clarify a line in the translated copy before it goes to customers.',
     src: '/demos/pattern-assistant.mp4',
@@ -170,7 +162,7 @@ export const BetaCampaignPage: React.FC = () => {
                 Your <span>patterns,</span><br />ready for more markets.
               </h1>
               <p>
-                Fast, affordable pattern translation for independent knitwear and crochet designers—free while the beta is active.
+                Knitting- and crochet-aware pattern translation for independent designers preparing releases in new language markets.
               </p>
               <div className="heroActions">
                 <button
@@ -178,7 +170,7 @@ export const BetaCampaignPage: React.FC = () => {
                   onClick={scrollToForm}
                   className="primary"
                 >
-                  Apply for free beta access
+                  Apply for beta access
                 </button>
                 <a href="#demos" className="secondary">
                   Watch it work
@@ -191,7 +183,7 @@ export const BetaCampaignPage: React.FC = () => {
           <div className="mx-auto grid max-w-7xl divide-y divide-outline-variant/15 px-6 sm:px-8 md:grid-cols-3 md:divide-x md:divide-y-0">
             {[
               ['language', '13 languages', 'Reach knitters beyond your home market'],
-              ['receipt_long', 'Cost shown first', 'Approve the estimate before any credits are used'],
+              ['rule', 'Review before release', 'Check rows, repeats, measurements, and abbreviations before publishing'],
               ['folder_special', 'Your translation workspace', 'Keep every language version in one private library'],
             ].map(([icon, title, body]) => (
               <div key={title} className="flex gap-4 py-6 md:px-7 first:md:pl-0 last:md:pr-0">
@@ -232,9 +224,9 @@ export const BetaCampaignPage: React.FC = () => {
         <section id="demos" className="scroll-mt-20 bg-surface-container-low px-6 py-14 sm:px-8 sm:py-20">
           <div className="mx-auto max-w-7xl">
             <p className="mb-4 text-xs font-bold uppercase tracking-[0.28em] text-primary">Inside the app</p>
-            <h2 className="max-w-[14ch] font-headline text-3xl font-bold leading-tight sm:text-5xl">Three minutes? We only need one.</h2>
-            <p className="mt-4 max-w-[58ch] leading-relaxed text-on-surface-variant">Three short walkthroughs of the workflow independent designers use before trusting a translation for release.</p>
-            <div className="mt-10 grid gap-6 lg:grid-cols-3">
+            <h2 className="max-w-[14ch] font-headline text-3xl font-bold leading-tight sm:text-5xl">See the workflow before you apply.</h2>
+            <p className="mt-4 max-w-[58ch] leading-relaxed text-on-surface-variant">Two short walkthroughs of the workflow independent designers use before trusting a translation for release.</p>
+            <div className="mt-10 grid gap-6 lg:grid-cols-2">
               {DEMOS.map((demo) => (
                 <article key={demo.number} className="rounded-xl bg-surface p-5 shadow-ambient">
                   <div className="mb-4 flex items-center justify-between">
@@ -276,9 +268,9 @@ export const BetaCampaignPage: React.FC = () => {
           <div className="mx-auto grid max-w-[1200px] gap-12 lg:grid-cols-[0.72fr_1.28fr] lg:gap-20">
             <div>
               <h2 className="font-headline text-4xl font-semibold leading-tight tracking-[-0.03em] sm:text-5xl">Test it. Translate it. Tell your audience.</h2>
-              <p className="mt-5 text-lg leading-relaxed text-on-surface-variant">We&apos;re inviting independent pattern designers to test StitchSpeak on real releases. Approved testers receive free access for the beta period in exchange for sharing an honest experience with their audience.</p>
+              <p className="mt-5 text-lg leading-relaxed text-on-surface-variant">We&apos;re inviting independent pattern designers to test StitchSpeak on real releases. Approved testers receive beta access for the campaign in exchange for sharing an honest experience with their audience.</p>
               <ol className="mt-8 space-y-5">
-                {['Apply with your brand and how you would reach new markets', 'We review your patterns, audience, and release plans', 'Selected designers receive free beta access and campaign guidelines'].map((step, index) => (
+                {['Apply with your brand and how you would reach new markets', 'We review your patterns, audience, and release plans', 'Selected designers receive beta access and campaign guidelines'].map((step, index) => (
                   <li key={step} className="flex gap-4 text-sm leading-relaxed">
                     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-fixed font-mono text-xs font-bold text-on-primary-fixed">{index + 1}</span>
                     <span className="pt-1">{step}</span>
@@ -347,7 +339,7 @@ export const BetaCampaignPage: React.FC = () => {
 
                   <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-xl border border-primary/20 bg-primary-fixed/35 p-4 text-sm leading-relaxed">
                     <input required type="checkbox" checked={form.promotionConfirmed} onChange={(e) => update('promotionConfirmed', e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-primary" />
-                    <span><strong>Beta participation agreement:</strong> I understand that approved designers can use StitchSpeak free for the duration of the beta in exchange for sharing their experience with their audience. Beta access may be revoked if I do not fulfill this commitment.</span>
+                    <span><strong>Beta participation agreement:</strong> I understand that approved designers can use StitchSpeak during the beta in exchange for sharing their experience with their audience. Beta access may be revoked if I do not fulfill this commitment.</span>
                   </label>
 
                   <label className="absolute -left-[9999px]" aria-hidden="true">Website
@@ -357,9 +349,9 @@ export const BetaCampaignPage: React.FC = () => {
                   {status === 'error' && <p className="mt-4 rounded-lg bg-[#ffdad6] px-4 py-3 text-sm font-semibold text-[#7f1010]" role="alert">{message}</p>}
 
                   <button disabled={status === 'submitting'} type="submit" className="mt-6 flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-primary px-6 py-3.5 font-bold text-on-primary transition hover:bg-on-primary-fixed-variant active:scale-[0.99] disabled:cursor-wait disabled:opacity-70">
-                    {status === 'submitting' ? <><Icon name="hourglass_top" className="animate-pulse text-xl" /> Sending application…</> : 'Apply for free beta access'}
+                    {status === 'submitting' ? <><Icon name="hourglass_top" className="animate-pulse text-xl" /> Sending application…</> : 'Apply for beta access'}
                   </button>
-                  <p className="mt-3 text-center text-xs leading-relaxed text-on-surface-variant">No payment details. Approved access remains free while the beta is active and participation requirements are met.</p>
+                  <p className="mt-3 text-center text-xs leading-relaxed text-on-surface-variant">Applications are reviewed by the StitchSpeak team before access is granted.</p>
                 </form>
               )}
             </div>
