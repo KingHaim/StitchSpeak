@@ -22,7 +22,7 @@ async function mockAccountApi(page: Page): Promise<void> {
       }),
     });
   });
-  await page.route('**/api/credits/', async (route) => {
+  await page.route('**/api/credits', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -93,11 +93,48 @@ test('beta form explains a short promotion plan before submitting', async ({ pag
   await page.getByLabel('Instagram handle').fill('@haimganancia');
   await page.getByLabel('Instagram audience').selectOption({ label: '1,000–5,000' });
   await page.getByLabel('What do you create?').selectOption('Other');
-  await page.getByLabel('How would you share StitchSpeak with your audience?').fill('Through stories');
-  await page.getByRole('checkbox').check();
+  await page.getByLabel('What pattern would you translate?').fill('Weekend Scarf, a published knitting pattern');
+  await page.getByLabel('What target language/market?').fill('French / France');
+  await page.getByLabel('Where do you sell patterns?').fill('Ravelry and Etsy');
+  await page.getByLabel('How would you share the process publicly?').fill('Through stories');
+  await page.getByLabel(/Do you own the pattern rights/).check();
+  await page.getByLabel(/Beta participation agreement/).check();
   await page.locator('#beta-form').getByRole('button', { name: 'Apply for free beta access' }).click();
 
   await expect(page.getByText('5 more characters needed')).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('Add 5 more characters');
   expect(submissions).toBe(0);
+});
+
+test('beta form submits UTM attribution automatically', async ({ page }) => {
+  let payload: Record<string, unknown> | null = null;
+  await page.route('**/api/beta-applications', async (route) => {
+    payload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ ok: true, applicationId: 'e2e', message: 'Received.' }) });
+  });
+  await page.goto('/beta?utm_source=instagram&utm_medium=dm&utm_campaign=designer-beta-2026&utm_content=designer-outreach&utm_term=personalized-dm');
+
+  await page.getByLabel('Name').fill('Jaime');
+  await page.getByLabel('Email').fill('jaime@example.com');
+  await page.getByLabel('Instagram handle').fill('@haimganancia');
+  await page.getByLabel('Instagram audience').selectOption({ label: '1,000–5,000' });
+  await page.getByLabel('What do you create?').selectOption('Pattern design');
+  await page.getByLabel('What pattern would you translate?').fill('Weekend Scarf, a published knitting pattern');
+  await page.getByLabel('What target language/market?').fill('French / France');
+  await page.getByLabel('Where do you sell patterns?').fill('Ravelry and Etsy');
+  await page.getByLabel('How would you share the process publicly?').fill('I would post a Reel and newsletter note about the translation workflow.');
+  await page.getByLabel(/Do you own the pattern rights/).check();
+  await page.getByLabel(/Beta participation agreement/).check();
+  await page.locator('#beta-form').getByRole('button', { name: 'Apply for free beta access' }).click();
+
+  await expect(page.getByText('Your application is in review.')).toBeVisible();
+  const submitted = payload as unknown as { attribution: { landingPage?: string } & Record<string, string> };
+  expect(submitted.attribution).toMatchObject({
+    utmSource: 'instagram',
+    utmMedium: 'dm',
+    utmCampaign: 'designer-beta-2026',
+    utmContent: 'designer-outreach',
+    utmTerm: 'personalized-dm',
+  });
+  expect(submitted.attribution.landingPage).toContain('/beta?utm_source=instagram');
 });

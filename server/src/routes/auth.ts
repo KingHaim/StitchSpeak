@@ -37,12 +37,16 @@ function developmentUrl(url: string): string | undefined {
   return process.env.NODE_ENV === 'production' ? undefined : url;
 }
 
+function sessionCookieSameSite(): 'lax' | 'none' {
+  return process.env.NODE_ENV === 'production' ? 'none' : 'lax';
+}
+
 function setSessionCookie(res: Response, identity: SessionIdentity): void {
   const token = createSession(identity);
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: sessionCookieSameSite(),
     path: '/',
     maxAge: 30 * 24 * 60 * 60 * 1000,
   });
@@ -82,7 +86,12 @@ router.get('/session', requireAuth, (req, res) => {
 router.post('/logout', (req, res) => {
   const token = requestSessionToken(req);
   if (token) revokeSession(token);
-  res.clearCookie(SESSION_COOKIE, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/' });
+  res.clearCookie(SESSION_COOKIE, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: sessionCookieSameSite(),
+    path: '/',
+  });
   res.json({ ok: true });
 });
 

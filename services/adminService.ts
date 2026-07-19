@@ -5,7 +5,7 @@ export interface AdminUpload { id:string; timestamp:number; fileName:string; sou
 export interface AdminAdjustment { id:number; delta:number; reason:string; actorEmail:string; createdAt:number }
 export interface AdminMemberDetail { member:AdminMember; uploads:AdminUpload[]; orders:unknown[]; adjustments:AdminAdjustment[] }
 export type BetaApplicationStatus='new'|'approved'|'rejected';
-export interface AdminBetaApplication { id:string; name:string; email:string; instagramHandle:string; audienceSize:string; contentFocus:string; promotionPlan:string; testingInterest:string; promotionConfirmed:boolean; status:BetaApplicationStatus; createdAt:string; reviewedAt:string|null; reviewedBy:string|null }
+export interface AdminBetaApplication { id:string; name:string; email:string; instagramHandle:string; audienceSize:string; contentFocus:string; patternRightsConfirmed:boolean; patternToTranslate:string; targetLanguageMarket:string; salesChannels:string; promotionPlan:string; testingInterest:string; promotionConfirmed:boolean; utmSource:string; utmMedium:string; utmCampaign:string; utmContent:string; utmTerm:string; landingPage:string; referrer:string; status:BetaApplicationStatus; createdAt:string; reviewedAt:string|null; reviewedBy:string|null }
 export const getAdminOverview=()=>apiCall<AdminOverview>('/admin/overview');
 export const getAdminMembers=(q='')=>apiCall<{members:AdminMember[]}>(`/admin/members?q=${encodeURIComponent(q)}`);
 export const getAdminMember=(sub:string)=>apiCall<AdminMemberDetail>(`/admin/members/${encodeURIComponent(sub)}`);

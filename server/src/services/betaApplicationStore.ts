@@ -22,8 +22,19 @@ db.exec(`
     promotion_confirmed INTEGER NOT NULL DEFAULT 0,
     audience_size TEXT NOT NULL DEFAULT '',
     content_focus TEXT NOT NULL DEFAULT '',
+    pattern_rights_confirmed INTEGER NOT NULL DEFAULT 0,
+    pattern_to_translate TEXT NOT NULL DEFAULT '',
+    target_language_market TEXT NOT NULL DEFAULT '',
+    sales_channels TEXT NOT NULL DEFAULT '',
     promotion_plan TEXT NOT NULL DEFAULT '',
     testing_interest TEXT NOT NULL DEFAULT '',
+    utm_source TEXT NOT NULL DEFAULT '',
+    utm_medium TEXT NOT NULL DEFAULT '',
+    utm_campaign TEXT NOT NULL DEFAULT '',
+    utm_content TEXT NOT NULL DEFAULT '',
+    utm_term TEXT NOT NULL DEFAULT '',
+    landing_page TEXT NOT NULL DEFAULT '',
+    referrer TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'new',
     created_at TEXT NOT NULL
   )
@@ -37,15 +48,28 @@ if (!columnNames.has('instagram_handle')) db.exec("ALTER TABLE beta_applications
 if (!columnNames.has('promotion_confirmed')) db.exec('ALTER TABLE beta_applications ADD COLUMN promotion_confirmed INTEGER NOT NULL DEFAULT 0');
 if (!columnNames.has('audience_size')) db.exec("ALTER TABLE beta_applications ADD COLUMN audience_size TEXT NOT NULL DEFAULT ''");
 if (!columnNames.has('content_focus')) db.exec("ALTER TABLE beta_applications ADD COLUMN content_focus TEXT NOT NULL DEFAULT ''");
+if (!columnNames.has('pattern_rights_confirmed')) db.exec('ALTER TABLE beta_applications ADD COLUMN pattern_rights_confirmed INTEGER NOT NULL DEFAULT 0');
+if (!columnNames.has('pattern_to_translate')) db.exec("ALTER TABLE beta_applications ADD COLUMN pattern_to_translate TEXT NOT NULL DEFAULT ''");
+if (!columnNames.has('target_language_market')) db.exec("ALTER TABLE beta_applications ADD COLUMN target_language_market TEXT NOT NULL DEFAULT ''");
+if (!columnNames.has('sales_channels')) db.exec("ALTER TABLE beta_applications ADD COLUMN sales_channels TEXT NOT NULL DEFAULT ''");
 if (!columnNames.has('promotion_plan')) db.exec("ALTER TABLE beta_applications ADD COLUMN promotion_plan TEXT NOT NULL DEFAULT ''");
 if (!columnNames.has('testing_interest')) db.exec("ALTER TABLE beta_applications ADD COLUMN testing_interest TEXT NOT NULL DEFAULT ''");
+if (!columnNames.has('utm_source')) db.exec("ALTER TABLE beta_applications ADD COLUMN utm_source TEXT NOT NULL DEFAULT ''");
+if (!columnNames.has('utm_medium')) db.exec("ALTER TABLE beta_applications ADD COLUMN utm_medium TEXT NOT NULL DEFAULT ''");
+if (!columnNames.has('utm_campaign')) db.exec("ALTER TABLE beta_applications ADD COLUMN utm_campaign TEXT NOT NULL DEFAULT ''");
+if (!columnNames.has('utm_content')) db.exec("ALTER TABLE beta_applications ADD COLUMN utm_content TEXT NOT NULL DEFAULT ''");
+if (!columnNames.has('utm_term')) db.exec("ALTER TABLE beta_applications ADD COLUMN utm_term TEXT NOT NULL DEFAULT ''");
+if (!columnNames.has('landing_page')) db.exec("ALTER TABLE beta_applications ADD COLUMN landing_page TEXT NOT NULL DEFAULT ''");
+if (!columnNames.has('referrer')) db.exec("ALTER TABLE beta_applications ADD COLUMN referrer TEXT NOT NULL DEFAULT ''");
 
 const insertApplication = db.prepare(`
   INSERT INTO beta_applications (
     id, name, email, instagram_handle, source_language, target_language, pattern_type,
     note, personal_use_confirmed, promotion_confirmed, audience_size, content_focus,
-    promotion_plan, testing_interest, created_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    pattern_rights_confirmed, pattern_to_translate, target_language_market, sales_channels,
+    promotion_plan, testing_interest, utm_source, utm_medium, utm_campaign, utm_content,
+    utm_term, landing_page, referrer, created_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 export type BetaApplication = {
@@ -54,9 +78,20 @@ export type BetaApplication = {
   instagramHandle: string;
   audienceSize: string;
   contentFocus: string;
+  patternRightsConfirmed: boolean;
+  patternToTranslate: string;
+  targetLanguageMarket: string;
+  salesChannels: string;
   promotionPlan: string;
   testingInterest: string;
   promotionConfirmed: boolean;
+  utmSource: string;
+  utmMedium: string;
+  utmCampaign: string;
+  utmContent: string;
+  utmTerm: string;
+  landingPage: string;
+  referrer: string;
 };
 
 export function createBetaApplication(input: BetaApplication): {
@@ -78,8 +113,19 @@ export function createBetaApplication(input: BetaApplication): {
       input.promotionConfirmed ? 1 : 0,
       input.audienceSize,
       input.contentFocus,
+      input.patternRightsConfirmed ? 1 : 0,
+      input.patternToTranslate,
+      input.targetLanguageMarket,
+      input.salesChannels,
       input.promotionPlan,
       input.testingInterest,
+      input.utmSource,
+      input.utmMedium,
+      input.utmCampaign,
+      input.utmContent,
+      input.utmTerm,
+      input.landingPage,
+      input.referrer,
       new Date().toISOString(),
     );
     return { id, created: true };
@@ -106,7 +152,11 @@ export function listBetaApplications(status?: BetaApplicationStatus): BetaApplic
   const rows = db.prepare(`
     SELECT id, name, email, instagram_handle instagramHandle, promotion_confirmed promotionConfirmed,
            audience_size audienceSize, content_focus contentFocus, promotion_plan promotionPlan,
+           pattern_rights_confirmed patternRightsConfirmed, pattern_to_translate patternToTranslate,
+           target_language_market targetLanguageMarket, sales_channels salesChannels,
            testing_interest testingInterest,
+           utm_source utmSource, utm_medium utmMedium, utm_campaign utmCampaign,
+           utm_content utmContent, utm_term utmTerm, landing_page landingPage, referrer,
            status, created_at createdAt, reviewed_at reviewedAt, reviewed_by reviewedBy
     FROM beta_applications ${where}
     ORDER BY CASE status WHEN 'new' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, created_at DESC
@@ -114,6 +164,7 @@ export function listBetaApplications(status?: BetaApplicationStatus): BetaApplic
 
   return rows.map((row) => ({
     ...row,
+    patternRightsConfirmed: Boolean(row.patternRightsConfirmed),
     promotionConfirmed: Boolean(row.promotionConfirmed),
   })) as BetaApplicationAdmin[];
 }

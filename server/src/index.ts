@@ -67,6 +67,7 @@ const DEFAULT_ALLOWED_ORIGINS = [
   'https://stitch-speak.vercel.app',
   'https://stitchspeak.com',
   'https://www.stitchspeak.com',
+  'https://kinghaim.github.io',
 ];
 
 const VERCEL_PREVIEW_REGEX = /^https:\/\/stitch-speak(-[a-z0-9-]+)?(-[a-z0-9-]+\.vercel\.app|\.vercel\.app)$/;
@@ -82,6 +83,7 @@ if (process.env.FRONTEND_URL) {
 
 app.use(
   cors({
+    credentials: true,
     origin: (origin, callback) => {
       if (!origin) {
         callback(null, true);

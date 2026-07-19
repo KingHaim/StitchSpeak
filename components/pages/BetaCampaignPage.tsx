@@ -1,5 +1,5 @@
 import React, { useRef, useState, type FormEvent } from 'react';
-import { submitBetaApplication, type BetaApplicationInput } from '../../services/betaCampaignService';
+import { submitBetaApplication, type BetaApplicationInput, type BetaAttributionInput } from '../../services/betaCampaignService';
 
 const DEMOS = [
   {
@@ -34,11 +34,24 @@ const INITIAL_FORM: BetaApplicationInput = {
   instagramHandle: '',
   audienceSize: '',
   contentFocus: '',
+  patternRightsConfirmed: false,
+  patternToTranslate: '',
+  targetLanguageMarket: '',
+  salesChannels: '',
   promotionPlan: '',
   testingInterest: '',
   promotionConfirmed: false,
   website: '',
 };
+
+const ATTRIBUTION_STORAGE_KEY = 'stitchspeak_beta_attribution';
+const UTM_PARAM_MAP = {
+  utm_source: 'utmSource',
+  utm_medium: 'utmMedium',
+  utm_campaign: 'utmCampaign',
+  utm_content: 'utmContent',
+  utm_term: 'utmTerm',
+} as const;
 
 const Icon = ({ name, className = '' }: { name: string; className?: string }) => (
   <span className={`material-symbols-outlined ${className}`} aria-hidden="true">{name}</span>
@@ -48,8 +61,51 @@ function scrollToForm() {
   document.getElementById('beta-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+function clip(value: string, maxLength: number) {
+  return value.trim().slice(0, maxLength);
+}
+
+function readStoredAttribution(): BetaAttributionInput {
+  try {
+    const raw = window.sessionStorage.getItem(ATTRIBUTION_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as BetaAttributionInput;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function readBetaAttribution(): BetaAttributionInput {
+  if (typeof window === 'undefined') return {};
+
+  const params = new URLSearchParams(window.location.search);
+  const current: BetaAttributionInput = {};
+  for (const [param, key] of Object.entries(UTM_PARAM_MAP) as Array<[keyof typeof UTM_PARAM_MAP, keyof BetaAttributionInput]>) {
+    const value = params.get(param);
+    if (value) current[key] = clip(value, 120);
+  }
+
+  const stored = readStoredAttribution();
+  const attribution: BetaAttributionInput = {
+    ...stored,
+    ...current,
+    landingPage: clip(window.location.href, 1000),
+    referrer: stored.referrer || clip(document.referrer, 1000),
+  };
+
+  try {
+    window.sessionStorage.setItem(ATTRIBUTION_STORAGE_KEY, JSON.stringify(attribution));
+  } catch {
+    // Attribution is helpful, but the beta form should never fail because storage is unavailable.
+  }
+
+  return attribution;
+}
+
 export const BetaCampaignPage: React.FC = () => {
   const [form, setForm] = useState(INITIAL_FORM);
+  const [attribution] = useState(readBetaAttribution);
   const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
   const promotionPlanRef = useRef<HTMLTextAreaElement>(null);
@@ -65,7 +121,7 @@ export const BetaCampaignPage: React.FC = () => {
     if (promotionLength < 20) {
       const remaining = 20 - promotionLength;
       setStatus('error');
-      setMessage(`Add ${remaining} more character${remaining === 1 ? '' : 's'} describing how you would share StitchSpeak.`);
+      setMessage(`Add ${remaining} more character${remaining === 1 ? '' : 's'} describing how you would share the process publicly.`);
       promotionPlanRef.current?.focus();
       return;
     }
@@ -76,7 +132,7 @@ export const BetaCampaignPage: React.FC = () => {
     setStatus('submitting');
     setMessage('');
     try {
-      const response = await submitBetaApplication(form);
+      const response = await submitBetaApplication({ ...form, attribution });
       setStatus('success');
       setMessage(response.message);
     } catch (error) {
@@ -263,8 +319,21 @@ export const BetaCampaignPage: React.FC = () => {
                         {['Pattern design', 'Knitting', 'Crochet', 'Knitting and crochet', 'Fiber arts', 'Crafts and lifestyle', 'Other'].map((value) => <option key={value}>{value}</option>)}
                       </select>
                     </label>
-                    <label className="grid gap-2 text-sm font-bold sm:col-span-2">How would you share StitchSpeak with your audience? <span className="font-normal text-on-surface-variant">20 characters minimum</span>
-                      <textarea ref={promotionPlanRef} required rows={3} minLength={20} maxLength={600} aria-invalid={form.promotionPlan.length > 0 && form.promotionPlan.trim().length < 20} aria-describedby="promotion-plan-help" placeholder="For example: announcing a French edition, showing your translation workflow in a Reel, or reviewing the process after a release…" value={form.promotionPlan} onChange={(e) => update('promotionPlan', e.target.value)} className="resize-y rounded-lg border border-outline bg-surface px-4 py-3 font-normal outline-none transition placeholder:text-outline aria-invalid:border-error focus:border-primary focus:ring-2 focus:ring-primary/20" />
+                    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-outline-variant/30 bg-surface p-4 text-sm leading-relaxed sm:col-span-2">
+                      <input required type="checkbox" checked={form.patternRightsConfirmed} onChange={(e) => update('patternRightsConfirmed', e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-primary" />
+                      <span><strong>Do you own the pattern rights?</strong> I confirm I own this pattern or have permission to translate and publish it in another language.</span>
+                    </label>
+                    <label className="grid gap-2 text-sm font-bold sm:col-span-2">What pattern would you translate?
+                      <textarea required rows={3} maxLength={300} placeholder="Share the pattern name, format, craft, and whether it is already published or planned for a release." value={form.patternToTranslate} onChange={(e) => update('patternToTranslate', e.target.value)} className="resize-y rounded-lg border border-outline bg-surface px-4 py-3 font-normal outline-none transition placeholder:text-outline focus:border-primary focus:ring-2 focus:ring-primary/20" />
+                    </label>
+                    <label className="grid gap-2 text-sm font-bold">What target language/market?
+                      <input required maxLength={160} placeholder="French / France, German / DACH..." value={form.targetLanguageMarket} onChange={(e) => update('targetLanguageMarket', e.target.value)} className="rounded-lg border border-outline bg-surface px-4 py-3 font-normal outline-none transition placeholder:text-outline focus:border-primary focus:ring-2 focus:ring-primary/20" />
+                    </label>
+                    <label className="grid gap-2 text-sm font-bold">Where do you sell patterns?
+                      <input required maxLength={300} placeholder="Ravelry, Etsy, your website, Shopify..." value={form.salesChannels} onChange={(e) => update('salesChannels', e.target.value)} className="rounded-lg border border-outline bg-surface px-4 py-3 font-normal outline-none transition placeholder:text-outline focus:border-primary focus:ring-2 focus:ring-primary/20" />
+                    </label>
+                    <label className="grid gap-2 text-sm font-bold sm:col-span-2">How would you share the process publicly? <span className="font-normal text-on-surface-variant">20 characters minimum</span>
+                      <textarea ref={promotionPlanRef} required rows={3} minLength={20} maxLength={600} aria-invalid={form.promotionPlan.length > 0 && form.promotionPlan.trim().length < 20} aria-describedby="promotion-plan-help" placeholder="For example: a Reel showing your translation workflow, a launch post for the new language, or an honest post-release review..." value={form.promotionPlan} onChange={(e) => update('promotionPlan', e.target.value)} className="resize-y rounded-lg border border-outline bg-surface px-4 py-3 font-normal outline-none transition placeholder:text-outline aria-invalid:border-error focus:border-primary focus:ring-2 focus:ring-primary/20" />
                       <span id="promotion-plan-help" className={`text-xs font-normal ${form.promotionPlan.length > 0 && form.promotionPlan.trim().length < 20 ? 'text-error' : 'text-on-surface-variant'}`}>
                         {form.promotionPlan.trim().length < 20
                           ? `${20 - form.promotionPlan.trim().length} more characters needed`

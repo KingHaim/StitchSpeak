@@ -1,8 +1,5 @@
 import type { CreditPackage } from '../types';
-
-function getApiUrl(): string {
-  return '';
-}
+import { apiUrl } from './apiBase';
 
 async function apiFetch(
   path: string,
@@ -22,7 +19,7 @@ async function apiFetch(
 
   let res: Response;
   try {
-    res = await fetch(`${getApiUrl()}/api/credits${path}`, init);
+    res = await fetch(apiUrl(`/credits${path === '/' ? '' : path}`), init);
   } catch {
     throw new Error('Could not reach the server. Check your connection and try again.');
   }

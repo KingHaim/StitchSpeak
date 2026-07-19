@@ -1,9 +1,7 @@
-function getApiUrl(): string {
-  return '';
-}
+import { apiUrl } from './apiBase';
 
 export async function downloadAccountExport(idToken: string): Promise<void> {
-  const response = await fetch(`${getApiUrl()}/api/account/export`, {
+  const response = await fetch(apiUrl('/account/export'), {
     credentials: 'include',
     headers: { Authorization: `Bearer ${idToken}` },
   });
@@ -25,7 +23,7 @@ export async function downloadAccountExport(idToken: string): Promise<void> {
 }
 
 export async function deleteAccount(idToken: string, confirmation: string): Promise<void> {
-  const response = await fetch(`${getApiUrl()}/api/account`, {
+  const response = await fetch(apiUrl('/account'), {
     method: 'DELETE',
     credentials: 'include',
     headers: {

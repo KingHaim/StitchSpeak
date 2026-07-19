@@ -1,3 +1,5 @@
+import { apiUrl } from './apiBase';
+
 export interface AiTermResult {
   sourceAbbreviation: string;
   sourceFull: string;
@@ -6,17 +8,13 @@ export interface AiTermResult {
   explanation: string;
 }
 
-function getApiUrl(): string {
-  return '';
-}
-
 export async function lookupTermWithAI(
   term: string,
   sourceLang: string,
   targetLang: string,
   idToken: string,
 ): Promise<AiTermResult> {
-  const res = await fetch(`${getApiUrl()}/api/glossary/lookup`, {
+  const res = await fetch(apiUrl('/glossary/lookup'), {
     method: 'POST',
     credentials: 'include',
     headers: {

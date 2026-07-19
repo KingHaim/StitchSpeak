@@ -1,8 +1,5 @@
 import type { TranslationResult } from '../types';
-
-function getApiUrl(): string {
-  return '';
-}
+import { apiUrl } from './apiBase';
 
 class TranslationError extends Error {
   constructor(
@@ -113,7 +110,7 @@ export const translatePattern = async (
   formData.append('aiAcknowledged', 'true');
 
   const response = await checkedFetch(
-    `${getApiUrl()}/api/translate`,
+    apiUrl('/translate'),
     { method: 'POST', headers: authHeaders(idToken), body: formData },
     'Translation',
   );
@@ -171,7 +168,7 @@ export const translatePatternStream = async (
   formData.append('aiAcknowledged', 'true');
 
   const response = await checkedFetch(
-    `${getApiUrl()}/api/translate`,
+    apiUrl('/translate'),
     {
       method: 'POST',
       headers: {
@@ -303,7 +300,7 @@ export const startChatSession = async (
   idToken: string,
 ): Promise<string> => {
   const response = await checkedFetch(
-    `${getApiUrl()}/api/chat/start`,
+    apiUrl('/chat/start'),
     {
       method: 'POST',
       headers: { ...authHeaders(idToken), 'Content-Type': 'application/json' },
@@ -322,7 +319,7 @@ export const sendChatMessage = async (
   idToken: string,
 ): Promise<{ text: string; messageCount: number; maxMessages: number }> => {
   const response = await checkedFetch(
-    `${getApiUrl()}/api/chat/message`,
+    apiUrl('/chat/message'),
     {
       method: 'POST',
       headers: { ...authHeaders(idToken), 'Content-Type': 'application/json' },

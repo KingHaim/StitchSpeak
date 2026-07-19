@@ -1,8 +1,4 @@
-/**
- * Backend API client (pattern copied from BeatingHeart `src/services/replicate.js`).
- * Point `VITE_API_URL` at your own API when you add one; until then these helpers are unused by the app.
- */
-const API_BASE = '/api';
+import { apiUrl } from './apiBase';
 
 export const SS_TOKEN_KEY = 'ss_token';
 
@@ -46,7 +42,7 @@ export async function apiCall<T = unknown>(
   const options: RequestInit = { method, headers, credentials: 'include' };
   if (body) options.body = JSON.stringify(body);
 
-  const response = await fetch(`${API_BASE}${endpoint}`, options);
+  const response = await fetch(apiUrl(endpoint), options);
   let data: Record<string, unknown> = {};
   try {
     const text = await response.text();

@@ -1,8 +1,5 @@
 import type { TranslationRecord } from '../types';
-
-function getApiUrl(): string {
-  return '';
-}
+import { apiUrl } from './apiBase';
 
 interface ServerPattern {
   id: string;
@@ -43,7 +40,7 @@ async function apiFetch<T>(
 
   let res: Response;
   try {
-    res = await fetch(`${getApiUrl()}/api/patterns${path}`, init);
+    res = await fetch(apiUrl(`/patterns${path === '/' ? '' : path}`), init);
   } catch {
     throw new Error('Could not reach the server. Check your connection and try again.');
   }
@@ -153,7 +150,7 @@ export async function uploadPatternSource(
   let res: Response;
   try {
     res = await fetch(
-      `${getApiUrl()}/api/patterns/${encodeURIComponent(id)}/source`,
+      apiUrl(`/patterns/${encodeURIComponent(id)}/source`),
       {
         method: 'POST',
         credentials: 'include',
@@ -189,7 +186,7 @@ export async function fetchPatternSource(
   let res: Response;
   try {
     res = await fetch(
-      `${getApiUrl()}/api/patterns/${encodeURIComponent(id)}/source`,
+      apiUrl(`/patterns/${encodeURIComponent(id)}/source`),
       {
         credentials: 'include',
         headers: { Authorization: `Bearer ${idToken}` },
@@ -233,7 +230,7 @@ export async function uploadPatternThumbnail(
   form.append('file', blob, `pattern-${id}.jpg`);
 
   const res = await fetch(
-    `${getApiUrl()}/api/patterns/${encodeURIComponent(id)}/thumb`,
+    apiUrl(`/patterns/${encodeURIComponent(id)}/thumb`),
     {
       method: 'POST',
       credentials: 'include',
@@ -263,7 +260,7 @@ export async function fetchPatternThumbnail(
   id: string,
 ): Promise<Blob | null> {
   const res = await fetch(
-    `${getApiUrl()}/api/patterns/${encodeURIComponent(id)}/thumb`,
+    apiUrl(`/patterns/${encodeURIComponent(id)}/thumb`),
     {
       credentials: 'include',
       headers: { Authorization: `Bearer ${idToken}` },

@@ -3,6 +3,8 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
+    { "source": "/api/patterns/", "destination": "https://stitchspeak-production.up.railway.app/api/patterns" },
+    { "source": "/api/credits/", "destination": "https://stitchspeak-production.up.railway.app/api/credits" },
     { "source": "/api/:path*", "destination": "https://stitchspeak-production.up.railway.app/api/:path*" },
     { "source": "/(.*)", "destination": "/" }
   ],

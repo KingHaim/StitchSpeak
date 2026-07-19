@@ -35,8 +35,14 @@ function csrfOriginAllowed(req: Request): boolean {
   const origin = req.headers.origin;
   if (!origin) return false;
   const configured = (process.env.FRONTEND_URL || '').split(',').map((value) => value.trim().replace(/\/$/, ''));
-  return ['https://stitchspeak.com', 'https://www.stitchspeak.com', 'http://localhost:5173', 'http://localhost:4173', ...configured]
-    .includes(origin.replace(/\/$/, ''));
+  return [
+    'https://stitchspeak.com',
+    'https://www.stitchspeak.com',
+    'https://kinghaim.github.io',
+    'http://localhost:5173',
+    'http://localhost:4173',
+    ...configured,
+  ].includes(origin.replace(/\/$/, ''));
 }
 
 function attachSession(req: Request, token: string): boolean {
