@@ -28,13 +28,20 @@ describe('apiBase', () => {
 
   it('keeps Vite dev on same-origin even when VITE_API_URL points at a remote API', () => {
     expect(
-      resolveApiUrl('https://stitchspeak-production.up.railway.app/', true),
+      resolveApiUrl('https://stitchspeak-production.up.railway.app/', true, 'localhost'),
     ).toBe('');
   });
 
-  it('uses VITE_API_URL in production builds when the frontend is hosted separately from the API', () => {
+  it('uses same-origin /api on hosts with a reverse proxy so the session cookie stays first-party', () => {
+    const railway = 'https://stitchspeak-production.up.railway.app/';
+    expect(resolveApiUrl(railway, false, 'stitchspeak.com')).toBe('');
+    expect(resolveApiUrl(railway, false, 'www.stitchspeak.com')).toBe('');
+    expect(resolveApiUrl(railway, false, 'stitch-speak-abc123.vercel.app')).toBe('');
+  });
+
+  it('uses VITE_API_URL in production builds on hosts without an /api proxy', () => {
     expect(
-      resolveApiUrl('https://stitchspeak-production.up.railway.app/', false),
+      resolveApiUrl('https://stitchspeak-production.up.railway.app/', false, 'kinghaim.github.io'),
     ).toBe('https://stitchspeak-production.up.railway.app');
   });
 
