@@ -219,43 +219,54 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activePage, o
         <nav className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-1 pt-2">
           {navItems.map(({ label, icon, pageId }) => {
             const active = activePage === pageId;
+            const isSettings = pageId === 'settings';
             return (
-              <button
-                key={pageId}
-                type="button"
-                onClick={() => {
-                  onNavigate(pageId);
-                  onClose();
-                }}
-                title={!isExpanded ? label : undefined}
-                aria-label={label}
-                className={`
-                  flex items-center gap-3 px-6 py-3 mr-3 font-body text-sm font-medium text-left
-                  duration-200 ease-in-out transition-[transform,background-color,color,padding,margin,border-radius]
-                  hover:translate-x-1
-                  ${active
-                    ? 'bg-primary/12 text-primary rounded-r-full'
-                    : 'text-on-surface/75 hover:bg-surface-container-high'
-                  }
-                  ${!isExpanded
-                    ? `lg:px-3 lg:ml-3 lg:justify-center lg:hover:translate-x-0 ${
-                        active ? 'lg:rounded-xl' : ''
-                      }`
-                    : ''
-                  }
-                `}
-              >
-                <span
-                  className="material-symbols-outlined text-[22px] shrink-0"
-                  style={active ? { fontVariationSettings: "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24" } : undefined}
-                  aria-hidden
+              <React.Fragment key={pageId}>
+                {isSettings && (
+                  <div
+                    className={`my-2 mx-6 border-t border-outline-variant/40 ${
+                      isExpanded ? '' : 'lg:mx-4'
+                    }`}
+                    role="separator"
+                    aria-hidden
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    onNavigate(pageId);
+                    onClose();
+                  }}
+                  title={!isExpanded ? label : undefined}
+                  aria-label={label}
+                  className={`
+                    flex items-center gap-3 px-6 py-3 mr-3 font-body text-sm font-medium text-left
+                    duration-200 ease-in-out transition-[transform,background-color,color,padding,margin,border-radius]
+                    hover:translate-x-1
+                    ${active
+                      ? 'bg-primary/12 text-primary rounded-r-full'
+                      : 'text-on-surface/75 hover:bg-surface-container-high'
+                    }
+                    ${!isExpanded
+                      ? `lg:px-3 lg:ml-3 lg:justify-center lg:hover:translate-x-0 ${
+                          active ? 'lg:rounded-xl' : ''
+                        }`
+                      : ''
+                    }
+                  `}
                 >
-                  {icon}
-                </span>
-                <span className={labelVisibilityClass}>
-                  {label}
-                </span>
-              </button>
+                  <span
+                    className="material-symbols-outlined text-[22px] shrink-0"
+                    style={active ? { fontVariationSettings: "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24" } : undefined}
+                    aria-hidden
+                  >
+                    {icon}
+                  </span>
+                  <span className={labelVisibilityClass}>
+                    {label}
+                  </span>
+                </button>
+              </React.Fragment>
             );
           })}
         </nav>

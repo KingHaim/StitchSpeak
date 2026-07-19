@@ -884,9 +884,6 @@ export const DashboardPage: React.FC = () => {
                         Original &amp; translation
                       </h4>
                       <div className="flex items-center gap-3 shrink-0">
-                        <span className="hidden sm:inline text-xs text-on-surface-variant/60 italic">
-                          Hover a paragraph to highlight its match
-                        </span>
                         <button
                           type="button"
                           onClick={scrollToNewTranslation}
