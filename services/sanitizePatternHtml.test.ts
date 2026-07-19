@@ -19,7 +19,7 @@ describe('sanitizePatternHtml', () => {
     expect(html).not.toContain('onclick');
     expect(html).not.toContain('javascript:');
     expect(html).not.toContain('background-image');
-    expect(html).toContain('color: #333');
+    expect(html).not.toContain('color: #333');
   });
 
   it('preserves pattern structure, alignment data, images, and safe table styles', () => {
@@ -37,10 +37,10 @@ describe('sanitizePatternHtml', () => {
 
     expect(html).toContain('data-seg="1"');
     expect(html).toContain('data-o="Cast on"');
-    expect(html).toContain('font-family: Georgia, serif');
+    expect(html).not.toContain('font-family: Georgia, serif');
+    expect(html).toContain('font-size: 1.6em');
     expect(html).toContain('border-collapse: collapse');
     expect(html).toContain('padding: 0.4em');
     expect(html).toContain('src="data:image/png;base64,abc"');
   });
 });
-

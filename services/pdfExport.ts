@@ -8,15 +8,19 @@ const PATTERN_EXPORT_CSS = `
     width: ${EXPORT_WIDTH_PX}px;
     box-sizing: border-box;
     background: #ffffff;
-    color: #3D2B1F;
-    font-family: "Source Sans 3", system-ui, sans-serif;
+    color: #000000 !important;
+    font-family: Arial, Helvetica, sans-serif !important;
     font-size: 16px;
     line-height: 1.75;
     padding: 32px 36px;
   }
+  .pdf-pattern * {
+    color: #000000 !important;
+    font-family: Arial, Helvetica, sans-serif !important;
+  }
   .pdf-pattern h1, .pdf-pattern h2, .pdf-pattern h3,
   .pdf-pattern h4, .pdf-pattern h5, .pdf-pattern h6 {
-    color: #3D2B1F;
+    color: #000000;
     margin: 1.5em 0 0.5em;
     line-height: 1.3;
     font-family: inherit;
@@ -30,8 +34,8 @@ const PATTERN_EXPORT_CSS = `
   .pdf-pattern ul { list-style: disc; }
   .pdf-pattern ol { list-style: decimal; }
   .pdf-pattern li { margin-bottom: 0.25em; }
-  .pdf-pattern strong { font-weight: 700; color: #5A3E30; }
-  .pdf-pattern em { font-style: italic; color: #8B6F5E; }
+  .pdf-pattern strong { font-weight: 700; }
+  .pdf-pattern em { font-style: italic; }
   .pdf-pattern img { display: block; max-width: 100%; height: auto; }
   .pdf-pattern table {
     width: 100%;
@@ -47,7 +51,7 @@ const PATTERN_EXPORT_CSS = `
   .pdf-pattern th {
     background: #FAF6F1;
     font-weight: 600;
-    color: #5A3E30;
+    color: #000000;
   }
   .pdf-pattern tr:nth-child(even) td { background: #FDFBF9; }
   .pdf-pattern hr {
@@ -763,19 +767,19 @@ ${imageContentTypes ? `${imageContentTypes}\n` : ''}
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:style w:type="paragraph" w:default="1" w:styleId="Normal">
     <w:name w:val="Normal"/>
-    <w:rPr><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr>
+    <w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:color w:val="000000"/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr>
   </w:style>
   <w:style w:type="paragraph" w:styleId="Heading1">
     <w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>
-    <w:rPr><w:b/><w:sz w:val="36"/></w:rPr>
+    <w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:color w:val="000000"/><w:b/><w:sz w:val="36"/></w:rPr>
   </w:style>
   <w:style w:type="paragraph" w:styleId="Heading2">
     <w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>
-    <w:rPr><w:b/><w:sz w:val="28"/></w:rPr>
+    <w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:color w:val="000000"/><w:b/><w:sz w:val="28"/></w:rPr>
   </w:style>
   <w:style w:type="paragraph" w:styleId="Heading3">
     <w:name w:val="heading 3"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>
-    <w:rPr><w:b/><w:sz w:val="24"/></w:rPr>
+    <w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:color w:val="000000"/><w:b/><w:sz w:val="24"/></w:rPr>
   </w:style>
 </w:styles>`);
   wordFolder?.folder('_rels')?.file('document.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

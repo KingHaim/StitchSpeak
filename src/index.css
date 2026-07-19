@@ -96,16 +96,20 @@ h1, h2, h3, h4, h5, h6 {
 /* ── Pattern viewer typography ── */
 
 .pattern-rendered {
-  font-family: 'Source Sans 3', system-ui, sans-serif;
+  font-family: Arial, Helvetica, sans-serif !important;
   font-size: 0.9375rem;
   line-height: 1.75;
-  color: #3D2B1F;
+  color: #000000 !important;
   overflow-wrap: anywhere;
+}
+.pattern-rendered * {
+  font-family: Arial, Helvetica, sans-serif !important;
+  color: #000000 !important;
 }
 .pattern-rendered h1, .pattern-rendered h2, .pattern-rendered h3,
 .pattern-rendered h4, .pattern-rendered h5, .pattern-rendered h6 {
   font-family: inherit;
-  color: #3D2B1F;
+  color: #000000;
   margin: 1.5em 0 0.5em;
   line-height: 1.3;
 }
@@ -136,8 +140,8 @@ h1, h2, h3, h4, h5, h6 {
 .pattern-rendered ul { list-style: disc; }
 .pattern-rendered ol { list-style: decimal; }
 .pattern-rendered li { margin-bottom: 0.25em; }
-.pattern-rendered strong { font-weight: 700; color: #5A3E30; }
-.pattern-rendered em { font-style: italic; color: #8B6F5E; }
+.pattern-rendered strong { font-weight: 700; }
+.pattern-rendered em { font-style: italic; }
 .pattern-rendered table {
   width: 100%;
   border-collapse: collapse;
@@ -152,7 +156,7 @@ h1, h2, h3, h4, h5, h6 {
 .pattern-rendered th {
   background: #FAF6F1;
   font-weight: 600;
-  color: #5A3E30;
+  color: #000000;
 }
 .pattern-rendered tr:nth-child(even) td { background: #FDFBF9; }
 .pattern-rendered hr {
@@ -181,17 +185,13 @@ h1, h2, h3, h4, h5, h6 {
   background: transparent !important;
 }
 
-/* Translation Studio: deciphered panel (Newsreader / manuscript) */
+/* Translation Studio: spacing tweaks for the deciphered panel */
 .pattern-rendered--studio {
-  font-family: var(--font-headline);
   font-size: 1.125rem;
   line-height: 1.75;
-  color: color-mix(in srgb, var(--color-on-surface) 80%, transparent);
 }
 .pattern-rendered--studio h1, .pattern-rendered--studio h2, .pattern-rendered--studio h3,
 .pattern-rendered--studio h4, .pattern-rendered--studio h5, .pattern-rendered--studio h6 {
-  font-family: var(--font-headline);
-  color: var(--color-on-surface);
   margin: 1.25em 0 0.5em;
   line-height: 1.3;
 }
@@ -203,14 +203,13 @@ h1, h2, h3, h4, h5, h6 {
   margin: 0 0 0.85em 1.35rem;
   padding: 0;
 }
-.pattern-rendered--studio strong { font-weight: 700; color: var(--color-primary); }
-.pattern-rendered--studio em { font-style: italic; color: var(--color-on-surface-variant); }
+.pattern-rendered--studio strong { font-weight: 700; }
+.pattern-rendered--studio em { font-style: italic; }
 .pattern-rendered--studio th, .pattern-rendered--studio td {
   border-color: var(--color-outline-variant);
 }
 .pattern-rendered--studio th {
   background: var(--color-surface-container-low);
-  color: var(--color-on-surface);
 }
 .pattern-rendered--studio tr:nth-child(even) td { background: var(--color-surface-container-lowest); }
 .pattern-rendered--studio hr { border-top-color: var(--color-outline-variant); }

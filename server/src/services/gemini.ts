@@ -2,6 +2,11 @@ import { GoogleGenAI, ThinkingLevel, type Chat } from '@google/genai';
 import crypto from 'node:crypto';
 import { extractImages, buildImageCatalog, replaceImageMarkers } from './pdfImages.js';
 import { extractTypographyHints, buildTypographyCatalog } from './pdfTypography.js';
+import {
+  buildPdfPageArtifactInstruction,
+  detectPdfPageArtifacts,
+  removePdfPageArtifacts,
+} from './pdfPageArtifacts.js';
 import { detectSourceKind, extractDocumentHtml } from './documentExtract.js';
 import { withExternalDeadline } from './externalDeadline.js';
 
@@ -115,7 +120,15 @@ function getLanguageSpecificRules(language: string): string {
   return '';
 }
 
-const createSystemInstruction = (language: string, sourceLanguage?: string) => {
+const createSizeFormatPreservationRules = (sectionNumber: number) => `
+### ${sectionNumber}. SIZE FORMAT PRESERVATION (CRITICAL):
+- Multi-size instructions must preserve the source pattern's exact size structure across the whole translated pattern.
+- Keep the same punctuation and grouping used by the source for each size list: parentheses, brackets, commas, slashes, spacing, and the position of every bold/plain size marker.
+- Never convert one sizing convention into another. For example, if the source has "18 (20, 23, 25, 27, 30)", keep that structure; if the source alternates "<strong>18</strong> (20, <strong>23</strong>, 25, <strong>27</strong>, 30)", keep those same bold slots and parentheses.
+- Apply the source's size-format convention consistently everywhere the same size sequence appears. Do not invent a global alternating rule and do not normalize all later sizes into parentheses unless the source does that.
+`;
+
+export const createSystemInstruction = (language: string, sourceLanguage?: string) => {
   const specificRules = getLanguageSpecificRules(language);
 
   const sourceClause = sourceLanguage
@@ -148,10 +161,7 @@ Use this exact table structure for legends:
 \`\`\`
 The header labels themselves ("Símbolo" / "Significado") must be translated into ${language} (e.g. for English: "Symbol" / "Meaning"; French: "Symbole" / "Signification"; etc.). Each legend symbol image must appear EXACTLY ONCE — inside its legend cell. Do NOT also emit a separate \`<p>[IMG_N]</p>\` block for that same symbol.
 
-### 2. THE ZEBRA BOLDING ALGORITHM:
-- Multi-size instructions (e.g., 2 (4, 6, 8, 10)) must follow a STRICT alternating pattern across the ENTIRE sequence.
-- **Example**: "**2** (4, **6**, 8, **10**)".
-- Do not reset the bolding state at parentheses. The alternation must be continuous across all punctuation.
+${createSizeFormatPreservationRules(2)}
 
 ### 3. LANGUAGE & TECHNICAL RULES:
 - **NO SOURCE LANGUAGE IN GLOSSARY**: Remove all source-language abbreviations. The glossary must ONLY contain the ${language} abbreviation and its full definition.
@@ -162,7 +172,7 @@ The header labels themselves ("Símbolo" / "Significado") must be translated int
 - Output raw semantic HTML5 wrapped in a single <div>.
 - Use real semantic headings: <h1> for the pattern title, <h2> for major sections (Materials, Gauge, Abbreviations, Pattern, Finishing, etc.), <h3> for sub-sections, and <h4> for sub-sub-sections.
 - THERE MUST BE EXACTLY ONE <h1> IN THE ENTIRE DOCUMENT: the cover/pattern title. Every major section heading (e.g. Sizes, Materials, Gauge, Glossary, Body, Neck, Finishing, Charts) MUST be <h2> — never <h1> — even if it appears large in the source. Do not promote section headings to <h1> just because their font is big.
-- Use <strong> ONLY for Zebra Bolding inside multi-size instructions and for true inline emphasis. NEVER use <strong> as a section header.
+- Use <strong> ONLY where the source uses bold for inline emphasis or size markers, and for true inline emphasis in translated text. NEVER use <strong> as a section header.
 - For tables, use <table> with styles: "width: 100%; border-collapse: collapse; margin: 10px 0; border: 1px solid #ccc;".
 - For table cells, use padding and center-alignment where appropriate.
 - DO NOT use markdown code blocks (\`\`\`html).
@@ -183,14 +193,15 @@ The header labels themselves ("Símbolo" / "Significado") must be translated int
 - Do NOT invent IDs that are not in the catalog. The server will inject the actual images for every valid marker.
 - If no IMAGE CATALOG is provided, ignore this section.
 
-### 6. HEADING STYLING (PRESERVE ORIGINAL APPEARANCE):
+### 6. HEADING STYLING (STANDARD TEXT STYLE):
 - A TYPOGRAPHY HINTS list may be provided.
-- For each hint, when you emit the equivalent translated heading text, use the suggested tag (h1/h2/h3/h4) and add an inline style in this exact pattern: style="font-family: <family>, serif; font-size: <ratio>em;"
-- Use the exact tag given in each hint. Never emit an inline font-size larger than 2em for any heading. If a hint's family is already a generic keyword (serif or sans-serif), use it alone without appending a second ", serif".
+- Pattern text must use the app standard typography: Arial and black. Do NOT emit inline font-family or color styles for any text.
+- For each hint, when you emit the equivalent translated heading text, use the suggested tag (h1/h2/h3/h4) and, when useful, add only the suggested size in this exact pattern: style="font-size: <ratio>em;"
+- Use the exact tag given in each hint. Never emit an inline font-size larger than 2em for any heading.
 - Use the same tag and ratio for translated text whose role or position matches the source heading even if the wording changes during translation.
 - Preserve obvious decorative styling from the source heading when it is visually clear, especially centered cover titles, underlines, and title placement directly beneath a small top banner/logo image.
 - If no hint matches a section, still choose the correct semantic heading tag from the rules above, but omit the inline style.
-- If a BODY font hint is provided, use it as a guide for paragraph text unless the document clearly uses a different body style.
+- If a BODY font hint is provided, ignore its font family and color; use it only as a guide for structure, spacing, or relative sizing.
 
 ### 7. BILINGUAL ALIGNMENT (CRITICAL):
 - On EVERY block-level text element you output — specifically <h1>, <h2>, <h3>, <h4>, <p>, and <li> — add TWO attributes:
@@ -232,12 +243,14 @@ async function translatePdf(
   const base64Data = fileBuffer.toString('base64');
   const systemInstruction = createSystemInstruction(language, sourceLanguage);
 
-  const [images, typographyHints] = await Promise.all([
+  const [images, typographyHints, pageArtifacts] = await Promise.all([
     extractImages(fileBuffer),
     extractTypographyHints(fileBuffer),
+    detectPdfPageArtifacts(fileBuffer),
   ]);
   const catalog = buildImageCatalog(images);
   const typographyCatalog = buildTypographyCatalog(typographyHints);
+  const artifactInstruction = buildPdfPageArtifactInstruction(pageArtifacts);
 
   const sourcePromptClause = sourceLanguage
     ? `The pattern is in ${sourceLanguage}. Translate`
@@ -266,10 +279,11 @@ async function translatePdf(
         {
           parts: [
             {
-              text: `${sourcePromptClause} and visually reconstruct this knitting pattern into ${language}. Pay special attention to TABLES and STITCH CHARTS; convert all of them into HTML <table> structures. Use the "Zebra Bolding" rule for all multi-size instructions. Ensure every technical term is correctly localized and all source language text is removed. Return raw HTML.`,
+              text: `${sourcePromptClause} and visually reconstruct this knitting pattern into ${language}. Pay special attention to TABLES and STITCH CHARTS; convert all of them into HTML <table> structures. Preserve the source pattern's exact multi-size formatting, including each size list's parentheses, commas, spacing, and bold/plain size markers. Ensure every technical term is correctly localized and all source language text is removed. Return raw HTML.`,
             },
             ...(catalogInstruction ? [{ text: catalogInstruction }] : []),
             ...(typographyInstruction ? [{ text: typographyInstruction }] : []),
+            ...(artifactInstruction ? [{ text: artifactInstruction }] : []),
             {
               text: 'Remember: use the bracketed [ROW_N] marker for any catalog row group (the server will render its images side-by-side), and the [IMG_N] marker only for images that are not part of any row. For stitch-chart legends (small symbol images paired with descriptive text), build a 2-column <table> where column 1 is a <td> containing the bare [IMG_N] marker (no <p>) for the original symbol AS-IS and column 2 is a <td> containing only the TRANSLATED meaning text. Never emit raw <img> tags.',
             },
@@ -307,12 +321,13 @@ async function translatePdf(
     return { html: aggregatedHtml, usage: lastUsage };
   });
 
-  const html = replaceImageMarkers(rawHtml, images);
+  const withoutPageArtifacts = removePdfPageArtifacts(rawHtml, pageArtifacts);
+  const html = replaceImageMarkers(withoutPageArtifacts, images);
 
   return { html, usage };
 }
 
-const createDocumentSystemInstruction = (language: string, sourceLanguage?: string) => {
+export const createDocumentSystemInstruction = (language: string, sourceLanguage?: string) => {
   const specificRules = getLanguageSpecificRules(language);
   const sourceClause = sourceLanguage
     ? `The source pattern is written in ${sourceLanguage}. `
@@ -329,9 +344,7 @@ const createDocumentSystemInstruction = (language: string, sourceLanguage?: stri
 - The source HTML may contain bracketed markers like [IMG_1], [IMG_2] that stand in for images. Keep EVERY marker exactly where it appears, with the SAME number.
 - Do NOT remove, reorder, duplicate, renumber, or invent markers. Do NOT emit <img> tags or any image data — only the [IMG_n] markers. The server re-inserts the real images afterward.
 
-### 3. THE ZEBRA BOLDING ALGORITHM:
-- Multi-size instructions (e.g., 2 (4, 6, 8, 10)) must follow a STRICT alternating bold pattern across the ENTIRE sequence: "**2** (4, **6**, 8, **10**)".
-- Do not reset the bolding state at parentheses. The alternation is continuous across all punctuation.
+${createSizeFormatPreservationRules(3)}
 
 ### 4. LANGUAGE & TECHNICAL RULES:
 - **NO SOURCE LANGUAGE**: Remove all source-language abbreviations and text. The output must be fully ${language}.
@@ -342,7 +355,7 @@ const createDocumentSystemInstruction = (language: string, sourceLanguage?: stri
 - Output raw semantic HTML5 wrapped in a single <div>. DO NOT use markdown code blocks (\`\`\`html).
 - Use real semantic headings: <h1> for the pattern title, <h2> for major sections (Materials, Gauge, Abbreviations, Pattern, Finishing, etc.), <h3> for sub-sections, <h4> for sub-sub-sections.
 - THERE MUST BE EXACTLY ONE <h1> (the pattern title). Never promote ordinary section headings to <h1>; major sections are always <h2>.
-- Use <strong> ONLY for Zebra Bolding and true inline emphasis — never as a section header.
+- Use <strong> ONLY where the source uses bold for inline emphasis or size markers, and for true inline emphasis in translated text — never as a section header.
 - For tables, use <table style="width: 100%; border-collapse: collapse; margin: 1em 0; border: 1px solid #ccc;"> with padded cells.
 
 ### 6. BILINGUAL ALIGNMENT (CRITICAL):
@@ -414,7 +427,7 @@ async function translateDocumentHtml(
         {
           parts: [
             {
-              text: `${sourcePromptClause} and faithfully reconstruct the following knitting pattern into ${language}. The pattern is provided as HTML extracted from a word-processor document. Preserve all structure and TABLES, keep every [IMG_n] marker exactly in place, apply the "Zebra Bolding" rule for multi-size instructions, localize every technical term, and remove all source-language text. Return raw HTML.\n\n--- SOURCE PATTERN (HTML) ---\n${marked}\n--- END SOURCE PATTERN ---`,
+              text: `${sourcePromptClause} and faithfully reconstruct the following knitting pattern into ${language}. The pattern is provided as HTML extracted from a word-processor document. Preserve all structure and TABLES, keep every [IMG_n] marker exactly in place, preserve the source pattern's exact multi-size formatting including each size list's parentheses, commas, spacing, and bold/plain size markers, localize every technical term, and remove all source-language text. Return raw HTML.\n\n--- SOURCE PATTERN (HTML) ---\n${marked}\n--- END SOURCE PATTERN ---`,
             },
           ],
         },

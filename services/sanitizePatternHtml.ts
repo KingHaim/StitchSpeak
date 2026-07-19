@@ -65,9 +65,7 @@ const ALLOWED_STYLE_PROPERTIES = new Set([
   'border-left',
   'border-right',
   'border-top',
-  'color',
   'display',
-  'font-family',
   'font-size',
   'font-style',
   'font-weight',
@@ -156,4 +154,3 @@ export function sanitizePatternHtml(html: string): string {
   constrainLinks(template.content);
   return template.innerHTML;
 }
-
