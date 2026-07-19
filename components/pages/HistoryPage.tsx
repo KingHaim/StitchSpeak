@@ -22,7 +22,8 @@ import { PatternViewer } from '../PatternViewer';
 import { OriginalPreview } from '../OriginalPreview';
 import { BilingualViewer } from '../BilingualViewer';
 import { abbreviationLanguageCodeFromTargetLabel } from '../../services/abbreviationService';
-import { hasAlignment } from '../../services/alignment';
+import { hasAlignment, synthesizeAlignment } from '../../services/alignment';
+import { extractOriginalHtml, isTextExtractableFile } from '../../services/originalDocument';
 import { setAddTranslationHint } from '../../services/addTranslationHint';
 import { setOpenPatternHint } from '../../services/openPatternHint';
 import { languageFlagEmoji, sortedUniqueLanguageLabels } from '../../utils/languageFlags';
@@ -86,6 +87,12 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
   const [fullViewGroup, setFullViewGroup] = useState<PatternGroup | null>(null);
   const [fullViewHtml, setFullViewHtml] = useState<string | null>(null);
   const [fullViewSource, setFullViewSource] = useState<File | null>(null);
+  /**
+   * For records saved before alignment metadata was persisted: translated HTML
+   * re-annotated client-side by pairing it with text extracted from the source
+   * file, so the bilingual hover view still works.
+   */
+  const [fullViewSynthesizedHtml, setFullViewSynthesizedHtml] = useState<string | null>(null);
   const [fullViewError, setFullViewError] = useState<string | null>(null);
   const [isFullViewLoading, setIsFullViewLoading] = useState(false);
   const [isFullViewSourceLoading, setIsFullViewSourceLoading] = useState(false);
@@ -257,7 +264,11 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
     setIsFullViewSourceLoading(true);
     void loadFullViewTranslation(record);
 
-    const sourceRecord = group.records.find((candidate) => candidate.hasSource) ?? record;
+    // Prefer the opened record's own source file; only borrow a sibling's when
+    // this record has none, so the "original" pane can't show another upload.
+    const sourceRecord = record.hasSource
+      ? record
+      : group.records.find((candidate) => candidate.hasSource) ?? record;
     try {
       const source = await loadPatternSource(sourceRecord.id, idToken);
       if (sourceRequestId === fullViewSourceRequestRef.current) setFullViewSource(source);
@@ -273,10 +284,36 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
     setFullViewGroup(null);
     setFullViewHtml(null);
     setFullViewSource(null);
+    setFullViewSynthesizedHtml(null);
     setFullViewError(null);
     setIsFullViewLoading(false);
     setIsFullViewSourceLoading(false);
   };
+
+  // Older saves have no data-seg/data-o. When the source file's text can be
+  // extracted in the browser, rebuild the alignment so the full view can show
+  // the linked original ↔ translation panes instead of the static fallback.
+  useEffect(() => {
+    setFullViewSynthesizedHtml(null);
+    if (!fullViewHtml || hasAlignment(fullViewHtml)) return;
+    if (!fullViewSource || !isTextExtractableFile(fullViewSource)) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const originalHtml = await extractOriginalHtml(fullViewSource);
+        if (cancelled || !originalHtml) return;
+        const synthesized = synthesizeAlignment(originalHtml, fullViewHtml);
+        if (!cancelled && synthesized) setFullViewSynthesizedHtml(synthesized);
+      } catch (err) {
+        console.warn('Could not synthesize bilingual alignment:', err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fullViewHtml, fullViewSource]);
 
   const handleDelete = async (id: string) => {
     setActionError(null);
@@ -1147,18 +1184,26 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
               </div>
 
               <div className="p-4 sm:p-6 overflow-y-auto bg-background flex-1">
-                {fullViewHtml && hasAlignment(fullViewHtml) && !isFullViewLoading ? (
-                  <div className="space-y-3">
-                    <p className="px-1 text-xs text-on-surface-variant/70 italic">
-                      Hover over any paragraph or instruction to highlight its match in both versions.
-                    </p>
-                    <BilingualViewer
-                      html={fullViewHtml}
-                      sourceLabel={fullViewRecord.sourceLanguage || 'Original language'}
-                      targetLabel={fullViewRecord.targetLanguage}
-                    />
-                  </div>
-                ) : (
+                {(() => {
+                  const alignedHtml =
+                    fullViewHtml && hasAlignment(fullViewHtml)
+                      ? fullViewHtml
+                      : fullViewSynthesizedHtml;
+                  if (alignedHtml && !isFullViewLoading) {
+                    return (
+                      <div className="space-y-3">
+                        <p className="px-1 text-xs text-on-surface-variant/70 italic">
+                          Hover over any paragraph or instruction to highlight its match in both versions.
+                        </p>
+                        <BilingualViewer
+                          html={alignedHtml}
+                          sourceLabel={fullViewRecord.sourceLanguage || 'Original language'}
+                          targetLabel={fullViewRecord.targetLanguage}
+                        />
+                      </div>
+                    );
+                  }
+                  return (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
                   <section aria-labelledby="original-pattern-heading">
                     <div className="flex items-center justify-between mb-2 px-1">
@@ -1213,7 +1258,8 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
                     )}
                   </section>
                 </div>
-                )}
+                  );
+                })()}
               </div>
             </div>
           </div>,

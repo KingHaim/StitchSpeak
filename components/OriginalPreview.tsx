@@ -1,79 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { loadPdfJs } from '../services/pdfClient';
 import { sanitizePatternHtml } from '../services/sanitizePatternHtml';
+import {
+  extractOriginalHtml,
+  isPdfFile,
+  isTextExtractableFile,
+} from '../services/originalDocument';
 
 interface OriginalPreviewProps {
   file: File;
   variant?: 'card' | 'studio';
-}
-
-function getExtension(file: File): string {
-  const idx = file.name.lastIndexOf('.');
-  return idx >= 0 ? file.name.slice(idx).toLowerCase() : '';
-}
-
-function isPdfFile(file: File): boolean {
-  return file.type === 'application/pdf' || getExtension(file) === '.pdf';
-}
-
-function isDocxFile(file: File): boolean {
-  const ext = getExtension(file);
-  return (
-    ext === '.docx' ||
-    ext === '.doc' ||
-    file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-    file.type === 'application/msword'
-  );
-}
-
-function isPlainTextFile(file: File): boolean {
-  const ext = getExtension(file);
-  return (
-    ext === '.txt' ||
-    ext === '.rtf' ||
-    file.type === 'text/plain' ||
-    file.type === 'text/rtf' ||
-    file.type === 'application/rtf'
-  );
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-function plainTextToHtml(text: string): string {
-  const blocks = text
-    .replace(/\r\n/g, '\n')
-    .split(/\n{2,}/)
-    .map((block) => block.trim())
-    .filter(Boolean);
-
-  if (blocks.length === 0) {
-    return `<p>${escapeHtml(text.trim())}</p>`;
-  }
-
-  return blocks
-    .map((block) => `<p>${escapeHtml(block).replace(/\n/g, '<br>')}</p>`)
-    .join('');
-}
-
-async function extractOriginalHtml(file: File): Promise<string> {
-  if (isDocxFile(file)) {
-    const mammoth = await import('mammoth');
-    const arrayBuffer = await file.arrayBuffer();
-    const result = await mammoth.convertToHtml({ arrayBuffer });
-    return result.value?.trim() ?? '';
-  }
-
-  if (isPlainTextFile(file)) {
-    const text = await file.text();
-    return plainTextToHtml(text);
-  }
-
-  return '';
 }
 
 const PdfCanvasPreview: React.FC<{ file: File; variant: 'card' | 'studio' }> = ({ file, variant }) => {
@@ -290,7 +226,7 @@ export const OriginalPreview: React.FC<OriginalPreviewProps> = ({ file, variant 
     );
   }
 
-  if (isDocxFile(file) || isPlainTextFile(file)) {
+  if (isTextExtractableFile(file)) {
     return <TextDocumentPreview file={file} variant={variant} />;
   }
 
