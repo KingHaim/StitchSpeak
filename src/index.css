@@ -164,6 +164,10 @@ h1, h2, h3, h4, h5, h6 {
   border-top: 1px solid #E8DDD3;
   margin: 1.5em 0;
 }
+.pattern-rendered img {
+  max-width: 100%;
+  height: auto;
+}
 
 /* Stitch-chart legend symbols: keep the original PDF image at a sensible
  * inline size when it sits inside a <td> cell of a 2-column legend table.

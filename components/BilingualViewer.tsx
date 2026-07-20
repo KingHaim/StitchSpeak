@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { stripCodeFences } from '../services/alignment';
 import { sanitizePatternHtml } from '../services/sanitizePatternHtml';
 
@@ -61,6 +61,9 @@ export const BilingualViewer: React.FC<BilingualViewerProps> = ({
   const leftRef = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
   const activeSegRef = useRef<string | null>(null);
+  // On small screens the two panes don't fit side by side, so we show one at
+  // a time behind a tab switcher. On lg+ both are always visible.
+  const [mobilePane, setMobilePane] = useState<'original' | 'translation'>('translation');
 
   const { originalHtml, translatedHtml } = useMemo(
     () => splitBilingual(sanitizePatternHtml(stripCodeFences(html))),
@@ -92,8 +95,12 @@ export const BilingualViewer: React.FC<BilingualViewerProps> = ({
 
       // Bring the *opposite* pane's matching block into view so the reader can
       // see the correspondence even when the panes have drifted out of sync.
-      const opposite = origin === 'left' ? rightEl : leftEl;
-      opposite?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      // Skip on touch devices: taps fire emulated mouseover events, and the
+      // resulting scrollIntoView makes the page jump around unpredictably.
+      if (window.matchMedia('(hover: hover)').matches) {
+        const opposite = origin === 'left' ? rightEl : leftEl;
+        opposite?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
     },
     [clearActive],
   );
@@ -109,11 +116,38 @@ export const BilingualViewer: React.FC<BilingualViewerProps> = ({
     [activateSeg],
   );
 
+  const tabButtonClass = (active: boolean) =>
+    `flex-1 px-3 py-2 text-xs font-semibold rounded-lg transition-colors min-w-0 truncate ${
+      active
+        ? 'bg-surface-container-lowest text-primary shadow-sm'
+        : 'text-on-surface-variant hover:text-on-surface'
+    }`;
+
   return (
     <div className="bilingual-viewer rounded-xl overflow-hidden border border-outline-variant/15 bg-surface-container-lowest shadow-[0_32px_64px_-15px_rgba(29,28,23,0.06)]">
-      <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-outline-variant/15">
-        <div className="flex flex-col min-w-0">
-          <div className="sticky top-0 z-10 px-5 py-3 bg-surface-container-low/95 backdrop-blur-sm border-b border-outline-variant/15">
+      {/* Mobile-only tab switcher: the panes don't fit side by side. */}
+      <div className="lg:hidden flex gap-1 p-1.5 bg-surface-container-low border-b border-outline-variant/15">
+        <button
+          type="button"
+          onClick={() => setMobilePane('original')}
+          className={tabButtonClass(mobilePane === 'original')}
+        >
+          Original · {sourceLabel}
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobilePane('translation')}
+          className={tabButtonClass(mobilePane === 'translation')}
+        >
+          Translation · {targetLabel}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 lg:divide-x divide-outline-variant/15">
+        <div
+          className={`${mobilePane === 'original' ? 'flex' : 'hidden'} lg:flex flex-col min-w-0`}
+        >
+          <div className="hidden lg:block sticky top-0 z-10 px-5 py-3 bg-surface-container-low/95 backdrop-blur-sm border-b border-outline-variant/15">
             <h4 className="font-body font-semibold text-xs uppercase tracking-widest text-on-surface-variant">
               Original
             </h4>
@@ -123,13 +157,15 @@ export const BilingualViewer: React.FC<BilingualViewerProps> = ({
             ref={leftRef}
             onMouseOver={makeHoverHandler('left')}
             onMouseLeave={clearActive}
-            className="bilingual-pane pattern-rendered pattern-rendered--studio min-h-[min(480px,68vh)] lg:h-[560px] overflow-y-auto px-6 py-6 sm:px-8 text-on-surface-variant scroll-smooth"
+            className="bilingual-pane pattern-rendered pattern-rendered--studio h-[min(560px,70vh)] lg:h-[560px] overflow-y-auto px-4 py-5 sm:px-8 sm:py-6 text-on-surface-variant scroll-smooth"
             dangerouslySetInnerHTML={{ __html: originalHtml }}
           />
         </div>
 
-        <div className="flex flex-col min-w-0">
-          <div className="sticky top-0 z-10 px-5 py-3 bg-surface-container-low/95 backdrop-blur-sm border-b border-outline-variant/15">
+        <div
+          className={`${mobilePane === 'translation' ? 'flex' : 'hidden'} lg:flex flex-col min-w-0`}
+        >
+          <div className="hidden lg:block sticky top-0 z-10 px-5 py-3 bg-surface-container-low/95 backdrop-blur-sm border-b border-outline-variant/15">
             <h4 className="font-body font-semibold text-xs uppercase tracking-widest text-primary">
               Translation
             </h4>
@@ -139,7 +175,7 @@ export const BilingualViewer: React.FC<BilingualViewerProps> = ({
             ref={rightRef}
             onMouseOver={makeHoverHandler('right')}
             onMouseLeave={clearActive}
-            className="bilingual-pane pattern-rendered pattern-rendered--studio min-h-[min(480px,68vh)] lg:h-[560px] overflow-y-auto px-6 py-6 sm:px-8 scroll-smooth"
+            className="bilingual-pane pattern-rendered pattern-rendered--studio h-[min(560px,70vh)] lg:h-[560px] overflow-y-auto px-4 py-5 sm:px-8 sm:py-6 scroll-smooth"
             dangerouslySetInnerHTML={{ __html: translatedHtml }}
           />
         </div>
