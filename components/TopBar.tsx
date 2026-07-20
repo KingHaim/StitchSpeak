@@ -2,10 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/auth-context';
 import { useCredits } from '../contexts/credit-context';
 import { BuyCreditsModal } from './BuyCreditsModal';
+import { FeedbackDialog } from './FeedbackDialog';
 import type { CreditPackage, PageId } from '../types';
 
 const PAGE_HEADER: Record<PageId, { kicker: string; title: string }> = {
   dashboard: { kicker: 'Translation Studio', title: 'Pattern Translator' },
+  techedit: { kicker: 'Tech Editing', title: 'Pattern Tech Editor' },
   history: { kicker: 'My Patterns', title: 'Your Tactile Collection' },
   glossary: { kicker: 'Glossary', title: 'Knitting & Crochet Glossary' },
   settings: { kicker: 'Account', title: 'Settings' },
@@ -20,6 +22,7 @@ export const TopBar: React.FC<TopBarProps> = ({ activePage, onNavigate }) => {
   const { user, isAuthenticated, signOut } = useAuth();
   const { balance, startCheckout } = useCredits();
   const [showBuyCredits, setShowBuyCredits] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false);
 
@@ -69,6 +72,17 @@ export const TopBar: React.FC<TopBarProps> = ({ activePage, onNavigate }) => {
                   <span className="material-symbols-outlined text-xl">search</span>
                 </button>
               </div>
+            )}
+            {isAuthenticated && (
+              <button
+                type="button"
+                onClick={() => setShowFeedback(true)}
+                className="p-2.5 rounded-full bg-surface-container-high text-on-surface-variant hover:bg-surface-variant transition-colors"
+                aria-label="Send feedback"
+                title="Send feedback"
+              >
+                <span className="material-symbols-outlined text-xl">rate_review</span>
+              </button>
             )}
             {isAuthenticated && (
               <button
@@ -143,6 +157,8 @@ export const TopBar: React.FC<TopBarProps> = ({ activePage, onNavigate }) => {
         onClose={() => setShowBuyCredits(false)}
         onPurchase={handlePurchase}
       />
+
+      <FeedbackDialog isOpen={showFeedback} onClose={() => setShowFeedback(false)} />
     </>
   );
 };

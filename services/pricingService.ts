@@ -62,6 +62,23 @@ export function estimateBatchTranslationCost(metricsList: PdfMetrics[]): PriceEs
   };
 }
 
+/** Mirrors the server's techEditCostFromMetrics (server/src/services/pricing.ts). */
+export function estimateTechEditCost(metrics: PdfMetrics): number {
+  const { inputCostPer1MTokens, outputCostPer1MTokens, passes, fixedMargin } = PRICING.techEdit;
+  const inputCost =
+    (metrics.estimatedInputTokens / 1_000_000) * inputCostPer1MTokens * passes;
+  const outputCost =
+    (metrics.estimatedOutputTokens / 1_000_000) * outputCostPer1MTokens;
+  const baseCost = roundUpToHalf(inputCost + outputCost + fixedMargin);
+
+  const { includedPages, pageSurcharge, pagesPerSurchargeStep } = PRICING.techEdit;
+  const extraPages = Math.max(0, metrics.pages - includedPages);
+  const surcharge =
+    extraPages === 0 ? 0 : Math.ceil(extraPages / pagesPerSurchargeStep) * pageSurcharge;
+
+  return roundUpToHalf(baseCost + surcharge);
+}
+
 export function estimateChatCost(messageCount: number): number {
   const { packageSize, packagePrice, freeMessages } = PRICING.chat;
   const billable = Math.max(0, messageCount - freeMessages);

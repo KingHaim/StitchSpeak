@@ -42,6 +42,7 @@ StitchSpeak is a React 19 + TypeScript + Tailwind CSS v4 frontend (Vite) with an
 | `AUTH_SESSION_SECRET` | `server/.env` | Long random secret used to sign and revoke email-account sessions |
 | `APP_URL` | `server/.env` | Canonical frontend URL used for verification and password-reset links |
 | `RESEND_API_KEY` | `server/.env` | Resend API key for authentication email delivery |
+| `FEEDBACK_EMAIL_TO` | `server/.env` | Comma-separated recipients for in-app tester feedback emails (defaults to `ADMIN_EMAILS`) |
 | `AUTH_EMAIL_FROM` | `server/.env` | Verified sender address used for authentication emails |
 | `VITE_GOOGLE_CLIENT_ID` | `.env` | Google OAuth Web client ID for sign-in |
 | `VITE_API_URL` | `.env` | Backend origin the frontend calls (e.g. `http://localhost:3001`) |

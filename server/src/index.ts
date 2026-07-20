@@ -2,12 +2,14 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import cors from 'cors';
 import crypto from 'node:crypto';
 import translateRouter from './routes/translate.js';
+import techEditRouter from './routes/techEdit.js';
 import chatRouter from './routes/chat.js';
 import creditsRouter from './routes/credits.js';
 import glossaryRouter from './routes/glossary.js';
 import patternsRouter from './routes/patterns.js';
 import lemonSqueezyWebhookRouter from './routes/lemonSqueezyWebhook.js';
 import betaApplicationsRouter from './routes/betaApplications.js';
+import feedbackRouter from './routes/feedback.js';
 import adminRouter from './routes/admin.js';
 import authRouter from './routes/auth.js';
 import accountRouter from './routes/account.js';
@@ -228,6 +230,7 @@ app.get('/health/recovery', (_req, res) => {
 });
 
 app.use('/api/translate', translateRouter);
+app.use('/api/tech-edit', techEditRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/account', accountRouter);
 
@@ -236,6 +239,7 @@ app.use('/api/credits', creditsRouter);
 app.use('/api/glossary', glossaryRouter);
 app.use('/api/patterns', patternsRouter);
 app.use('/api/beta-applications', betaApplicationsRouter);
+app.use('/api/feedback', feedbackRouter);
 app.use('/api/admin', adminRouter);
 
 app.use(

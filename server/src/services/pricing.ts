@@ -24,6 +24,23 @@ export const PRICING = {
     packagePrice: 0.1,
     freeMessages: 3,
   },
+  techEdit: {
+    // Tech editing runs two Gemini Pro passes (structured extraction +
+    // editorial review) with a HIGH thinking budget, so the raw API cost is
+    // roughly double a translation. The margin prices the value: a human tech
+    // edit runs EUR 50-150 per pattern.
+    inputCostPer1MTokens: 2.0,
+    outputCostPer1MTokens: 12.0,
+    passes: 2,
+    fixedMargin: 9.0,
+    includedPages: 10,
+    pageSurcharge: 1.5,
+    pagesPerSurchargeStep: 5,
+    // Hard cap: unlike translation, a tech edit of a huge document blows the
+    // Gemini deadline and degrades report quality, so refuse instead of
+    // just charging more.
+    maxPages: 30,
+  },
   tokenEstimation: {
     charsPerToken: 4,
     systemPromptTokens: 500,
@@ -131,6 +148,24 @@ export function translationCostFromMetrics(metrics: DocumentMetrics): number {
   const baseCost = roundUpToHalf(inputCost + outputCost + fixedMargin);
 
   const { includedPages, pageSurcharge, pagesPerSurchargeStep } = PRICING.translation;
+  const extraPages = Math.max(0, metrics.pages - includedPages);
+  const surcharge =
+    extraPages === 0 ? 0 : Math.ceil(extraPages / pagesPerSurchargeStep) * pageSurcharge;
+
+  return roundUpToHalf(baseCost + surcharge);
+}
+
+/** Tech edit cost in credits (EUR), computed from server-side metrics. */
+export function techEditCostFromMetrics(metrics: DocumentMetrics): number {
+  const { inputCostPer1MTokens, outputCostPer1MTokens, passes, fixedMargin } = PRICING.techEdit;
+  // Both passes re-read the full document; output (structured JSON + report)
+  // is much smaller than a full translation, so reuse the estimated output
+  // token count once across the two passes.
+  const inputCost = (metrics.estimatedInputTokens / 1_000_000) * inputCostPer1MTokens * passes;
+  const outputCost = (metrics.estimatedOutputTokens / 1_000_000) * outputCostPer1MTokens;
+  const baseCost = roundUpToHalf(inputCost + outputCost + fixedMargin);
+
+  const { includedPages, pageSurcharge, pagesPerSurchargeStep } = PRICING.techEdit;
   const extraPages = Math.max(0, metrics.pages - includedPages);
   const surcharge =
     extraPages === 0 ? 0 : Math.ceil(extraPages / pagesPerSurchargeStep) * pageSurcharge;

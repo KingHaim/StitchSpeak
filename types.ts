@@ -45,7 +45,46 @@ export interface TranslationResult {
   balance?: number;
 }
 
-export type PageId = 'dashboard' | 'glossary' | 'history' | 'settings';
+export type PageId = 'dashboard' | 'glossary' | 'history' | 'techedit' | 'settings';
+
+// --- Tech editing ---
+
+export type TechEditCategory = 'math' | 'clarity' | 'consistency' | 'grammar';
+export type TechEditSeverity = 'critical' | 'warning' | 'suggestion';
+
+export interface TechEditFinding {
+  category: TechEditCategory;
+  severity: TechEditSeverity;
+  /** True when the finding was verified by a deterministic calculation on the server. */
+  verified: boolean;
+  location: string;
+  title: string;
+  detail: string;
+  calculation?: string;
+  suggestion?: string;
+}
+
+export interface TechEditReport {
+  patternTitle: string | null;
+  language: string | null;
+  summary: string;
+  stats: {
+    checksRun: number;
+    sizesChecked: number;
+    findingCounts: Record<TechEditSeverity, number>;
+  };
+  findings: TechEditFinding[];
+}
+
+export interface TechEditRecord {
+  id: string;
+  timestamp: number;
+  fileName: string;
+  pages: number;
+  cost: number;
+}
+
+export type TechEditStage = 'extracting' | 'verifying' | 'reviewing' | 'finalizing';
 
 export interface GlossaryTerm {
   id: string;

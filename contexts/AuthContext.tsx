@@ -6,6 +6,7 @@ import { initializeGoogleIdentity } from '../auth/googleIdentity';
 import { COOKIE_SESSION_AUTH_MARKER } from '../services/apiBase';
 import { migrateGuestHistoryToServerIfRemoteEmpty } from '../services/historyService';
 import { getMe, googleLogin, login, logout, register } from '../services/api';
+import { identifyUser, resetAnalyticsIdentity } from '../services/analytics';
 import { AuthContext, type AuthContextValue } from './auth-context';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -18,6 +19,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = useCallback(() => {
     try { window.google?.accounts?.id?.disableAutoSelect?.(); } catch { /* ignore */ }
     clearStoredIdToken();
+    resetAnalyticsIdentity();
     setUser(null);
     setIdToken(null);
     void logout().catch(() => undefined);
@@ -76,6 +78,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (idToken) void migrateGuestHistoryToServerIfRemoteEmpty(idToken);
   }, [idToken]);
+
+  // Covers every sign-in path (Google, email, session bootstrap) in one place.
+  useEffect(() => {
+    if (user) identifyUser(user);
+  }, [user]);
 
   const value = useMemo<AuthContextValue>(() => ({
     user,

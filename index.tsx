@@ -7,7 +7,10 @@ import { AuthProvider } from './contexts/AuthContext';
 import { CreditProvider } from './contexts/CreditContext';
 import { getGoogleOAuthClientId } from './auth/googleConfig';
 import { HomepagePrototypePage } from './components/prototype/homepage/HomepagePrototypePage';
+import { initAnalytics } from './services/analytics';
 import './src/index.css';
+
+initAnalytics();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

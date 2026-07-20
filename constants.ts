@@ -51,6 +51,16 @@ export const PRICING = {
     packagePrice: 0.10,
     freeMessages: 3,
   },
+  techEdit: {
+    inputCostPer1MTokens: 2.00,
+    outputCostPer1MTokens: 12.00,
+    passes: 2,
+    fixedMargin: 9.00,
+    includedPages: 10,
+    pageSurcharge: 1.50,
+    pagesPerSurchargeStep: 5,
+    maxPages: 30,
+  },
   tokenEstimation: {
     charsPerToken: 4,
     systemPromptTokens: 500,

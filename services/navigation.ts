@@ -4,6 +4,7 @@ export const PAGE_PATHS: Record<PageId, string> = {
   dashboard: '/translate',
   history: '/patterns',
   glossary: '/glossary',
+  techedit: '/tech-edit',
   settings: '/settings',
 };
 
@@ -13,6 +14,8 @@ export function pageFromPath(pathname: string): PageId {
       return 'history';
     case '/glossary':
       return 'glossary';
+    case '/tech-edit':
+      return 'techedit';
     case '/settings':
       return 'settings';
     case '/translate':

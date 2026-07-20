@@ -28,6 +28,11 @@ const SettingsPage = lazy(() =>
     default: module.SettingsPage,
   })),
 );
+const TechEditPage = lazy(() =>
+  import('./components/pages/TechEditPage').then((module) => ({
+    default: module.TechEditPage,
+  })),
+);
 const AdminPage = lazy(() =>
   import('./components/pages/AdminPage').then((module) => ({ default: module.AdminPage })),
 );
@@ -88,6 +93,8 @@ const App: React.FC = () => {
         return <GlossaryPage />;
       case 'history':
         return <HistoryPage onNavigateToTranslate={() => navigate('dashboard')} />;
+      case 'techedit':
+        return <TechEditPage />;
       case 'settings':
         return <SettingsPage />;
     }

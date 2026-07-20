@@ -16,6 +16,7 @@ interface SidebarProps {
 
 const navItems: { label: string; icon: string; pageId: PageId }[] = [
   { label: 'Translate', icon: 'translate', pageId: 'dashboard' },
+  { label: 'Tech Editing', icon: 'fact_check', pageId: 'techedit' },
   { label: 'My Patterns', icon: 'folder_open', pageId: 'history' },
   { label: 'Glossary', icon: 'grid_view', pageId: 'glossary' },
   { label: 'Settings', icon: 'settings', pageId: 'settings' },

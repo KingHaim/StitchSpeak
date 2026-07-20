@@ -14,6 +14,7 @@ import {
   listPatterns,
   deleteAllPatterns,
 } from '../services/patternStore.js';
+import { deleteAllTechEdits } from '../services/techEditStore.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -74,6 +75,7 @@ router.delete('/', rateLimit({ windowMs: 60 * 60 * 1000, max: 5, name: 'account-
   // Financial ledgers are retained under an irreversible pseudonymous identifier.
   const financial = deleteCreditAccount(userSub);
   const patternsDeleted = deleteAllPatterns(userSub);
+  deleteAllTechEdits(userSub);
   revokeAllSessionsForSub(userSub);
   deleteLegalAcknowledgements(userSub);
   const credentialsDeleted = deleteEmailAccount(userSub);

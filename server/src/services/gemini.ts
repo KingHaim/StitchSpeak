@@ -12,7 +12,7 @@ import { withExternalDeadline } from './externalDeadline.js';
 
 let aiClient: GoogleGenAI | null = null;
 
-function getAI(): GoogleGenAI {
+export function getAI(): GoogleGenAI {
   if (!aiClient) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey?.trim()) {
@@ -66,7 +66,7 @@ function isRetryableError(err: any): boolean {
   );
 }
 
-async function withRetry<T>(fn: () => T | Promise<T>): Promise<T> {
+export async function withRetry<T>(fn: () => T | Promise<T>): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {

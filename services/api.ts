@@ -148,3 +148,11 @@ export async function updateMyName(name: string): Promise<{ user: unknown }> {
 export async function logout(): Promise<void> {
   await apiCall('/auth/logout', 'POST', null);
 }
+
+/** Emails the tester's feedback (with their user ID attached server-side) to the team. */
+export async function sendFeedback(message: string): Promise<{ ok: boolean }> {
+  return apiCall<{ ok: boolean }>('/feedback', 'POST', {
+    message,
+    page: window.location.pathname,
+  });
+}
