@@ -48,6 +48,10 @@ export function passwordResetUrl(token: string): string {
   return `${appUrl()}/reset-password?token=${encodeURIComponent(token)}`;
 }
 
+export function inviteUrl(token: string): string {
+  return `${appUrl()}/accept-invite?token=${encodeURIComponent(token)}`;
+}
+
 function fallbackLinkNote(url: string): string {
   const safe = escapeHtml(url);
   return `Or paste this URL into your browser:<br><a href="${safe}" style="color:#50604a;word-break:break-all;">${safe}</a>`;
@@ -81,4 +85,21 @@ export async function sendPasswordResetEmail(account: EmailAccount, token: strin
     footnotes: ['This link expires in one hour.', fallbackLinkNote(url)],
   });
   await send(account, 'Reset your StitchSpeak password', html);
+}
+
+export async function sendInviteEmail(account: EmailAccount, token: string): Promise<void> {
+  const url = inviteUrl(token);
+  const greeting = account.name ? `Hi ${escapeHtml(account.name)},` : 'Hi,';
+  const html = renderEmailHtml({
+    heading: "You're invited to StitchSpeak",
+    preheader: 'Create your password to start the designer beta with 50 starter credits.',
+    bodyHtml: [
+      paragraph(greeting),
+      paragraph('You have been invited to the StitchSpeak designer beta. Your account includes 50 starter credits — create a password to begin.'),
+      paragraph('Tap the button below to choose your password. No password was set for you in advance.'),
+    ].join(''),
+    cta: { label: 'Create your password', href: url },
+    footnotes: ['This invite link expires in 7 days.', fallbackLinkNote(url)],
+  });
+  await send(account, "You're invited — create your StitchSpeak password", html);
 }

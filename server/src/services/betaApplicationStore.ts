@@ -62,6 +62,16 @@ if (!columnNames.has('utm_term')) db.exec("ALTER TABLE beta_applications ADD COL
 if (!columnNames.has('landing_page')) db.exec("ALTER TABLE beta_applications ADD COLUMN landing_page TEXT NOT NULL DEFAULT ''");
 if (!columnNames.has('referrer')) db.exec("ALTER TABLE beta_applications ADD COLUMN referrer TEXT NOT NULL DEFAULT ''");
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS beta_invites (
+    email TEXT PRIMARY KEY COLLATE NOCASE,
+    sub TEXT NOT NULL,
+    starter_credits_granted INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )
+`);
+
 const insertApplication = db.prepare(`
   INSERT INTO beta_applications (
     id, name, email, instagram_handle, source_language, target_language, pattern_type,
@@ -183,7 +193,61 @@ export function reviewBetaApplication(
 
 export function hasActiveBetaAccess(email?: string): boolean {
   if (!email) return false;
-  return Boolean(db.prepare(`
+  const normalized = email.trim().toLowerCase();
+  const approved = Boolean(db.prepare(`
     SELECT 1 FROM beta_applications WHERE email = ? COLLATE NOCASE AND status = 'approved' LIMIT 1
-  `).get(email.trim()));
+  `).get(normalized));
+  if (approved) return true;
+  return Boolean(db.prepare(`
+    SELECT 1 FROM beta_invites WHERE email = ? COLLATE NOCASE LIMIT 1
+  `).get(normalized));
+}
+
+export function wasBetaStarterGranted(email: string): boolean {
+  const row = db.prepare(`
+    SELECT starter_credits_granted FROM beta_invites WHERE email = ? COLLATE NOCASE
+  `).get(email.trim().toLowerCase()) as { starter_credits_granted: number } | undefined;
+  return Boolean(row?.starter_credits_granted);
+}
+
+/** Upsert invite ledger; optionally mark the one-time 50-credit grant. */
+export function markBetaInvite(email: string, sub: string, starterGranted = false): void {
+  const normalized = email.trim().toLowerCase();
+  const now = new Date().toISOString();
+  const existing = db.prepare(`SELECT starter_credits_granted FROM beta_invites WHERE email = ? COLLATE NOCASE`)
+    .get(normalized) as { starter_credits_granted: number } | undefined;
+  if (!existing) {
+    db.prepare(`
+      INSERT INTO beta_invites (email, sub, starter_credits_granted, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(normalized, sub, starterGranted ? 1 : 0, now, now);
+    return;
+  }
+  db.prepare(`
+    UPDATE beta_invites
+    SET sub = ?, starter_credits_granted = CASE WHEN ? = 1 OR starter_credits_granted = 1 THEN 1 ELSE 0 END, updated_at = ?
+    WHERE email = ? COLLATE NOCASE
+  `).run(sub, starterGranted ? 1 : 0, now, normalized);
+}
+
+/** Mark an existing application approved by email, or no-op if none exists. */
+export function approveBetaApplicationByEmail(email: string, reviewedBy: string): boolean {
+  const result = db.prepare(`
+    UPDATE beta_applications
+    SET status = 'approved', reviewed_at = ?, reviewed_by = ?
+    WHERE email = ? COLLATE NOCASE AND status != 'approved'
+  `).run(new Date().toISOString(), reviewedBy, email.trim().toLowerCase());
+  return result.changes > 0;
+}
+
+export function findBetaInviteSub(email: string): string | null {
+  const row = db.prepare(`SELECT sub FROM beta_invites WHERE email = ? COLLATE NOCASE`)
+    .get(email.trim().toLowerCase()) as { sub: string } | undefined;
+  return row?.sub ?? null;
+}
+
+export function listApprovedBetaEmails(): string[] {
+  const fromApps = db.prepare(`SELECT email FROM beta_applications WHERE status = 'approved'`).all() as Array<{ email: string }>;
+  const fromInvites = db.prepare(`SELECT email FROM beta_invites`).all() as Array<{ email: string }>;
+  return [...new Set([...fromApps, ...fromInvites].map((row) => row.email.toLowerCase()))];
 }

@@ -103,6 +103,10 @@ export async function confirmPasswordReset(token: string, password: string): Pro
   return apiCall('/auth/password-reset/confirm', 'POST', { token, password });
 }
 
+export async function acceptInvite(token: string, password: string): Promise<{ user: unknown }> {
+  return apiCall<{ user: unknown }>('/auth/accept-invite', 'POST', { token, password });
+}
+
 export async function login(
   email: string,
   password: string,

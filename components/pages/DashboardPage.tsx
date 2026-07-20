@@ -95,7 +95,7 @@ function aggregatePdfMetrics(metricsList: PdfMetrics[]): PdfMetrics | null {
 
 export const DashboardPage: React.FC = () => {
   const { user, idToken, isAuthenticated, googleIdentityReady } = useAuth();
-  const { balance, betaAccess, applyBalance, refreshBalance, startCheckout } = useCredits();
+  const { balance, applyBalance, refreshBalance, startCheckout } = useCredits();
 
   const [jobs, setJobs] = useState<TranslationJob[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -527,7 +527,7 @@ export const DashboardPage: React.FC = () => {
       // Client-side estimate is only a pre-check to surface a top-up prompt
       // early; the server computes and charges the authoritative amount.
       const cost = modalPriceEstimate.translationCost;
-      if (!betaAccess && balance < cost - 0.001) {
+      if (balance < cost - 0.001) {
         setIsBuyCreditsOpen(true);
         return;
       }
@@ -557,7 +557,6 @@ export const DashboardPage: React.FC = () => {
     isAuthenticated,
     user,
     balance,
-    betaAccess,
     beginTranslationBatch,
     closeLanguageModal,
     isStartingFromModal,

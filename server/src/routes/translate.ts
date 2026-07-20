@@ -5,7 +5,6 @@ import { rateLimit } from '../middleware/rateLimit.js';
 import { translatePattern } from '../services/gemini.js';
 import { addCredits, deductCredits, getBalance } from '../services/creditStore.js';
 import { computeDocumentMetrics, translationCostFromMetrics } from '../services/pricing.js';
-import { hasActiveBetaAccess } from '../services/betaApplicationStore.js';
 import { externalErrorStatus } from '../services/externalDeadline.js';
 import {
   acquireTranslationLease,
@@ -42,7 +41,7 @@ function uploadPatternSafe(req: Request, res: Response, next: NextFunction): voi
 }
 
 router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req: Request, res: Response) => {
-  const { userSub, userEmail } = req as AuthenticatedRequest;
+  const { userSub } = req as AuthenticatedRequest;
   const file = req.file;
   const language = req.body?.language;
   const sourceLanguage: string | undefined = req.body?.sourceLanguage || undefined;
@@ -83,7 +82,7 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
   let cost: number;
   try {
     const metrics = await computeDocumentMetrics(file.buffer, file.mimetype, file.originalname);
-    cost = hasActiveBetaAccess(userEmail) ? 0 : translationCostFromMetrics(metrics);
+    cost = translationCostFromMetrics(metrics);
   } catch (err) {
     console.error('[translate] Failed to analyze document for pricing:', err);
     res.status(400).json({ error: 'Could not read the document.' });

@@ -19,7 +19,6 @@ import { generateCoverThumbnailForPdf } from '../services/coverThumbnail.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 import { deductCredits, addCredits, getBalance } from '../services/creditStore.js';
 import { chatUnlockCost } from '../services/pricing.js';
-import { hasActiveBetaAccess } from '../services/betaApplicationStore.js';
 import { boundedString, isStringWithin } from '../services/requestValidation.js';
 
 const router = Router();
@@ -285,7 +284,7 @@ router.post('/:id/chat', (req, res: Response) => {
 
 router.post('/:id/chat/unlock', unlockRateLimit, (req, res: Response) => {
   try {
-    const { userSub, userEmail } = req as unknown as AuthenticatedRequest;
+    const { userSub } = req as unknown as AuthenticatedRequest;
     const id = String(req.params.id);
     const by = Number(req.body?.by);
     if (!Number.isInteger(by) || by <= 0 || by > 1000) {
@@ -294,7 +293,7 @@ router.post('/:id/chat/unlock', unlockRateLimit, (req, res: Response) => {
     }
 
     // Charge for the extra chat allowance server-side before granting it.
-    const cost = hasActiveBetaAccess(userEmail) ? 0 : chatUnlockCost(by);
+    const cost = chatUnlockCost(by);
     const { ok, balance } = cost === 0
       ? { ok: true, balance: getBalance(userSub) }
       : deductCredits(userSub, cost);

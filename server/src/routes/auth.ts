@@ -1,6 +1,7 @@
 import { Router, type Response } from 'express';
 import { OAuth2Client } from 'google-auth-library';
 import {
+  acceptInvite,
   authenticateEmailAccount,
   createEmailAccount,
   issuePasswordResetToken,
@@ -171,6 +172,23 @@ router.post('/password-reset/confirm', recoveryRateLimit, async (req, res) => {
     return void res.status(400).json({ error: 'This password-reset link is invalid or expired.' });
   }
   res.json({ ok: true });
+});
+
+router.post('/accept-invite', recoveryRateLimit, async (req, res) => {
+  const token = typeof req.body?.token === 'string' ? req.body.token : '';
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  if (password.length < 10 || password.length > 128) {
+    return void res.status(400).json({ error: 'Password must be between 10 and 128 characters.' });
+  }
+  if (!token) {
+    return void res.status(400).json({ error: 'This invite link is invalid or expired.' });
+  }
+  const user = await acceptInvite(token, password);
+  if (!user) {
+    return void res.status(400).json({ error: 'This invite link is invalid or expired.' });
+  }
+  setSessionCookie(res, { ...user, identityProvider: 'email', emailVerified: true });
+  res.json({ user });
 });
 
 export default router;

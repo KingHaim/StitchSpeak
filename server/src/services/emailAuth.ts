@@ -20,7 +20,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS email_auth_tokens (
     token_hash TEXT PRIMARY KEY,
     sub TEXT NOT NULL,
-    purpose TEXT NOT NULL CHECK (purpose IN ('verify', 'reset')),
+    purpose TEXT NOT NULL CHECK (purpose IN ('verify', 'reset', 'invite')),
     expires_at INTEGER NOT NULL,
     created_at INTEGER NOT NULL
   );
@@ -39,10 +39,35 @@ if (!accountColumns.has('session_version')) {
   db.exec('ALTER TABLE email_accounts ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0');
 }
 
+// Older DBs only allowed verify|reset; recreate so invite tokens are valid.
+const tokenTableSql = (
+  db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'email_auth_tokens'`).get() as
+    | { sql: string }
+    | undefined
+)?.sql ?? '';
+if (tokenTableSql && !tokenTableSql.includes("'invite'")) {
+  db.exec(`
+    CREATE TABLE email_auth_tokens_new (
+      token_hash TEXT PRIMARY KEY,
+      sub TEXT NOT NULL,
+      purpose TEXT NOT NULL CHECK (purpose IN ('verify', 'reset', 'invite')),
+      expires_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    INSERT INTO email_auth_tokens_new (token_hash, sub, purpose, expires_at, created_at)
+      SELECT token_hash, sub, purpose, expires_at, created_at FROM email_auth_tokens;
+    DROP TABLE email_auth_tokens;
+    ALTER TABLE email_auth_tokens_new RENAME TO email_auth_tokens;
+    CREATE INDEX IF NOT EXISTS idx_email_auth_tokens_sub ON email_auth_tokens(sub, purpose);
+  `);
+}
+
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 const SCRYPT_KEY_LENGTH = 64;
 const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_TTL_MS = 60 * 60 * 1000;
+const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+type AuthTokenPurpose = 'verify' | 'reset' | 'invite';
 
 export interface EmailAccount {
   sub: string;
@@ -106,9 +131,43 @@ export async function createEmailAccount(email: string, password: string, name?:
   return { sub, email: normalizedEmail, ...(cleanName ? { name: cleanName } : {}), emailVerified: false, sessionVersion: 0 };
 }
 
+export function findEmailAccountByEmail(email: string): EmailAccount | null {
+  const row = db.prepare('SELECT * FROM email_accounts WHERE email = ?').get(email.trim().toLowerCase()) as Record<string, unknown> | undefined;
+  return row ? publicAccount(row) : null;
+}
+
+/** True when the account still needs to accept an invite (no usable password yet). */
+export function emailAccountNeedsPassword(email: string): boolean {
+  const row = db.prepare('SELECT password_hash FROM email_accounts WHERE email = ?')
+    .get(email.trim().toLowerCase()) as { password_hash: string | null } | undefined;
+  if (!row) return false;
+  const hash = row.password_hash == null ? '' : String(row.password_hash);
+  return hash.length === 0;
+}
+
+/**
+ * Create an invited account with no password. The user sets one via the invite link.
+ * Empty password_hash is intentional — login rejects it until acceptInvite runs.
+ */
+export function createInvitedEmailAccount(email: string, name?: string): EmailAccount {
+  const normalizedEmail = email.trim().toLowerCase();
+  const cleanName = name?.trim().slice(0, 80) || undefined;
+  const sub = `email:${crypto.randomUUID()}`;
+  try {
+    db.prepare('INSERT INTO email_accounts(sub,email,name,password_hash,email_verified,session_version,created_at) VALUES(?,?,?,?,0,0,?)')
+      .run(sub, normalizedEmail, cleanName ?? null, '', Date.now());
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('UNIQUE')) throw new Error('EMAIL_EXISTS', { cause: err });
+    throw err;
+  }
+  return { sub, email: normalizedEmail, ...(cleanName ? { name: cleanName } : {}), emailVerified: false, sessionVersion: 0 };
+}
+
 export async function authenticateEmailAccount(email: string, password: string): Promise<EmailAccount | null> {
   const row = db.prepare('SELECT * FROM email_accounts WHERE email = ?').get(email.trim().toLowerCase()) as Record<string, unknown> | undefined;
-  if (!row || !(await passwordMatches(password, String(row.password_hash)))) return null;
+  if (!row) return null;
+  const stored = row.password_hash == null ? '' : String(row.password_hash);
+  if (!stored || !(await passwordMatches(password, stored))) return null;
   return publicAccount(row);
 }
 
@@ -146,7 +205,7 @@ function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-function issueToken(sub: string, purpose: 'verify' | 'reset', ttlMs: number): string {
+function issueToken(sub: string, purpose: AuthTokenPurpose, ttlMs: number): string {
   const token = crypto.randomBytes(32).toString('base64url');
   const now = Date.now();
   const tx = db.transaction(() => {
@@ -162,14 +221,21 @@ export function issueVerificationToken(account: EmailAccount): string {
   return issueToken(account.sub, 'verify', VERIFY_TTL_MS);
 }
 
+export function issueInviteToken(account: EmailAccount): string {
+  return issueToken(account.sub, 'invite', INVITE_TTL_MS);
+}
+
 export function issuePasswordResetToken(email: string): { account: EmailAccount; token: string } | null {
   const row = db.prepare('SELECT * FROM email_accounts WHERE email = ?').get(email.trim().toLowerCase()) as Record<string, unknown> | undefined;
   if (!row) return null;
+  const stored = row.password_hash == null ? '' : String(row.password_hash);
+  // Invited accounts without a password use the invite flow, not password reset.
+  if (!stored) return null;
   const account = publicAccount(row);
   return { account, token: issueToken(account.sub, 'reset', RESET_TTL_MS) };
 }
 
-function consumeToken(token: string, purpose: 'verify' | 'reset'): { sub: string } | null {
+function consumeToken(token: string, purpose: AuthTokenPurpose): { sub: string } | null {
   const row = db.prepare('SELECT sub, expires_at FROM email_auth_tokens WHERE token_hash = ? AND purpose = ?')
     .get(hashToken(token), purpose) as { sub: string; expires_at: number } | undefined;
   if (!row || row.expires_at <= Date.now()) {
@@ -196,6 +262,19 @@ export async function resetPasswordWithToken(token: string, password: string): P
     .run(passwordHash, consumed.sub);
   db.prepare('DELETE FROM email_auth_tokens WHERE sub = ?').run(consumed.sub);
   return result.changes === 1;
+}
+
+export async function acceptInvite(token: string, password: string): Promise<EmailAccount | null> {
+  const consumed = consumeToken(token, 'invite');
+  if (!consumed) return null;
+  const passwordHash = await hashPassword(password);
+  const result = db.prepare(
+    'UPDATE email_accounts SET password_hash = ?, email_verified = 1, session_version = session_version + 1 WHERE sub = ?',
+  ).run(passwordHash, consumed.sub);
+  if (result.changes !== 1) return null;
+  db.prepare('DELETE FROM email_auth_tokens WHERE sub = ?').run(consumed.sub);
+  const row = db.prepare('SELECT * FROM email_accounts WHERE sub = ?').get(consumed.sub) as Record<string, unknown> | undefined;
+  return row ? publicAccount(row) : null;
 }
 
 export function deleteEmailAccount(sub: string): boolean {

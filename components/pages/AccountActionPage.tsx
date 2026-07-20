@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { confirmPasswordReset, verifyEmail } from '../../services/api';
+import { acceptInvite, confirmPasswordReset, verifyEmail } from '../../services/api';
 
 interface AccountActionPageProps {
-  mode: 'verify' | 'reset';
+  mode: 'verify' | 'reset' | 'invite';
 }
 
 export const AccountActionPage: React.FC<AccountActionPageProps> = ({ mode }) => {
@@ -29,36 +29,56 @@ export const AccountActionPage: React.FC<AccountActionPageProps> = ({ mode }) =>
       });
   }, [mode, token]);
 
-  const submitReset = async (event: React.FormEvent) => {
+  const submitPassword = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!token) {
       setStatus('error');
-      setMessage('This password-reset link is incomplete.');
+      setMessage(mode === 'invite' ? 'This invite link is incomplete.' : 'This password-reset link is incomplete.');
       return;
     }
     setStatus('working');
     try {
-      await confirmPasswordReset(token, password);
-      setStatus('success');
-      setMessage('Your password has been changed. Sign in with the new password.');
+      if (mode === 'invite') {
+        await acceptInvite(token, password);
+        setStatus('success');
+        setMessage('Your password is set and your account is ready.');
+      } else {
+        await confirmPasswordReset(token, password);
+        setStatus('success');
+        setMessage('Your password has been changed. Sign in with the new password.');
+      }
     } catch (err) {
       setStatus('error');
-      setMessage(err instanceof Error ? err.message : 'This password-reset link is invalid or expired.');
+      setMessage(
+        err instanceof Error
+          ? err.message
+          : mode === 'invite'
+            ? 'This invite link is invalid or expired.'
+            : 'This password-reset link is invalid or expired.',
+      );
     }
   };
+
+  const title =
+    mode === 'verify' ? 'Verify your email' : mode === 'invite' ? 'Create your password' : 'Choose a new password';
+  const passwordLabel = mode === 'invite' ? 'Password' : 'New password';
+  const submitLabel = mode === 'invite' ? 'Create password' : 'Reset password';
 
   return (
     <main className="flex min-h-[100dvh] items-center justify-center bg-background px-4 py-10 text-on-surface">
       <section className="w-full max-w-md rounded-3xl border border-outline-variant/20 bg-surface-container-lowest p-6 shadow-xl sm:p-8">
         <img src="/logo.png" alt="" className="mb-6 h-12 w-12" />
-        <h1 className="font-headline text-3xl font-bold">
-          {mode === 'verify' ? 'Verify your email' : 'Choose a new password'}
-        </h1>
+        <h1 className="font-headline text-3xl font-bold">{title}</h1>
+        {mode === 'invite' && status !== 'success' && (
+          <p className="mt-3 text-sm text-on-surface-variant">
+            Choose a password to finish joining the StitchSpeak designer beta. Your starter credits are already on the account.
+          </p>
+        )}
 
-        {mode === 'reset' && status !== 'success' && (
-          <form onSubmit={submitReset} className="mt-6 space-y-4">
+        {(mode === 'reset' || mode === 'invite') && status !== 'success' && (
+          <form onSubmit={submitPassword} className="mt-6 space-y-4">
             <label className="block text-sm font-medium">
-              New password
+              {passwordLabel}
               <input
                 type="password"
                 required
@@ -71,7 +91,7 @@ export const AccountActionPage: React.FC<AccountActionPageProps> = ({ mode }) =>
               />
             </label>
             <button disabled={status === 'working'} className="min-h-12 w-full rounded-xl bg-primary px-5 py-3 font-bold text-on-primary disabled:opacity-50">
-              {status === 'working' ? 'Saving…' : 'Reset password'}
+              {status === 'working' ? 'Saving…' : submitLabel}
             </button>
           </form>
         )}

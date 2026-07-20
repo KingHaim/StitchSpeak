@@ -64,6 +64,7 @@ const App: React.FC = () => {
 
   if (pathname === '/verify-email') return <AccountActionPage mode="verify" />;
   if (pathname === '/reset-password') return <AccountActionPage mode="reset" />;
+  if (pathname === '/accept-invite') return <AccountActionPage mode="invite" />;
 
   // The campaign is a public destination and must not disappear for people
   // who already have a StitchSpeak session.

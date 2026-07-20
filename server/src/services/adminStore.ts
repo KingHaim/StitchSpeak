@@ -78,10 +78,44 @@ export function adminOverview(): { members: number; uploads: number; credits: nu
   return { members: members.count, uploads: totals.uploads, credits: totals.credits, revenueCents: revenue.revenueCents, storageBytes: totals.storageBytes };
 }
 
-export function listAdminMembers(query = ''): AdminMember[] {
+export type AdminMemberSort = 'balance' | 'creditsSpent' | 'lastActivity';
+
+export function listAdminMembers(options: {
+  query?: string;
+  sort?: AdminMemberSort;
+  dir?: 'asc' | 'desc';
+  betaOnly?: boolean;
+  betaEmails?: string[];
+} | string = ''): AdminMember[] {
+  const opts = typeof options === 'string' ? { query: options } : options;
+  const query = opts.query ?? '';
   const q = `%${query.trim().toLowerCase()}%`;
-  const rows = db.prepare(`${memberSelect} WHERE (? = '%%' OR LOWER(COALESCE(c.email, '')) LIKE ? OR LOWER(u.sub) LIKE ?) ORDER BY last_activity DESC LIMIT 250`).all(q, q, q) as Record<string, unknown>[];
+  const sortColumn =
+    opts.sort === 'balance' ? 'balance'
+      : opts.sort === 'creditsSpent' ? 'credits_spent'
+        : 'last_activity';
+  const dir = opts.dir === 'asc' ? 'ASC' : 'DESC';
+  const betaEmails = (opts.betaEmails ?? []).map((email) => email.trim().toLowerCase()).filter(Boolean);
+  const betaOnly = Boolean(opts.betaOnly && betaEmails.length > 0);
+
+  let sql = `${memberSelect} WHERE (? = '%%' OR LOWER(COALESCE(c.email, '')) LIKE ? OR LOWER(u.sub) LIKE ?)`;
+  const params: unknown[] = [q, q, q];
+  if (betaOnly) {
+    const placeholders = betaEmails.map(() => '?').join(',');
+    sql += ` AND LOWER(COALESCE(c.email, '')) IN (${placeholders})`;
+    params.push(...betaEmails);
+  }
+  sql += ` ORDER BY ${sortColumn} ${dir} LIMIT 250`;
+
+  const rows = db.prepare(sql).all(...params) as Record<string, unknown>[];
   return rows.map(mapMember);
+}
+
+export function findAdminMemberByEmail(email: string): AdminMember | null {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return null;
+  const row = db.prepare(`${memberSelect} WHERE LOWER(COALESCE(c.email, '')) = ?`).get(normalized) as Record<string, unknown> | undefined;
+  return row ? mapMember(row) : null;
 }
 
 export function getAdminMember(sub: string) {
@@ -93,10 +127,10 @@ export function getAdminMember(sub: string) {
   return { member: mapMember(row), uploads, orders, adjustments };
 }
 
-export function adjustMemberCredits(sub: string, delta: number, reason: string, actorEmail: string): number {
+export function adjustMemberCredits(sub: string, delta: number, reason: string, actorEmail: string, email?: string): number {
   return db.transaction(() => {
     const before = Number((db.prepare('SELECT balance FROM credits WHERE sub=?').get(sub) as { balance?: number } | undefined)?.balance ?? 0);
-    db.prepare(`INSERT INTO credits(sub,balance,email,updated_at) VALUES(?,?,NULL,?) ON CONFLICT(sub) DO UPDATE SET balance=MAX(0,ROUND(balance+excluded.balance,2)),updated_at=excluded.updated_at`).run(sub, delta, Date.now());
+    db.prepare(`INSERT INTO credits(sub,balance,email,updated_at) VALUES(?,?,?,?) ON CONFLICT(sub) DO UPDATE SET balance=MAX(0,ROUND(balance+excluded.balance,2)), email=COALESCE(excluded.email, credits.email), updated_at=excluded.updated_at`).run(sub, delta, email ?? null, Date.now());
     const after = Number((db.prepare('SELECT balance FROM credits WHERE sub=?').get(sub) as { balance: number }).balance);
     db.prepare(`INSERT INTO admin_credit_adjustments(sub,delta,balance_before,balance_after,reason,actor_email,created_at) VALUES(?,?,?,?,?,?,?)`).run(sub, after - before, before, after, reason, actorEmail, Date.now());
     return after;

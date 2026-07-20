@@ -11,8 +11,6 @@ const applicationRateLimit = rateLimit({
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const INSTAGRAM_PATTERN = /^@?[A-Za-z0-9._]{1,30}$/;
-const allowedAudienceSizes = new Set(['Under 1,000', '1,000–5,000', '5,000–10,000', '10,000–50,000', '50,000+']);
-const allowedContentFocus = new Set(['Pattern design', 'Knitting', 'Crochet', 'Knitting and crochet', 'Fiber arts', 'Crafts and lifestyle', 'Other']);
 
 function text(value: unknown, maxLength: number): string {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
@@ -33,14 +31,6 @@ router.post('/', applicationRateLimit, (req: Request, res: Response) => {
   const email = text(req.body?.email, 254).toLowerCase();
   const rawInstagramHandle = text(req.body?.instagramHandle, 31);
   const instagramHandle = rawInstagramHandle.startsWith('@') ? rawInstagramHandle : `@${rawInstagramHandle}`;
-  const audienceSize = text(req.body?.audienceSize, 40);
-  const contentFocus = text(req.body?.contentFocus, 60);
-  const patternRightsConfirmed = req.body?.patternRightsConfirmed === true;
-  const patternToTranslate = text(req.body?.patternToTranslate, 300);
-  const targetLanguageMarket = text(req.body?.targetLanguageMarket, 160);
-  const salesChannels = text(req.body?.salesChannels, 300);
-  const promotionPlan = text(req.body?.promotionPlan, 600);
-  const testingInterest = text(req.body?.testingInterest, 600);
   const promotionConfirmed = req.body?.promotionConfirmed === true;
   const rawAttribution = req.body?.attribution;
   const attribution = rawAttribution && typeof rawAttribution === 'object' && !Array.isArray(rawAttribution)
@@ -62,22 +52,6 @@ router.post('/', applicationRateLimit, (req: Request, res: Response) => {
     res.status(400).json({ error: 'Please enter a valid Instagram handle.' });
     return;
   }
-  if (!allowedAudienceSizes.has(audienceSize) || !allowedContentFocus.has(contentFocus)) {
-    res.status(400).json({ error: 'Please tell us about your Instagram audience and content.' });
-    return;
-  }
-  if (!patternRightsConfirmed) {
-    res.status(400).json({ error: 'Please confirm you own the pattern rights or have translation permission.' });
-    return;
-  }
-  if (!patternToTranslate || !targetLanguageMarket || !salesChannels) {
-    res.status(400).json({ error: 'Please tell us which pattern, target market, and sales channels you want to use for beta.' });
-    return;
-  }
-  if (promotionPlan.length < 20) {
-    res.status(400).json({ error: 'Please use at least 20 characters to explain how you would share the process publicly.' });
-    return;
-  }
   if (!promotionConfirmed) {
     res.status(400).json({ error: 'Please accept the beta participation agreement.' });
     return;
@@ -87,14 +61,14 @@ router.post('/', applicationRateLimit, (req: Request, res: Response) => {
     name,
     email,
     instagramHandle,
-    audienceSize,
-    contentFocus,
-    patternRightsConfirmed,
-    patternToTranslate,
-    targetLanguageMarket,
-    salesChannels,
-    promotionPlan,
-    testingInterest,
+    audienceSize: '',
+    contentFocus: '',
+    patternRightsConfirmed: false,
+    patternToTranslate: '',
+    targetLanguageMarket: '',
+    salesChannels: '',
+    promotionPlan: '',
+    testingInterest: '',
     promotionConfirmed,
     utmSource,
     utmMedium,

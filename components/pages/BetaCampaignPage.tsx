@@ -1,4 +1,4 @@
-import React, { useRef, useState, type FormEvent } from 'react';
+import React, { useState, type FormEvent } from 'react';
 import { submitBetaApplication, type BetaApplicationInput, type BetaAttributionInput } from '../../services/betaCampaignService';
 
 const DEMOS = [
@@ -24,14 +24,6 @@ const INITIAL_FORM: BetaApplicationInput = {
   name: '',
   email: '',
   instagramHandle: '',
-  audienceSize: '',
-  contentFocus: '',
-  patternRightsConfirmed: false,
-  patternToTranslate: '',
-  targetLanguageMarket: '',
-  salesChannels: '',
-  promotionPlan: '',
-  testingInterest: '',
   promotionConfirmed: false,
   website: '',
 };
@@ -100,7 +92,6 @@ export const BetaCampaignPage: React.FC = () => {
   const [attribution] = useState(readBetaAttribution);
   const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
-  const promotionPlanRef = useRef<HTMLTextAreaElement>(null);
 
   const update = <K extends keyof BetaApplicationInput>(key: K, value: BetaApplicationInput[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -109,14 +100,6 @@ export const BetaCampaignPage: React.FC = () => {
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const promotionLength = form.promotionPlan.trim().length;
-    if (promotionLength < 20) {
-      const remaining = 20 - promotionLength;
-      setStatus('error');
-      setMessage(`Add ${remaining} more character${remaining === 1 ? '' : 's'} describing how you would share the process publicly.`);
-      promotionPlanRef.current?.focus();
-      return;
-    }
     if (!event.currentTarget.checkValidity()) {
       event.currentTarget.reportValidity();
       return;
@@ -268,9 +251,9 @@ export const BetaCampaignPage: React.FC = () => {
           <div className="mx-auto grid max-w-[1200px] gap-12 lg:grid-cols-[0.72fr_1.28fr] lg:gap-20">
             <div>
               <h2 className="font-headline text-4xl font-semibold leading-tight tracking-[-0.03em] sm:text-5xl">Test it. Translate it. Tell your audience.</h2>
-              <p className="mt-5 text-lg leading-relaxed text-on-surface-variant">We&apos;re inviting independent pattern designers to test StitchSpeak on real releases. Approved testers receive beta access for the campaign in exchange for sharing an honest experience with their audience.</p>
+              <p className="mt-5 text-lg leading-relaxed text-on-surface-variant">We&apos;re inviting independent pattern designers to test StitchSpeak on real releases. Approved testers receive starter credits and an invite to create an account in exchange for feedback and sharing an honest experience with their audience.</p>
               <ol className="mt-8 space-y-5">
-                {['Apply with your brand and how you would reach new markets', 'We review your patterns, audience, and release plans', 'Selected designers receive beta access and campaign guidelines'].map((step, index) => (
+                {['Apply with your name, email, and Instagram', 'We review your social presence manually', 'Selected designers receive an invite email with 50 starter credits'].map((step, index) => (
                   <li key={step} className="flex gap-4 text-sm leading-relaxed">
                     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-fixed font-mono text-xs font-bold text-on-primary-fixed">{index + 1}</span>
                     <span className="pt-1">{step}</span>
@@ -299,47 +282,11 @@ export const BetaCampaignPage: React.FC = () => {
                     <label className="grid gap-2 text-sm font-bold sm:col-span-2">Instagram handle
                       <input required autoComplete="off" maxLength={31} placeholder="@yourhandle" value={form.instagramHandle} onChange={(e) => update('instagramHandle', e.target.value)} className="rounded-lg border border-outline bg-surface px-4 py-3 font-normal outline-none transition placeholder:text-outline focus:border-primary focus:ring-2 focus:ring-primary/20" />
                     </label>
-                    <label className="grid gap-2 text-sm font-bold">Instagram audience
-                      <select required value={form.audienceSize} onChange={(e) => update('audienceSize', e.target.value)} className="rounded-lg border border-outline bg-surface px-4 py-3 font-normal outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
-                        <option value="">Choose audience size</option>
-                        {['Under 1,000', '1,000–5,000', '5,000–10,000', '10,000–50,000', '50,000+'].map((value) => <option key={value}>{value}</option>)}
-                      </select>
-                    </label>
-                    <label className="grid gap-2 text-sm font-bold">What do you create?
-                      <select required value={form.contentFocus} onChange={(e) => update('contentFocus', e.target.value)} className="rounded-lg border border-outline bg-surface px-4 py-3 font-normal outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
-                        <option value="">Choose your main focus</option>
-                        {['Pattern design', 'Knitting', 'Crochet', 'Knitting and crochet', 'Fiber arts', 'Crafts and lifestyle', 'Other'].map((value) => <option key={value}>{value}</option>)}
-                      </select>
-                    </label>
-                    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-outline-variant/30 bg-surface p-4 text-sm leading-relaxed sm:col-span-2">
-                      <input required type="checkbox" checked={form.patternRightsConfirmed} onChange={(e) => update('patternRightsConfirmed', e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-primary" />
-                      <span><strong>Do you own the pattern rights?</strong> I confirm I own this pattern or have permission to translate and publish it in another language.</span>
-                    </label>
-                    <label className="grid gap-2 text-sm font-bold sm:col-span-2">What pattern would you translate?
-                      <textarea required rows={3} maxLength={300} placeholder="Share the pattern name, format, craft, and whether it is already published or planned for a release." value={form.patternToTranslate} onChange={(e) => update('patternToTranslate', e.target.value)} className="resize-y rounded-lg border border-outline bg-surface px-4 py-3 font-normal outline-none transition placeholder:text-outline focus:border-primary focus:ring-2 focus:ring-primary/20" />
-                    </label>
-                    <label className="grid gap-2 text-sm font-bold">What target language/market?
-                      <input required maxLength={160} placeholder="French / France, German / DACH..." value={form.targetLanguageMarket} onChange={(e) => update('targetLanguageMarket', e.target.value)} className="rounded-lg border border-outline bg-surface px-4 py-3 font-normal outline-none transition placeholder:text-outline focus:border-primary focus:ring-2 focus:ring-primary/20" />
-                    </label>
-                    <label className="grid gap-2 text-sm font-bold">Where do you sell patterns?
-                      <input required maxLength={300} placeholder="Ravelry, Etsy, your website, Shopify..." value={form.salesChannels} onChange={(e) => update('salesChannels', e.target.value)} className="rounded-lg border border-outline bg-surface px-4 py-3 font-normal outline-none transition placeholder:text-outline focus:border-primary focus:ring-2 focus:ring-primary/20" />
-                    </label>
-                    <label className="grid gap-2 text-sm font-bold sm:col-span-2">How would you share the process publicly? <span className="font-normal text-on-surface-variant">20 characters minimum</span>
-                      <textarea ref={promotionPlanRef} required rows={3} minLength={20} maxLength={600} aria-invalid={form.promotionPlan.length > 0 && form.promotionPlan.trim().length < 20} aria-describedby="promotion-plan-help" placeholder="For example: a Reel showing your translation workflow, a launch post for the new language, or an honest post-release review..." value={form.promotionPlan} onChange={(e) => update('promotionPlan', e.target.value)} className="resize-y rounded-lg border border-outline bg-surface px-4 py-3 font-normal outline-none transition placeholder:text-outline aria-invalid:border-error focus:border-primary focus:ring-2 focus:ring-primary/20" />
-                      <span id="promotion-plan-help" className={`text-xs font-normal ${form.promotionPlan.length > 0 && form.promotionPlan.trim().length < 20 ? 'text-error' : 'text-on-surface-variant'}`}>
-                        {form.promotionPlan.trim().length < 20
-                          ? `${20 - form.promotionPlan.trim().length} more characters needed`
-                          : `${form.promotionPlan.length}/600 characters`}
-                      </span>
-                    </label>
-                    <label className="grid gap-2 text-sm font-bold sm:col-span-2">Why do you want to test StitchSpeak? <span className="font-normal text-on-surface-variant">Optional</span>
-                      <textarea rows={3} maxLength={600} placeholder="Tell us which languages or markets you want to reach, or what you hope to test before a release." value={form.testingInterest} onChange={(e) => update('testingInterest', e.target.value)} className="resize-y rounded-lg border border-outline bg-surface px-4 py-3 font-normal outline-none transition placeholder:text-outline focus:border-primary focus:ring-2 focus:ring-primary/20" />
-                    </label>
                   </div>
 
                   <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-xl border border-primary/20 bg-primary-fixed/35 p-4 text-sm leading-relaxed">
                     <input required type="checkbox" checked={form.promotionConfirmed} onChange={(e) => update('promotionConfirmed', e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-primary" />
-                    <span><strong>Beta participation agreement:</strong> I understand that approved designers can use StitchSpeak during the beta in exchange for sharing their experience with their audience. Beta access may be revoked if I do not fulfill this commitment.</span>
+                    <span><strong>Beta participation agreement:</strong> I understand that approved designers receive starter credits and account access in exchange for feedback and sharing an honest experience with their audience (anonymized where appropriate). Access may be limited or revoked if this commitment is not met. See our <a href="/terms.html" className="underline" target="_blank" rel="noreferrer">Terms</a>.</span>
                   </label>
 
                   <label className="absolute -left-[9999px]" aria-hidden="true">Website
@@ -351,7 +298,7 @@ export const BetaCampaignPage: React.FC = () => {
                   <button disabled={status === 'submitting'} type="submit" className="mt-6 flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-primary px-6 py-3.5 font-bold text-on-primary transition hover:bg-on-primary-fixed-variant active:scale-[0.99] disabled:cursor-wait disabled:opacity-70">
                     {status === 'submitting' ? <><Icon name="hourglass_top" className="animate-pulse text-xl" /> Sending application…</> : 'Apply for beta access'}
                   </button>
-                  <p className="mt-3 text-center text-xs leading-relaxed text-on-surface-variant">Applications are reviewed by the StitchSpeak team before access is granted.</p>
+                  <p className="mt-3 text-center text-xs leading-relaxed text-on-surface-variant">Applications are reviewed by the StitchSpeak team before an invite is sent.</p>
                 </form>
               )}
             </div>

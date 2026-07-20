@@ -59,4 +59,17 @@ describe('email account security', () => {
     expect(auth.verifyEmailSession(session)).toBeNull();
     expect(await auth.authenticateEmailAccount(account.email, 'correct-horse-battery')).toBeNull();
   });
+
+  it('supports invite tokens that set a password and verify the account', async () => {
+    const invited = auth.createInvitedEmailAccount('invitee@example.com', 'Invitee');
+    expect(auth.emailAccountNeedsPassword('invitee@example.com')).toBe(true);
+    expect(await auth.authenticateEmailAccount('invitee@example.com', 'anything-long-enough')).toBeNull();
+
+    const token = auth.issueInviteToken(invited);
+    const accepted = await auth.acceptInvite(token, 'invite-password-ok');
+    expect(accepted?.emailVerified).toBe(true);
+    expect(auth.emailAccountNeedsPassword('invitee@example.com')).toBe(false);
+    expect(await auth.authenticateEmailAccount('invitee@example.com', 'invite-password-ok')).not.toBeNull();
+    expect(await auth.acceptInvite(token, 'another-password')).toBeNull();
+  });
 });
