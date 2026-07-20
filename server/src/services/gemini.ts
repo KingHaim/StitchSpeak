@@ -109,6 +109,7 @@ function getLanguageSpecificRules(language: string): string {
     - Bind Off (BO) -> Rem (Rematar puntos)
     - Place Marker (PM) -> pm (poner marcador)
     - purl front and back (pfb) -> Rft (reves por el frente y por detras)
+    - slip (sl) -> desl (deslizar) — NEVER use "des"
     - slip slip knit (SSK) -> ddD (deslizar, deslizar, derecho)
     - knit 2 together (k2tog) -> 2pjD (2 puntos juntos derecho)
     - yarn over (yo) -> H (hebra)
