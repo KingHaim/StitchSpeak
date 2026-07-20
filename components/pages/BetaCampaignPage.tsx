@@ -165,7 +165,7 @@ export const BetaCampaignPage: React.FC = () => {
         <section className="border-b border-outline-variant/10 bg-surface">
           <div className="mx-auto grid max-w-7xl divide-y divide-outline-variant/15 px-6 sm:px-8 md:grid-cols-3 md:divide-x md:divide-y-0">
             {[
-              ['language', '13 languages', 'Reach knitters beyond your home market'],
+              ['language', '14 languages', 'Reach knitters beyond your home market'],
               ['rule', 'Review before release', 'Check rows, repeats, measurements, and abbreviations before publishing'],
               ['folder_special', 'Your translation workspace', 'Keep every language version in one private library'],
             ].map(([icon, title, body]) => (

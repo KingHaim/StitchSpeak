@@ -102,7 +102,8 @@ const TRANSLATION_MODEL = 'gemini-3.1-pro-preview';
 const TRANSLATION_THINKING_CONFIG = { thinkingLevel: ThinkingLevel.LOW } as const;
 
 function getLanguageSpecificRules(language: string): string {
-  if (language.toLowerCase() === 'spanish') {
+  const normalized = language.toLowerCase();
+  if (normalized === 'spanish') {
     return `
     ### STRICT TERMINOLOGY MAPPINGS FOR SPANISH:
     - Cast On (CO) -> MO (Montar puntos)
@@ -116,6 +117,27 @@ function getLanguageSpecificRules(language: string): string {
     - Sweater -> Jersey (NEVER use "suéter" or "sweater")
     - LH needle -> Ag-i (Aguja izquierda)
     - RH needle -> Ag-d (Aguja derecha)
+    `;
+  }
+  if (normalized === 'korean') {
+    return `
+    ### STRICT TERMINOLOGY MAPPINGS FOR KOREAN:
+    - Use standard Korean knitting terminology and Hangul abbreviations throughout.
+    - Cast On (CO) -> 코잡기
+    - Bind Off / Cast Off (BO) -> 코막음
+    - knit (K) -> 겉뜨기 (겉)
+    - purl (P) -> 안뜨기 (안)
+    - yarn over (YO) -> 바늘비우기
+    - knit 2 together (k2tog) -> 2코 함께 겉뜨기
+    - slip slip knit (SSK) -> 2코 슬립 후 함께 겉뜨기 (SSK)
+    - slip (sl) -> 걸러뜨기
+    - Place Marker (PM) -> 마커 놓기
+    - stitch(es) -> 코
+    - row -> 단
+    - round -> 라운드 / 단
+    - Right Side (RS) -> 겉면
+    - Wrong Side (WS) -> 안면
+    - Keep size numbers, measurements, and chart symbols intact; translate surrounding instructional text into natural Korean.
     `;
   }
   return '';

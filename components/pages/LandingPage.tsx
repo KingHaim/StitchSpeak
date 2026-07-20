@@ -14,7 +14,7 @@ const scrollToId = (id: string) => {
 };
 
 const TRUST_POINTS = [
-  { icon: 'translate', title: '13 markets, one upload', text: 'Translate into any supported language' },
+  { icon: 'translate', title: '14 markets, one upload', text: 'Translate into any supported language' },
   { icon: 'verified', title: 'Made for patterns', text: 'Reviewed by knitters, not generic prose' },
   { icon: 'all_inclusive', title: 'Credits never expire', text: 'Use them when your next release is ready' },
 ];
@@ -23,7 +23,7 @@ const JOURNEY_STEPS = [
   {
     icon: 'upload_file',
     title: 'Upload once',
-    desc: 'Add your PDF, DOCX, TXT, or RTF file and choose one of 13 target languages.',
+    desc: 'Add your PDF, DOCX, TXT, or RTF file and choose one of 14 target languages.',
   },
   {
     icon: 'payments',
@@ -48,7 +48,7 @@ const JourneySection: React.FC = () => (
     <div className="mx-auto max-w-7xl">
       <div className="mb-10 max-w-2xl sm:mb-12">
         <h2 className="font-headline text-3xl font-bold sm:text-4xl">From one pattern to a wider market</h2>
-        <p className="mt-3 text-on-surface-variant">One upload, 13 language options, and a clear price before translation begins.</p>
+        <p className="mt-3 text-on-surface-variant">One upload, 14 language options, and a clear price before translation begins.</p>
       </div>
       <div className="grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-10">
         {JOURNEY_STEPS.map(({ icon, title, desc }, index) => (
@@ -546,7 +546,7 @@ export const LandingPage: React.FC = () => {
             <div className="max-w-2xl">
               <h2 className="font-headline text-3xl font-bold sm:text-4xl">Give your next pattern a bigger market.</h2>
               <p className="mt-3 max-w-xl text-on-primary/80">
-                Upload once, check the cost, and translate into any of 13 languages with terminology made for makers.
+                Upload once, check the cost, and translate into any of 14 languages with terminology made for makers.
               </p>
             </div>
             <button

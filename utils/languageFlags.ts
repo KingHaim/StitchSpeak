@@ -13,6 +13,7 @@ const CODE_TO_FLAG: Record<string, string> = {
   fi: '🇫🇮',
   pt: '🇵🇹',
   ja: '🇯🇵',
+  ko: '🇰🇷',
   ru: '🇷🇺',
 };
 

@@ -31,7 +31,7 @@ export const VariantB: React.FC = () => {
           <div className="mt-8 space-y-4">
             {[
               { icon: 'upload_file', label: 'PDF, DOCX, RTF, or text' },
-              { icon: 'language', label: '13 target languages' },
+              { icon: 'language', label: '14 target languages' },
               { icon: 'lock', label: 'Files stay private' },
             ].map((item) => (
               <div key={item.label} className="flex items-center gap-3 text-sm text-on-surface-variant">

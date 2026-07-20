@@ -41,7 +41,7 @@ export const VariantA: React.FC = () => {
               The soul of a <span className="text-primary">pattern</span>, translated.
             </h1>
             <p className="mb-8 max-w-xl text-lg leading-relaxed text-on-surface-variant">
-              Bridge international patterns and your needles. Abbreviations, charts, and construction notes stay precise across 13 languages.
+              Bridge international patterns and your needles. Abbreviations, charts, and construction notes stay precise across 14 languages.
             </p>
             <div className="flex flex-wrap gap-3">
               <button
