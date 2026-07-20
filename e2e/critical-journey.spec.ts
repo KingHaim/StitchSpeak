@@ -80,7 +80,7 @@ test('signed-in user can upload a pattern and review its translation estimate', 
   await expect(dialog.getByRole('button', { name: /Start translation/ })).toBeEnabled();
 });
 
-test('beta form explains a short promotion plan before submitting', async ({ page }) => {
+test('beta form requires the participation agreement before submitting', async ({ page }) => {
   let submissions = 0;
   await page.route('**/api/beta-applications', async (route) => {
     submissions += 1;
@@ -91,18 +91,11 @@ test('beta form explains a short promotion plan before submitting', async ({ pag
   await page.getByLabel('Name').fill('Jaime');
   await page.getByLabel('Email').fill('jaime@example.com');
   await page.getByLabel('Instagram handle').fill('@haimganancia');
-  await page.getByLabel('Instagram audience').selectOption({ label: '1,000–5,000' });
-  await page.getByLabel('What do you create?').selectOption('Other');
-  await page.getByLabel('What pattern would you translate?').fill('Weekend Scarf, a published knitting pattern');
-  await page.getByLabel('What target language/market?').fill('French / France');
-  await page.getByLabel('Where do you sell patterns?').fill('Ravelry and Etsy');
-  await page.getByLabel('How would you share the process publicly?').fill('Through stories');
-  await page.getByLabel(/Do you own the pattern rights/).check();
-  await page.getByLabel(/Beta participation agreement/).check();
-  await page.locator('#beta-form').getByRole('button', { name: 'Apply for free beta access' }).click();
+  await page.locator('#beta-form').getByRole('button', { name: 'Apply for beta access' }).click();
 
-  await expect(page.getByText('5 more characters needed')).toBeVisible();
-  await expect(page.getByRole('alert')).toContainText('Add 5 more characters');
+  const agreement = page.getByLabel(/Beta participation agreement/);
+  await expect(agreement).toHaveJSProperty('validity.valueMissing', true);
+  await expect(page.getByText('Your application is in review.')).not.toBeVisible();
   expect(submissions).toBe(0);
 });
 
@@ -117,15 +110,8 @@ test('beta form submits UTM attribution automatically', async ({ page }) => {
   await page.getByLabel('Name').fill('Jaime');
   await page.getByLabel('Email').fill('jaime@example.com');
   await page.getByLabel('Instagram handle').fill('@haimganancia');
-  await page.getByLabel('Instagram audience').selectOption({ label: '1,000–5,000' });
-  await page.getByLabel('What do you create?').selectOption('Pattern design');
-  await page.getByLabel('What pattern would you translate?').fill('Weekend Scarf, a published knitting pattern');
-  await page.getByLabel('What target language/market?').fill('French / France');
-  await page.getByLabel('Where do you sell patterns?').fill('Ravelry and Etsy');
-  await page.getByLabel('How would you share the process publicly?').fill('I would post a Reel and newsletter note about the translation workflow.');
-  await page.getByLabel(/Do you own the pattern rights/).check();
   await page.getByLabel(/Beta participation agreement/).check();
-  await page.locator('#beta-form').getByRole('button', { name: 'Apply for free beta access' }).click();
+  await page.locator('#beta-form').getByRole('button', { name: 'Apply for beta access' }).click();
 
   await expect(page.getByText('Your application is in review.')).toBeVisible();
   const submitted = payload as unknown as { attribution: { landingPage?: string } & Record<string, string> };
