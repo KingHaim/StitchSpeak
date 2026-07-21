@@ -11,7 +11,7 @@ import { FileThumbnail } from '../FileThumbnail';
 import { translatePatternStream, startChatSession, sendChatMessage } from '../../services/translationService';
 import { analyzeFile } from '../../services/fileAnalyzer';
 import { estimateBatchTranslationCost, estimateTranslationCost } from '../../services/pricingService';
-import { saveTranslation, loadPatternSource } from '../../services/historyService';
+import { saveTranslation, loadHistory, loadPatternSource } from '../../services/historyService';
 import {
   fetchPatternChatState,
   unlockPatternChatAllowance,
@@ -52,8 +52,22 @@ import type {
   PriceEstimate,
   CreditPackage,
   TranslationJob,
+  TranslationRecord,
   PendingTranslationStart,
 } from '../../types';
+
+/** One entry per file name — prefer the newest record that still has a source. */
+function uniquePatternsWithSource(records: TranslationRecord[]): TranslationRecord[] {
+  const byFile = new Map<string, TranslationRecord>();
+  for (const record of records) {
+    if (!record.hasSource) continue;
+    const existing = byFile.get(record.fileName);
+    if (!existing || record.timestamp > existing.timestamp) {
+      byFile.set(record.fileName, record);
+    }
+  }
+  return Array.from(byFile.values()).sort((a, b) => b.timestamp - a.timestamp);
+}
 
 type StudioExportFormat = 'pdf' | 'doc' | 'html' | 'txt';
 
@@ -125,6 +139,10 @@ export const DashboardPage: React.FC = () => {
   const [addTranslationHint, setAddTranslationHintState] = useState<AddTranslationHint | null>(
     () => readAddTranslationHint(),
   );
+  const [savedPatterns, setSavedPatterns] = useState<TranslationRecord[]>([]);
+  const [selectedPatternId, setSelectedPatternId] = useState('');
+  const [isLoadingPattern, setIsLoadingPattern] = useState(false);
+  const [patternSelectError, setPatternSelectError] = useState<string | null>(null);
 
   useEffect(() => {
     const sync = () => setAddTranslationHintState(readAddTranslationHint());
@@ -136,6 +154,22 @@ export const DashboardPage: React.FC = () => {
     clearAddTranslationHint();
     setAddTranslationHintState(null);
   }, []);
+
+  const patternsWithSource = useMemo(
+    () => uniquePatternsWithSource(savedPatterns),
+    [savedPatterns],
+  );
+
+  const refreshSavedPatterns = useCallback(() => {
+    if (!isAuthenticated) return;
+    loadHistory(idToken)
+      .then(({ records }) => setSavedPatterns(records))
+      .catch((err) => console.error('[translate] Failed to load saved patterns:', err));
+  }, [idToken, isAuthenticated]);
+
+  useEffect(() => {
+    refreshSavedPatterns();
+  }, [refreshSavedPatterns]);
 
   const newTranslationRef = useRef<HTMLDivElement>(null);
   const chatSectionRef = useRef<HTMLDivElement>(null);
@@ -224,11 +258,14 @@ export const DashboardPage: React.FC = () => {
   }, []);
 
   const openLanguageModalWithFiles = useCallback(
-    (files: File[]) => {
+    (files: File[], existingLanguages?: string[]) => {
       setModalFiles(files);
       setModalSourceLanguage(AUTO_DETECT_LANGUAGE);
 
-      const existing = addTranslationHint?.existingLanguages ?? [];
+      const existing =
+        existingLanguages && existingLanguages.length > 0
+          ? existingLanguages
+          : addTranslationHint?.existingLanguages ?? [];
       const nextLanguage = existing.length
         ? LANGUAGES.find((l) => !existing.includes(l.name)) ?? LANGUAGES[0]
         : LANGUAGES[0];
@@ -248,9 +285,51 @@ export const DashboardPage: React.FC = () => {
   const handleNewTranslationFile = useCallback(
     (files: File[]) => {
       if (files.length === 0) return;
+      setSelectedPatternId('');
+      setPatternSelectError(null);
       openLanguageModalWithFiles(files);
     },
     [openLanguageModalWithFiles],
+  );
+
+  const handlePatternSelect = useCallback(
+    async (patternId: string) => {
+      setPatternSelectError(null);
+      setSelectedPatternId(patternId);
+      if (!patternId) return;
+
+      setIsLoadingPattern(true);
+      try {
+        const file = await loadPatternSource(patternId, idToken);
+        if (!file) {
+          setPatternSelectError('Could not load that pattern. Try uploading the file instead.');
+          setSelectedPatternId('');
+          return;
+        }
+
+        const record = savedPatterns.find((r) => r.id === patternId);
+        const existingLanguages = record
+          ? Array.from(
+              new Set(
+                savedPatterns
+                  .filter((r) => r.fileName === record.fileName)
+                  .map((r) => r.targetLanguage)
+                  .filter(Boolean),
+              ),
+            )
+          : [];
+
+        openLanguageModalWithFiles([file], existingLanguages);
+        setSelectedPatternId('');
+      } catch (err) {
+        console.error('[translate] Could not load pattern source:', err);
+        setPatternSelectError('Could not load that pattern. Try uploading the file instead.');
+        setSelectedPatternId('');
+      } finally {
+        setIsLoadingPattern(false);
+      }
+    },
+    [idToken, savedPatterns, openLanguageModalWithFiles],
   );
 
   /**
@@ -445,6 +524,7 @@ export const DashboardPage: React.FC = () => {
             clearAddTranslationHint();
             setAddTranslationHintState(null);
           }
+          refreshSavedPatterns();
         } catch (saveErr) {
           console.error('Failed to save translated pattern to My Patterns:', saveErr);
         }
@@ -484,7 +564,7 @@ export const DashboardPage: React.FC = () => {
         );
       }
     },
-    [idToken, applyBalance, refreshBalance],
+    [idToken, applyBalance, refreshBalance, refreshSavedPatterns],
   );
 
   const beginTranslationBatch = useCallback(
@@ -827,8 +907,17 @@ export const DashboardPage: React.FC = () => {
                     {addTranslationHint.existingLanguages.length > 0 ? (
                       <>Already translated to {addTranslationHint.existingLanguages.join(', ')}. </>
                     ) : null}
-                    Upload the original file to start the new translation — we&rsquo;ll pre-pick a language
-                    you haven&rsquo;t covered yet.
+                    {addTranslationHint.hasRemoteSource ? (
+                      <>
+                        Choose it from My Patterns below, or upload the original — we&rsquo;ll pre-pick
+                        a language you haven&rsquo;t covered yet.
+                      </>
+                    ) : (
+                      <>
+                        Upload the original file to start the new translation — we&rsquo;ll pre-pick a
+                        language you haven&rsquo;t covered yet.
+                      </>
+                    )}
                   </p>
                 </div>
                 <button
@@ -843,13 +932,54 @@ export const DashboardPage: React.FC = () => {
             <div className="mb-4">
               <h2 className="text-lg font-semibold text-on-surface font-body">Begin a new translation</h2>
               <p className="text-sm text-on-surface-variant mt-1">
-                Drop a pattern anytime — jobs run in parallel in the background.
+                Pick a pattern from My Patterns or drop a file — jobs run in parallel in the background.
               </p>
             </div>
+            {patternsWithSource.length > 0 && (
+              <div className="mb-5 space-y-2">
+                <label
+                  htmlFor="translate-saved-pattern"
+                  className="block text-xs font-semibold uppercase tracking-widest text-on-surface-variant"
+                >
+                  Choose from My Patterns
+                </label>
+                <select
+                  id="translate-saved-pattern"
+                  className="w-full rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-2.5 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
+                  value={selectedPatternId}
+                  onChange={(e) => void handlePatternSelect(e.target.value)}
+                  disabled={isLoadingPattern}
+                  aria-label="Saved pattern to translate"
+                >
+                  <option value="">Choose a pattern…</option>
+                  {patternsWithSource.map((record) => (
+                    <option key={record.id} value={record.id}>
+                      {record.fileName}
+                      {record.pdfMetrics ? ` · ${record.pdfMetrics.pages} pages` : ''}
+                    </option>
+                  ))}
+                </select>
+                {isLoadingPattern && (
+                  <p className="text-sm text-on-surface-variant">Loading pattern…</p>
+                )}
+                {patternSelectError && (
+                  <p className="text-sm text-error" role="alert">
+                    {patternSelectError}
+                  </p>
+                )}
+                <div className="flex items-center gap-3 pt-1" aria-hidden>
+                  <div className="h-px flex-1 bg-outline-variant/30" />
+                  <span className="text-xs font-medium uppercase tracking-widest text-on-surface-variant/70">
+                    or upload
+                  </span>
+                  <div className="h-px flex-1 bg-outline-variant/30" />
+                </div>
+              </div>
+            )}
             <PatternUpload
               selectedFiles={[]}
               onFilesSelect={handleNewTranslationFile}
-              disabled={false}
+              disabled={isLoadingPattern}
             />
           </div>
 
