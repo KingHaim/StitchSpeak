@@ -12,8 +12,31 @@ import {
   type GradingShapingInput,
 } from '../services/grading.js';
 import { explainGrading, type GradingExplanation } from '../services/gradingReview.js';
+import { extractGradingInput } from '../services/gradingExtract.js';
+import { getSourceFile } from '../services/patternStore.js';
+import {
+  chargeCreditsForJob,
+  refundPendingCharge,
+  settlePendingCharge,
+} from '../services/creditStore.js';
+import {
+  computeDocumentMetrics,
+  gradingExtractCostFromMetrics,
+  PRICING,
+} from '../services/pricing.js';
+import {
+  acquireTranslationLease,
+  releaseTranslationLease,
+  renewTranslationLease,
+} from '../services/translationLeaseStore.js';
 
 const router = Router();
+
+// Extraction runs a Gemini Pro pass over a whole document — cap it tighter
+// than the cheap deterministic propose endpoint.
+const extractRateLimit = rateLimit({ windowMs: 60_000, max: 5, name: 'grading-extract' });
+
+const NDJSON_CONTENT_TYPE = 'application/x-ndjson';
 
 router.use(requireAuth);
 // The deterministic engine is cheap; the explanation is one Flash call with a
@@ -170,6 +193,146 @@ function parseGradingRequest(body: unknown): GradingRequestInput | string {
 
 router.get('/access', (req, res: Response) => {
   res.json({ access: hasGradingAccess(req as AuthenticatedRequest) });
+});
+
+/**
+ * Extract the grading inputs (gauge, sizes, measurement table, shaping,
+ * construction) from an already-uploaded pattern's stored source file.
+ * Streams NDJSON because the Gemini extraction can take minutes.
+ */
+router.post('/extract', extractRateLimit, async (req: Request, res: Response) => {
+  const authedReq = req as AuthenticatedRequest;
+  const { userSub } = authedReq;
+
+  if (!hasGradingAccess(authedReq)) {
+    res.status(403).json({
+      error: 'Size grading is currently in beta. Apply for beta access to try it.',
+      code: 'BETA_REQUIRED',
+    });
+    return;
+  }
+
+  const patternId = typeof req.body?.patternId === 'string' ? req.body.patternId.slice(0, 100) : '';
+  if (!patternId) {
+    res.status(400).json({ error: 'patternId is required.' });
+    return;
+  }
+
+  const source = getSourceFile(userSub, patternId);
+  if (!source) {
+    res.status(404).json({
+      error: 'This pattern has no stored source file. Re-upload it from the translator first.',
+      code: 'NO_SOURCE',
+    });
+    return;
+  }
+
+  // One heavy Gemini job per account at a time, shared with translation and
+  // tech editing.
+  const leaseId = acquireTranslationLease(userSub);
+  if (!leaseId) {
+    res.status(409).json({
+      error: 'Another translation or tech edit is already running for this account. Wait for it to finish.',
+      code: 'TRANSLATION_IN_PROGRESS',
+    });
+    return;
+  }
+  const leaseHeartbeat = setInterval(() => renewTranslationLease(userSub, leaseId), 60_000);
+  leaseHeartbeat.unref();
+
+  try {
+    let cost: number;
+    let pages: number;
+    try {
+      const metrics = await computeDocumentMetrics(
+        source.data,
+        source.mime ?? undefined,
+        source.fileName,
+      );
+      pages = metrics.pages;
+      cost = gradingExtractCostFromMetrics(metrics);
+    } catch (err) {
+      console.error('[grading/extract] Failed to analyze document for pricing:', err);
+      res.status(400).json({ error: 'Could not read the stored pattern document.' });
+      return;
+    }
+
+    if (pages > PRICING.gradingExtract.maxPages) {
+      res.status(400).json({
+        error: `Grading extraction supports patterns up to ${PRICING.gradingExtract.maxPages} pages (this document has ${pages}).`,
+        code: 'TOO_MANY_PAGES',
+      });
+      return;
+    }
+
+    const { ok, balance, chargeId } = chargeCreditsForJob(userSub, cost, 'grading-extract');
+    if (!ok) {
+      res.status(402).json({ error: 'Insufficient credits.', balance, cost });
+      return;
+    }
+    const refund = (): number => (chargeId ? refundPendingCharge(chargeId, userSub) : balance);
+
+    res.status(200);
+    res.setHeader('Content-Type', `${NDJSON_CONTENT_TYPE}; charset=utf-8`);
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    const writeEvent = (event: Record<string, unknown>): void => {
+      if (res.writableEnded || res.destroyed) return;
+      res.write(`${JSON.stringify(event)}\n`);
+    };
+
+    let clientGone = false;
+    req.on('aborted', () => {
+      clientGone = true;
+    });
+    res.on('close', () => {
+      if (!res.writableEnded) clientGone = true;
+    });
+
+    const heartbeat = setInterval(() => {
+      if (clientGone || res.writableEnded || res.destroyed) return;
+      writeEvent({ type: 'ping', t: Date.now() });
+    }, 12_000);
+
+    try {
+      writeEvent({ type: 'stage', stage: 'extracting' });
+      const { extraction, usage } = await extractGradingInput(
+        source.data,
+        source.mime ?? 'application/pdf',
+        source.fileName,
+      );
+
+      if (chargeId) settlePendingCharge(chargeId);
+      if (!clientGone) {
+        writeEvent({ type: 'done', extraction, usage, cost, balance });
+      }
+      res.end();
+    } catch (err: any) {
+      console.error('[grading/extract] Error:', err);
+      const newBalance = refund();
+      if (!res.headersSent) {
+        res.status(externalErrorStatus(err)).json({
+          error: err.message || 'Grading extraction failed.',
+          balance: newBalance,
+        });
+        return;
+      }
+      writeEvent({
+        type: 'error',
+        message: err?.message || 'Grading extraction failed.',
+        balance: newBalance,
+      });
+      res.end();
+    } finally {
+      clearInterval(heartbeat);
+    }
+  } finally {
+    clearInterval(leaseHeartbeat);
+    releaseTranslationLease(userSub, leaseId);
+  }
 });
 
 router.post('/propose', async (req: Request, res: Response) => {

@@ -149,6 +149,14 @@ export interface GradingExplanation {
   cautions: string[];
 }
 
+/** Grading inputs extracted from an uploaded pattern's source document. */
+export interface GradingExtraction {
+  input: GradingRequestInput;
+  patternTitle: string | null;
+  /** Assumptions and gaps the designer should review before proposing. */
+  notes: string[];
+}
+
 // --- Tech editing ---
 
 export type TechEditCategory = 'math' | 'clarity' | 'consistency' | 'grammar';
