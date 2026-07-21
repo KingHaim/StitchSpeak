@@ -23,8 +23,8 @@ import type {
 } from '../../types';
 
 const STAGES: Array<{ id: TechEditStage; label: string; detail: string }> = [
-  { id: 'extracting', label: 'Reading the pattern', detail: 'Extracting gauge, sizes and every stitch count' },
-  { id: 'verifying', label: 'Checking the math', detail: 'Running deterministic arithmetic checks' },
+  { id: 'extracting', label: 'Reading the pattern', detail: 'Extracting gauge, sizes, stitch counts and repeats' },
+  { id: 'verifying', label: 'Running the pattern', detail: 'Executing it row by row: counts, repeats, gauge, construction' },
   { id: 'reviewing', label: 'Editorial review', detail: 'Clarity, consistency, terminology and grammar' },
   { id: 'finalizing', label: 'Building the report', detail: 'Compiling everything into a structured report' },
 ];
@@ -280,9 +280,10 @@ export const TechEditPage: React.FC = () => {
                 Get your pattern tech edited
               </h2>
               <p className="text-sm text-on-surface-variant mt-1 leading-relaxed">
-                Upload a pattern and get a structured report: verified stitch-count math, gauge
-                cross-checks, chart vs. text consistency, clarity and grammar — before you send it to
-                testers or publish it.
+                Upload a pattern and StitchSpeak runs it row by row: verified stitch counts per size,
+                repeats that don&rsquo;t fit or don&rsquo;t add up, gauge vs. measurements, flat vs.
+                circular construction, whether pieces match at the joins — plus consistency, clarity and
+                grammar review — before you send it to testers or publish it.
               </p>
             </div>
 
