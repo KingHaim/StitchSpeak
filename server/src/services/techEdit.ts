@@ -84,9 +84,87 @@ const extractionSchema: Schema = {
         required: ['section', 'quote', 'stitchCount', 'targetWidth', 'unit', 'circular'],
       },
     },
+    repeatInstructions: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          section: { type: Type.STRING },
+          page: { type: Type.NUMBER, nullable: true },
+          quote: { type: Type.STRING },
+          stitchesPerRepeat: { type: Type.NUMBER, nullable: true },
+          netChangePerRepeat: { type: Type.NUMBER, nullable: true },
+          edgeStitches: { type: Type.NUMBER, nullable: true },
+          startCount: nullableNumberArray,
+          statedRepeats: nullableNumberArray,
+          declaredEndCount: nullableNumberArray,
+        },
+        required: [
+          'section',
+          'quote',
+          'stitchesPerRepeat',
+          'netChangePerRepeat',
+          'edgeStitches',
+          'startCount',
+          'statedRepeats',
+          'declaredEndCount',
+        ],
+      },
+    },
+    lengthLinks: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          section: { type: Type.STRING },
+          quote: { type: Type.STRING },
+          rows: nullableNumberArray,
+          targetLength: nullableNumberArray,
+          unit: { type: Type.STRING, enum: ['cm', 'in'] },
+        },
+        required: ['section', 'quote', 'rows', 'targetLength', 'unit'],
+      },
+    },
+    constructionSignals: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          section: { type: Type.STRING },
+          quote: { type: Type.STRING },
+          kind: { type: Type.STRING, enum: ['flat', 'circular', 'switch'] },
+        },
+        required: ['section', 'quote', 'kind'],
+      },
+    },
+    assemblyLinks: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          section: { type: Type.STRING },
+          quote: { type: Type.STRING },
+          pieceA: { type: Type.STRING },
+          pieceB: { type: Type.STRING },
+          countA: nullableNumberArray,
+          countB: nullableNumberArray,
+          unit: { type: Type.STRING, enum: ['sts', 'rows', 'cm', 'in'] },
+        },
+        required: ['section', 'quote', 'pieceA', 'pieceB', 'countA', 'countB', 'unit'],
+      },
+    },
     abbreviationsDefined: { type: Type.ARRAY, items: { type: Type.STRING } },
   },
-  required: ['sizeNames', 'stitchCountEvents', 'measurementLinks', 'abbreviationsDefined'],
+  required: [
+    'sizeNames',
+    'stitchCountEvents',
+    'measurementLinks',
+    'repeatInstructions',
+    'lengthLinks',
+    'constructionSignals',
+    'assemblyLinks',
+    'abbreviationsDefined',
+  ],
 };
 
 const editorialSchema: Schema = {
@@ -130,6 +208,16 @@ Rules:
   - delta: the NET stitch change of the instruction per size. "Inc 8 sts evenly" -> +8. "Repeat dec row 5 times more" and each dec row removes 2 sts -> compute the net total for the whole instruction (-12 including the first row if the quote covers it). If the net change cannot be determined from the text alone, use null.
   - declaredCount: the resulting count the pattern claims ("... — 96 sts"), or null if the line doesn't state one.
 - measurementLinks: every place the pattern ties a specific stitch count to a physical width/circumference (e.g. "96 sts = 48 cm bust"). Only include links where BOTH numbers are explicit.
+- repeatInstructions: every row/round built from a repeated stitch sequence, e.g. "*k2, k2tog; rep from * to end" or "[3 dc, 2 dc in next st] 6 times". For each:
+  - stitchesPerRepeat: stitches of the PREVIOUS row consumed by ONE repeat ("*k2, k2tog*" consumes 4). Null if the sequence can't be counted from the text.
+  - netChangePerRepeat: net stitch change of ONE repeat ("*k2, k2tog*" -> -1; "[3 dc, 2 dc in next st]" -> +1; a plain "*k2, p2*" -> 0).
+  - edgeStitches: stitches worked OUTSIDE the repeat on that row (e.g. "k1, *...*, k1" -> 2). Use 0 when there are none.
+  - startCount: the stitch count going INTO this row per size, only when the pattern states it nearby (a previous "= N sts" in the same section). Null when not stated.
+  - statedRepeats: explicit repeat count per size ("6 times" -> 6; "rep from * to end" -> null).
+  - declaredEndCount: the count the pattern claims after the row ("... — 84 sts"), or null.
+- lengthLinks: every place the pattern ties a row/round count to a physical length (e.g. "work 30 rows = 10 cm", "repeat these 4 rows 12 times — piece measures 18 cm"). Only include links where BOTH numbers are explicit.
+- constructionSignals: quotes showing how each section is worked. kind = "flat" (turn, wrong side rows, "work back and forth"), "circular" (join, rounds, "work in the round"), or "switch" (an explicit transition like "join to work in the round" or "divide for front and back and work flat"). Record them in document order per section.
+- assemblyLinks: every place the pattern joins two pieces/edges and states a number for BOTH sides (e.g. "graft the 24 sts of the front shoulder to the 24 sts of the back shoulder", "sew the 45-cm sleeve cap into the 45-cm armhole", picked-up stitch counts vs. available edge stitches). unit = sts, rows, cm or in.
 - abbreviationsDefined: every abbreviation defined in the abbreviations/glossary section, exactly as written.
 - Charts: if a chart legend or written chart notes state stitch counts, treat them like any other event.
 Extract from the whole document. Missing sections are fine; empty arrays are fine.`;
@@ -137,7 +225,7 @@ Extract from the whole document. Missing sections are fine; empty arrays are fin
 function editorialSystemInstruction(mathFindingsSummary: string): string {
   return `You are an expert technical editor for knitwear design with 20 years of experience editing knitting and crochet patterns for publication. Perform a comprehensive technical edit of the provided pattern and report your findings as structured JSON.
 
-A deterministic math audit has ALREADY been run on this pattern by software. Its results are below. Do NOT re-derive or duplicate these arithmetic checks — they are already covered. Focus your "math" findings only on numerical issues the audit could not see (row counts vs. stated lengths, yardage plausibility, repeat multiples that don't fit stitch counts, chart row/stitch dimensions vs. written instructions).
+A deterministic math audit has ALREADY been run on this pattern by software. Its results are below. It covered: running stitch counts vs. declared totals, repeat instructions (whether repeats fit the stitch count and produce the declared total), stitch gauge vs. widths, row gauge vs. lengths, flat/circular construction mixing, and whether joined pieces match. Do NOT re-derive or duplicate these arithmetic checks — they are already covered. Focus your "math" findings only on numerical issues the audit could not see (yardage plausibility, chart row/stitch dimensions vs. written instructions, shaping rates vs. the target silhouette, counts implied but never stated).
 
 --- DETERMINISTIC MATH AUDIT RESULTS ---
 ${mathFindingsSummary}
@@ -231,6 +319,67 @@ function sanitizeExtraction(raw: unknown): ExtractedPattern {
       };
     });
 
+  const repeats = (Array.isArray(obj.repeatInstructions) ? obj.repeatInstructions : [])
+    .slice(0, MAX_EVENTS)
+    .map((r) => {
+      const rep = (r ?? {}) as Record<string, unknown>;
+      return {
+        section: asString(rep.section, 120) || 'Pattern',
+        page: asNullableNumber(rep.page),
+        quote: asString(rep.quote, 200),
+        stitchesPerRepeat: asNullableNumber(rep.stitchesPerRepeat),
+        netChangePerRepeat: asNullableNumber(rep.netChangePerRepeat),
+        edgeStitches: asNullableNumber(rep.edgeStitches),
+        startCount: asNullableNumberArray(rep.startCount, sizeCount),
+        statedRepeats: asNullableNumberArray(rep.statedRepeats, sizeCount),
+        declaredEndCount: asNullableNumberArray(rep.declaredEndCount, sizeCount),
+      };
+    });
+
+  const lengthLinks = (Array.isArray(obj.lengthLinks) ? obj.lengthLinks : [])
+    .slice(0, 100)
+    .map((l) => {
+      const link = (l ?? {}) as Record<string, unknown>;
+      return {
+        section: asString(link.section, 120) || 'Pattern',
+        quote: asString(link.quote, 200),
+        rows: asNullableNumberArray(link.rows, sizeCount),
+        targetLength: asNullableNumberArray(link.targetLength, sizeCount),
+        unit: (link.unit === 'in' ? 'in' : 'cm') as 'cm' | 'in',
+      };
+    });
+
+  const constructionSignals = (Array.isArray(obj.constructionSignals) ? obj.constructionSignals : [])
+    .slice(0, 200)
+    .flatMap((s): ExtractedPattern['constructionSignals'] => {
+      const signal = (s ?? {}) as Record<string, unknown>;
+      const kind = asString(signal.kind, 20);
+      if (!['flat', 'circular', 'switch'].includes(kind)) return [];
+      return [
+        {
+          section: asString(signal.section, 120) || 'Pattern',
+          quote: asString(signal.quote, 200),
+          kind: kind as 'flat' | 'circular' | 'switch',
+        },
+      ];
+    });
+
+  const assemblyLinks = (Array.isArray(obj.assemblyLinks) ? obj.assemblyLinks : [])
+    .slice(0, 100)
+    .map((a) => {
+      const link = (a ?? {}) as Record<string, unknown>;
+      const unit = asString(link.unit, 10);
+      return {
+        section: asString(link.section, 120) || 'Pattern',
+        quote: asString(link.quote, 200),
+        pieceA: asString(link.pieceA, 120) || 'piece A',
+        pieceB: asString(link.pieceB, 120) || 'piece B',
+        countA: asNullableNumberArray(link.countA, sizeCount),
+        countB: asNullableNumberArray(link.countB, sizeCount),
+        unit: (['sts', 'rows', 'cm', 'in'].includes(unit) ? unit : 'sts') as 'sts' | 'rows' | 'cm' | 'in',
+      };
+    });
+
   const craft = asString(obj.craft, 20);
   return {
     patternTitle: asString(obj.patternTitle, 200) || null,
@@ -240,6 +389,10 @@ function sanitizeExtraction(raw: unknown): ExtractedPattern {
     gauge,
     stitchCountEvents: events,
     measurementLinks: links,
+    repeatInstructions: repeats,
+    lengthLinks,
+    constructionSignals,
+    assemblyLinks,
     abbreviationsDefined: Array.isArray(obj.abbreviationsDefined)
       ? obj.abbreviationsDefined.map((a) => asString(a, 60)).filter(Boolean).slice(0, 100)
       : [],
@@ -415,7 +568,10 @@ export async function runTechEdit(
   );
   const extraction = sanitizeExtraction(extractionRaw);
 
-  options.onStage?.('verifying', `${extraction.stitchCountEvents.length} count events, ${extraction.sizeNames.length || 1} sizes`);
+  options.onStage?.(
+    'verifying',
+    `${extraction.stitchCountEvents.length} count events, ${extraction.repeatInstructions.length} repeat rows, ${extraction.sizeNames.length || 1} sizes`,
+  );
   const mathAudit = verifyPatternMath(extraction);
 
   options.onStage?.('reviewing');

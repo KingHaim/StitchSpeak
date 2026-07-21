@@ -15,6 +15,10 @@ function basePattern(overrides: Partial<ExtractedPattern> = {}): ExtractedPatter
     gauge: { stitches: 20, rows: 28, widthCm: 10, heightCm: 10, needle: '4 mm' },
     stitchCountEvents: [],
     measurementLinks: [],
+    repeatInstructions: [],
+    lengthLinks: [],
+    constructionSignals: [],
+    assemblyLinks: [],
     abbreviationsDefined: [],
     ...overrides,
   };
@@ -137,6 +141,215 @@ describe('tech edit math audit', () => {
             targetWidth: [48],
             unit: 'cm',
             circular: false,
+          },
+        ],
+      }),
+    );
+
+    expect(result.findings).toHaveLength(0);
+    expect(result.checksRun).toBe(1);
+  });
+
+  it('executes a correct repeat row without findings', () => {
+    const result = verifyPatternMath(
+      basePattern({
+        sizeNames: ['One size'],
+        repeatInstructions: [
+          {
+            section: 'Yoke',
+            page: 2,
+            quote: '*K2, k2tog; rep from * to end — 72 sts',
+            stitchesPerRepeat: 4,
+            netChangePerRepeat: -1,
+            edgeStitches: 0,
+            startCount: [96],
+            statedRepeats: [null],
+            declaredEndCount: [72],
+          },
+        ],
+      }),
+    );
+
+    // 96 ÷ 4 = 24 repeats, each -1 st: 96 - 24 = 72 ✓
+    expect(result.findings).toHaveLength(0);
+    expect(result.checksRun).toBe(2);
+  });
+
+  it('flags a repeat whose declared total disagrees and names the likely cause', () => {
+    const result = verifyPatternMath(
+      basePattern({
+        sizeNames: ['One size'],
+        repeatInstructions: [
+          {
+            section: 'Body',
+            page: 3,
+            quote: '[K19, M1] to end — 82 sts',
+            stitchesPerRepeat: 19,
+            netChangePerRepeat: 1,
+            edgeStitches: 0,
+            startCount: [76],
+            statedRepeats: [null],
+            declaredEndCount: [82],
+          },
+        ],
+      }),
+    );
+
+    // 76 ÷ 19 = 4 repeats, each +1: instructions produce 80, pattern expects 82.
+    expect(result.findings).toHaveLength(1);
+    const finding = result.findings[0];
+    expect(finding.verified).toBe(true);
+    expect(finding.severity).toBe('critical');
+    expect(finding.detail).toContain('end with 82 sts');
+    expect(finding.detail).toContain('produce 80');
+    expect(finding.detail).toContain('increase is probably missing');
+    expect(finding.calculation).toContain('76 + 4 × 1 = 80');
+  });
+
+  it('flags an incomplete repeat that does not divide the stitch count', () => {
+    const result = verifyPatternMath(
+      basePattern({
+        sizeNames: ['S', 'M'],
+        repeatInstructions: [
+          {
+            section: 'Ribbing',
+            page: 1,
+            quote: '*K2, p2; rep from * to end',
+            stitchesPerRepeat: 4,
+            netChangePerRepeat: 0,
+            edgeStitches: 0,
+            startCount: [88, 94],
+            statedRepeats: [null, null],
+            declaredEndCount: [null, null],
+          },
+        ],
+      }),
+    );
+
+    // S: 88 ÷ 4 fits. M: 94 ÷ 4 leaves 2 sts over.
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].title).toContain('M');
+    expect(result.findings[0].calculation).toContain('94 ÷ 4 = 23 remainder 2');
+  });
+
+  it('flags a stated repeat count that does not fit the available stitches', () => {
+    const result = verifyPatternMath(
+      basePattern({
+        sizeNames: ['One size'],
+        repeatInstructions: [
+          {
+            section: 'Border',
+            page: 5,
+            quote: 'K1, [yo, k2tog, k4] 8 times, k1',
+            stitchesPerRepeat: 6,
+            netChangePerRepeat: 0,
+            edgeStitches: 2,
+            startCount: [48],
+            statedRepeats: [8],
+            declaredEndCount: [null],
+          },
+        ],
+      }),
+    );
+
+    // 8 × 6 + 2 = 50 sts needed, but the row only has 48.
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].severity).toBe('critical');
+    expect(result.findings[0].calculation).toContain('8 × 6 + 2 = 50');
+  });
+
+  it('cross-checks row counts against the row gauge', () => {
+    const result = verifyPatternMath(
+      basePattern({
+        sizeNames: ['One size'],
+        // Row gauge 28 rows / 10 cm -> 30 rows ≈ 10.7 cm, pattern claims 18 cm.
+        lengthLinks: [
+          {
+            section: 'Body',
+            quote: 'Work 30 rows — piece measures 18 cm',
+            rows: [30],
+            targetLength: [18],
+            unit: 'cm',
+          },
+        ],
+      }),
+    );
+
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].verified).toBe(true);
+    expect(result.findings[0].title).toContain('Row gauge');
+  });
+
+  it('flags flat and circular instructions mixed without a transition', () => {
+    const result = verifyPatternMath(
+      basePattern({
+        sizeNames: ['One size'],
+        constructionSignals: [
+          { section: 'Body', quote: 'Join to work in the round', kind: 'circular' },
+          { section: 'Body', quote: 'Row 5 (WS): turn and purl', kind: 'flat' },
+        ],
+      }),
+    );
+
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].severity).toBe('warning');
+    expect(result.findings[0].title).toContain('Flat and circular');
+  });
+
+  it('accepts a flat-to-circular change with an explicit switch', () => {
+    const result = verifyPatternMath(
+      basePattern({
+        sizeNames: ['One size'],
+        constructionSignals: [
+          { section: 'Body', quote: 'Work ribbing flat', kind: 'flat' },
+          { section: 'Body', quote: 'Join to work in the round', kind: 'switch' },
+          { section: 'Body', quote: 'Rnd 1: knit', kind: 'circular' },
+        ],
+      }),
+    );
+
+    expect(result.findings).toHaveLength(0);
+  });
+
+  it('flags joined pieces whose stitch counts do not match', () => {
+    const result = verifyPatternMath(
+      basePattern({
+        sizeNames: ['S', 'M'],
+        assemblyLinks: [
+          {
+            section: 'Finishing',
+            quote: 'Graft front shoulder to back shoulder',
+            pieceA: 'front shoulder',
+            pieceB: 'back shoulder',
+            countA: [24, 26],
+            countB: [24, 28],
+            unit: 'sts',
+          },
+        ],
+      }),
+    );
+
+    // S matches; M grafts 26 sts to 28 sts.
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].severity).toBe('critical');
+    expect(result.findings[0].title).toContain('M');
+    expect(result.findings[0].calculation).toContain('26 sts');
+    expect(result.findings[0].calculation).toContain('28 sts');
+  });
+
+  it('tolerates small differences when joined pieces are measured in cm', () => {
+    const result = verifyPatternMath(
+      basePattern({
+        sizeNames: ['One size'],
+        assemblyLinks: [
+          {
+            section: 'Finishing',
+            quote: 'Sew sleeve cap into armhole',
+            pieceA: 'sleeve cap',
+            pieceB: 'armhole',
+            countA: [45],
+            countB: [46],
+            unit: 'cm',
           },
         ],
       }),
