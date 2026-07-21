@@ -124,7 +124,8 @@ export function getAdminMember(sub: string) {
   const uploads = db.prepare(`SELECT id, timestamp, file_name fileName, file_type fileType, source_language sourceLanguage, target_language targetLanguage, cost, source_size sourceSize, thumb_size thumbSize FROM patternsdb.patterns WHERE sub=? ORDER BY timestamp DESC`).all(sub);
   const orders = db.prepare(`SELECT order_id orderId, credits_granted creditsGranted, amount_paid_cents amountPaidCents, refunded_amount_cents refundedAmountCents, created_at createdAt FROM payment_orders WHERE sub=? ORDER BY created_at DESC`).all(sub);
   const adjustments = db.prepare(`SELECT id, delta, balance_before balanceBefore, balance_after balanceAfter, reason, actor_email actorEmail, created_at createdAt FROM admin_credit_adjustments WHERE sub=? ORDER BY created_at DESC LIMIT 100`).all(sub);
-  return { member: mapMember(row), uploads, orders, adjustments };
+  const ledger = db.prepare(`SELECT id, delta, balance_after balanceAfter, kind, reference, created_at createdAt FROM credit_ledger WHERE sub=? ORDER BY created_at DESC, id DESC LIMIT 100`).all(sub);
+  return { member: mapMember(row), uploads, orders, adjustments, ledger };
 }
 
 export function adjustMemberCredits(sub: string, delta: number, reason: string, actorEmail: string, email?: string): number {
@@ -133,6 +134,10 @@ export function adjustMemberCredits(sub: string, delta: number, reason: string, 
     db.prepare(`INSERT INTO credits(sub,balance,email,updated_at) VALUES(?,?,?,?) ON CONFLICT(sub) DO UPDATE SET balance=MAX(0,ROUND(balance+excluded.balance,2)), email=COALESCE(excluded.email, credits.email), updated_at=excluded.updated_at`).run(sub, delta, email ?? null, Date.now());
     const after = Number((db.prepare('SELECT balance FROM credits WHERE sub=?').get(sub) as { balance: number }).balance);
     db.prepare(`INSERT INTO admin_credit_adjustments(sub,delta,balance_before,balance_after,reason,actor_email,created_at) VALUES(?,?,?,?,?,?,?)`).run(sub, after - before, before, after, reason, actorEmail, Date.now());
+    if (after !== before) {
+      db.prepare(`INSERT INTO credit_ledger(sub,delta,balance_after,kind,reference,created_at) VALUES(?,?,?,?,?,?)`)
+        .run(sub, after - before, after, 'admin-adjustment', `${reason} (by ${actorEmail})`, Date.now());
+    }
     return after;
   })();
 }

@@ -43,6 +43,10 @@ StitchSpeak is a React 19 + TypeScript + Tailwind CSS v4 frontend (Vite) with an
 | `APP_URL` | `server/.env` | Canonical frontend URL used for verification and password-reset links |
 | `RESEND_API_KEY` | `server/.env` | Resend API key for authentication email delivery |
 | `FEEDBACK_EMAIL_TO` | `server/.env` | Comma-separated recipients for in-app tester feedback emails (defaults to `ADMIN_EMAILS`) |
+| `POSTHOG_PERSONAL_API_KEY` | `server/.env` | PostHog personal API key (`phx_…`) used server-side to pull a user's recent activity into feedback emails and the admin member panel |
+| `POSTHOG_PROJECT_ID` | `server/.env` | Numeric PostHog project id for the server-side activity lookups |
+| `POSTHOG_API_HOST` | `server/.env` | PostHog private API host (default `https://us.posthog.com`) |
+| `CREDIT_LEDGER_RETENTION_DAYS` | `server/.env` | Days of per-user credit movement history kept for dispute resolution (default 365; pruned automatically) |
 | `AUTH_EMAIL_FROM` | `server/.env` | Verified sender address used for authentication emails |
 | `VITE_GOOGLE_CLIENT_ID` | `.env` | Google OAuth Web client ID for sign-in |
 | `VITE_API_URL` | `.env` | Backend origin the frontend calls (e.g. `http://localhost:3001`) |

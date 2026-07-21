@@ -2,6 +2,7 @@ import { cleanupExpiredEmailAuthTokens } from './emailAuth.js';
 import { cleanupExpiredSessions } from './sessionStore.js';
 import { cleanupExpiredTranslationLeases } from './translationLeaseStore.js';
 import { cleanupExpiredRateLimits } from './rateLimitStore.js';
+import { pruneCreditLedger } from './creditStore.js';
 
 const CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const HEALTH_MAX_AGE_MS = 12 * 60 * 60 * 1000;
@@ -12,6 +13,7 @@ interface CleanupResult {
   emailTokens: number;
   translationLeases: number;
   rateLimits: number;
+  creditLedgerRows: number;
   total: number;
 }
 
@@ -24,13 +26,15 @@ export function runOperationalCleanup(now = Date.now()): CleanupResult {
   const emailTokens = cleanupExpiredEmailAuthTokens(now);
   const translationLeases = cleanupExpiredTranslationLeases(now);
   const rateLimits = cleanupExpiredRateLimits(now);
+  const creditLedgerRows = pruneCreditLedger(now);
   lastResult = {
     ranAt: new Date(now).toISOString(),
     sessions,
     emailTokens,
     translationLeases,
     rateLimits,
-    total: sessions + emailTokens + translationLeases + rateLimits,
+    creditLedgerRows,
+    total: sessions + emailTokens + translationLeases + rateLimits + creditLedgerRows,
   };
   lastError = null;
   return lastResult;

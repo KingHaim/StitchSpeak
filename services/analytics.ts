@@ -30,3 +30,13 @@ export function resetAnalyticsIdentity(): void {
   if (!initialized) return;
   posthog.reset();
 }
+
+/**
+ * Record a product action (translation, tech edit, purchase, …). These events
+ * show up in PostHog and in the per-user activity report the server attaches
+ * to feedback emails and the admin console. No-op when analytics is disabled.
+ */
+export function captureEvent(name: string, properties?: Record<string, unknown>): void {
+  if (!initialized) return;
+  posthog.capture(name, properties);
+}

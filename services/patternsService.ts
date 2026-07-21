@@ -1,5 +1,6 @@
 import type { TranslationRecord } from '../types';
 import { apiUrl, authHeaders } from './apiBase';
+import { captureEvent } from './analytics';
 
 interface ServerPattern {
   id: string;
@@ -330,5 +331,6 @@ export async function unlockPatternChatAllowance(
     'POST',
     { by },
   );
+  captureEvent('chat_unlock_purchased', { pattern_id: id, messages: by });
   return data.extraAllowance;
 }

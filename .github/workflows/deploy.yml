@@ -28,6 +28,8 @@ jobs:
         env:
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+          VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
       # GitHub Pages has no rewrite rules. Serving the SPA shell as 404.html
       # lets direct visits to /translate, /patterns, and /glossary hydrate and
       # resolve client-side just like the Vercel deployment.

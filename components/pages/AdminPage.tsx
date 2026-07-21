@@ -4,10 +4,12 @@ import {
   deleteAdminUpload,
   getAdminMe,
   getAdminMember,
+  getAdminMemberActivity,
   getAdminMembers,
   getAdminOverview,
   inviteAdminUser,
   type AdminMember,
+  type AdminMemberActivity,
   type AdminMemberDetail,
   type AdminMemberSort,
   type AdminOverview,
@@ -23,6 +25,9 @@ export const AdminPage: React.FC = () => {
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [members, setMembers] = useState<AdminMember[]>([]);
   const [detail, setDetail] = useState<AdminMemberDetail | null>(null);
+  const [activity, setActivity] = useState<AdminMemberActivity | null>(null);
+  const [activityError, setActivityError] = useState<string | null>(null);
+  const [activityDays, setActivityDays] = useState(7);
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<AdminMemberSort>('lastActivity');
@@ -84,6 +89,27 @@ export const AdminPage: React.FC = () => {
       .then(setDetail)
       .catch((e) => setError(e instanceof Error ? e.message : 'Could not load member.'));
   }, [selected]);
+
+  useEffect(() => {
+    if (!selected) {
+      setActivity(null);
+      setActivityError(null);
+      return;
+    }
+    let cancelled = false;
+    setActivity(null);
+    setActivityError(null);
+    void getAdminMemberActivity(selected, activityDays)
+      .then((a) => {
+        if (!cancelled) setActivity(a);
+      })
+      .catch((e) => {
+        if (!cancelled) setActivityError(e instanceof Error ? e.message : 'Could not load activity.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, activityDays]);
 
   const toggleSort = (column: AdminMemberSort) => {
     if (sort === column) setDir((current) => (current === 'asc' ? 'desc' : 'asc'));
@@ -346,6 +372,93 @@ export const AdminPage: React.FC = () => {
                       </div>
                     ))}
                   </div>
+                </div>
+                <div className="mt-7 border-t border-white/12 pt-5">
+                  <h3 className="font-semibold">Credit movements</h3>
+                  <p className="mt-1 text-xs text-white/45">Every charge, refund, purchase, and adjustment.</p>
+                  {(detail.ledger ?? []).length === 0 && <p className="mt-3 text-xs text-white/55">No movements recorded yet.</p>}
+                  <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
+                    {(detail.ledger ?? []).map((entry) => (
+                      <div key={entry.id} className="rounded-xl bg-white/8 p-3 text-xs">
+                        <div className="flex justify-between gap-2">
+                          <span className="font-semibold">{entry.kind}</span>
+                          <span className={entry.delta >= 0 ? 'font-mono text-emerald-300' : 'font-mono text-red-300'}>
+                            {entry.delta > 0 ? '+' : ''}
+                            {entry.delta.toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex justify-between gap-2 text-white/45">
+                          <span>{date(entry.createdAt)}</span>
+                          <span>balance {entry.balanceAfter.toFixed(2)}</span>
+                        </div>
+                        {entry.reference && <p className="mt-1 truncate text-white/55">{entry.reference}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-7 border-t border-white/12 pt-5">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="font-semibold">Activity (PostHog)</h3>
+                    <select
+                      value={activityDays}
+                      onChange={(e) => setActivityDays(Number(e.target.value))}
+                      className="rounded-lg bg-white/10 px-2 py-1 text-xs"
+                      aria-label="Activity window"
+                    >
+                      <option value={1}>24h</option>
+                      <option value={7}>7 days</option>
+                      <option value={30}>30 days</option>
+                    </select>
+                  </div>
+                  {activityError && <p className="mt-3 text-xs text-red-300">{activityError}</p>}
+                  {!activityError && !activity && <p className="mt-3 text-xs text-white/55">Loading activity…</p>}
+                  {activity && !activity.configured && (
+                    <p className="mt-3 text-xs text-white/55">
+                      Not configured. Set POSTHOG_PERSONAL_API_KEY and POSTHOG_PROJECT_ID on the server.
+                    </p>
+                  )}
+                  {activity?.configured && (
+                    <>
+                      <p className="mt-3 text-[10px] font-bold uppercase tracking-wider text-white/45">Pages visited</p>
+                      {(activity.pages ?? []).length === 0 && <p className="mt-2 text-xs text-white/55">No pageviews in this window.</p>}
+                      <div className="mt-2 space-y-1">
+                        {(activity.pages ?? []).map((p) => (
+                          <div key={p.path} className="flex justify-between gap-2 text-xs">
+                            <span className="truncate">{p.path}</span>
+                            <span className="shrink-0 text-white/45">×{p.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="mt-4 text-[10px] font-bold uppercase tracking-wider text-white/45">Actions</p>
+                      {(activity.actions ?? []).length === 0 && <p className="mt-2 text-xs text-white/55">No actions in this window.</p>}
+                      <div className="mt-2 space-y-1">
+                        {(activity.actions ?? []).map((a) => (
+                          <div key={a.event} className="flex justify-between gap-2 text-xs">
+                            <span className="truncate">{a.event}</span>
+                            <span className="shrink-0 text-white/45">×{a.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="mt-4 text-[10px] font-bold uppercase tracking-wider text-white/45">Timeline</p>
+                      <div className="mt-2 max-h-72 space-y-2 overflow-y-auto pr-1">
+                        {(activity.events ?? []).slice(0, 60).map((ev, i) => (
+                          <div key={`${ev.timestamp}-${i}`} className="rounded-xl bg-white/8 p-2.5 text-xs">
+                            <div className="flex justify-between gap-2">
+                              <span className="truncate font-semibold">{ev.event}</span>
+                              <span className="shrink-0 text-white/45">{date(Date.parse(ev.timestamp))}</span>
+                            </div>
+                            {(ev.path || ev.detail) && (
+                              <p className="mt-1 truncate text-white/55">
+                                {ev.path}
+                                {ev.path && ev.detail ? ' · ' : ''}
+                                {ev.detail}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div className="mt-7 border-t border-white/12 pt-5">
                   <h3 className="font-semibold">Credit audit</h3>

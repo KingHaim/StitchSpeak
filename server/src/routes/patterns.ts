@@ -296,7 +296,7 @@ router.post('/:id/chat/unlock', unlockRateLimit, (req, res: Response) => {
     const cost = chatUnlockCost(by);
     const { ok, balance } = cost === 0
       ? { ok: true, balance: getBalance(userSub) }
-      : deductCredits(userSub, cost);
+      : deductCredits(userSub, cost, { kind: 'charge:chat-unlock', reference: id });
     if (!ok) {
       res.status(402).json({ error: 'Insufficient credits.', balance, cost });
       return;
@@ -305,7 +305,7 @@ router.post('/:id/chat/unlock', unlockRateLimit, (req, res: Response) => {
     const state = bumpChatAllowance(userSub, id, by);
     if (!state) {
       // Refund: the pattern didn't exist, so nothing was unlocked.
-      if (cost > 0) addCredits(userSub, cost);
+      if (cost > 0) addCredits(userSub, cost, undefined, { kind: 'refund:chat-unlock', reference: id });
       res.status(404).json({ error: 'Pattern not found.' });
       return;
     }

@@ -1,4 +1,5 @@
 import { apiUrl } from './apiBase';
+import { captureEvent } from './analytics';
 
 export const SS_TOKEN_KEY = 'ss_token';
 
@@ -151,8 +152,10 @@ export async function logout(): Promise<void> {
 
 /** Emails the tester's feedback (with their user ID attached server-side) to the team. */
 export async function sendFeedback(message: string): Promise<{ ok: boolean }> {
-  return apiCall<{ ok: boolean }>('/feedback', 'POST', {
+  const result = await apiCall<{ ok: boolean }>('/feedback', 'POST', {
     message,
     page: window.location.pathname,
   });
+  captureEvent('feedback_submitted');
+  return result;
 }

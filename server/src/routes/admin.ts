@@ -20,6 +20,11 @@ import {
   type BetaApplicationStatus,
 } from '../services/betaApplicationStore.js';
 import { getBalance } from '../services/creditStore.js';
+import {
+  fetchUserActivity,
+  isPosthogActivityConfigured,
+  summarizeActivity,
+} from '../services/posthogActivity.js';
 
 const router = Router();
 router.use(requireAdmin);
@@ -145,6 +150,26 @@ router.get('/members/:sub', (req, res) => {
   const detail = getAdminMember(sub);
   if (!detail) return void res.status(404).json({ error: 'Member not found.' });
   res.json(detail);
+});
+// PostHog activity for a member (pages visited + actions). Separate endpoint
+// because it hits the PostHog API and shouldn't slow down the member detail.
+router.get('/members/:sub/activity', async (req, res) => {
+  const sub = Array.isArray(req.params.sub) ? req.params.sub[0] : req.params.sub;
+  if (!isPosthogActivityConfigured()) {
+    return void res.json({ configured: false });
+  }
+  const daysRaw = Number(req.query.days);
+  const days = Number.isFinite(daysRaw) ? Math.max(1, Math.min(daysRaw, 30)) : 7;
+  try {
+    const events = await fetchUserActivity(sub, {
+      sinceMs: days * 24 * 60 * 60 * 1000,
+      limit: 300,
+    });
+    res.json({ configured: true, days, ...summarizeActivity(events ?? []) });
+  } catch (err) {
+    console.error('[admin] PostHog activity lookup failed:', err);
+    res.status(502).json({ error: 'PostHog activity lookup failed.' });
+  }
 });
 router.post('/members/:sub/credits', (req: Request, res: Response) => {
   const sub = Array.isArray(req.params.sub) ? req.params.sub[0] : req.params.sub;

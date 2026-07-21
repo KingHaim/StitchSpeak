@@ -1,5 +1,6 @@
 import type { TranslationResult } from '../types';
 import { apiUrl, authHeaders } from './apiBase';
+import { captureEvent } from './analytics';
 
 class TranslationError extends Error {
   constructor(
@@ -104,13 +105,27 @@ export const translatePattern = async (
   }
   formData.append('aiAcknowledged', 'true');
 
-  const response = await checkedFetch(
-    apiUrl('/translate'),
-    { method: 'POST', headers: authHeaders(idToken), body: formData },
-    'Translation',
-  );
-
-  return response.json();
+  captureEvent('translation_started', {
+    target_language: language,
+    source_language: sourceLanguage ?? 'auto',
+    file_type: file.type,
+  });
+  try {
+    const response = await checkedFetch(
+      apiUrl('/translate'),
+      { method: 'POST', headers: authHeaders(idToken), body: formData },
+      'Translation',
+    );
+    const result: TranslationResult = await response.json();
+    captureEvent('translation_completed', { target_language: language, cost: result.cost });
+    return result;
+  } catch (err) {
+    captureEvent('translation_failed', {
+      target_language: language,
+      error: err instanceof Error ? err.message : 'unknown',
+    });
+    throw err;
+  }
 };
 
 export interface TranslatePatternStreamCallbacks {
@@ -148,6 +163,31 @@ type NdjsonEvent = NdjsonDeltaEvent | NdjsonDoneEvent | NdjsonErrorEvent;
  * arrives and resolving with the final marker-replaced HTML + usage totals.
  */
 export const translatePatternStream = async (
+  file: File,
+  language: string,
+  idToken: string | null,
+  sourceLanguage: string | undefined,
+  callbacks: TranslatePatternStreamCallbacks = {},
+): Promise<TranslationResult> => {
+  captureEvent('translation_started', {
+    target_language: language,
+    source_language: sourceLanguage ?? 'auto',
+    file_type: file.type,
+  });
+  try {
+    const result = await translatePatternStreamInner(file, language, idToken, sourceLanguage, callbacks);
+    captureEvent('translation_completed', { target_language: language, cost: result.cost });
+    return result;
+  } catch (err) {
+    captureEvent('translation_failed', {
+      target_language: language,
+      error: err instanceof Error ? err.message : 'unknown',
+    });
+    throw err;
+  }
+};
+
+const translatePatternStreamInner = async (
   file: File,
   language: string,
   idToken: string | null,
@@ -324,6 +364,7 @@ export const sendChatMessage = async (
   );
 
   const data = await response.json();
+  captureEvent('chat_message_sent', { messages: data.messageCount });
   return {
     text: data.text,
     messageCount: data.messageCount,
