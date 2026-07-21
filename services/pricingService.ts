@@ -79,6 +79,23 @@ export function estimateTechEditCost(metrics: PdfMetrics): number {
   return roundUpToHalf(baseCost + surcharge);
 }
 
+/** Mirrors the server's gradingExtractCostFromMetrics (server/src/services/pricing.ts). */
+export function estimateGradingExtractCost(metrics: PdfMetrics): number {
+  const { inputCostPer1MTokens, outputCostPer1MTokens, fixedMargin } = PRICING.gradingExtract;
+  const inputCost =
+    (metrics.estimatedInputTokens / 1_000_000) * inputCostPer1MTokens;
+  const outputCost =
+    (metrics.estimatedOutputTokens / 4 / 1_000_000) * outputCostPer1MTokens;
+  const baseCost = roundUpToHalf(inputCost + outputCost + fixedMargin);
+
+  const { includedPages, pageSurcharge, pagesPerSurchargeStep } = PRICING.gradingExtract;
+  const extraPages = Math.max(0, metrics.pages - includedPages);
+  const surcharge =
+    extraPages === 0 ? 0 : Math.ceil(extraPages / pagesPerSurchargeStep) * pageSurcharge;
+
+  return roundUpToHalf(baseCost + surcharge);
+}
+
 export function estimateChatCost(messageCount: number): number {
   const { packageSize, packagePrice, freeMessages } = PRICING.chat;
   const billable = Math.max(0, messageCount - freeMessages);

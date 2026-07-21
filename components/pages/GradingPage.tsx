@@ -1,16 +1,24 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../contexts/auth-context';
+import { useCredits } from '../../contexts/credit-context';
+import { BuyCreditsModal } from '../BuyCreditsModal';
 import {
   checkGradingAccess,
+  extractGradingFromPattern,
   proposeGrading,
   GradingError,
   type ProposeGradingResult,
 } from '../../services/gradingService';
+import { loadHistory } from '../../services/historyService';
+import { estimateGradingExtractCost } from '../../services/pricingService';
+import { PRICING } from '../../constants';
 import type {
+  CreditPackage,
   GradingConstruction,
   GradingMeasurementKind,
   GradingRequestInput,
   GradingUnit,
+  TranslationRecord,
 } from '../../types';
 
 interface MeasurementForm {
@@ -65,8 +73,15 @@ function parseNumber(raw: string): number | null {
 
 export const GradingPage: React.FC = () => {
   const { idToken, isAuthenticated } = useAuth();
+  const { applyBalance, refreshBalance, startCheckout } = useCredits();
 
   const [hasAccess, setHasAccess] = useState<boolean | null>(null);
+  const [savedPatterns, setSavedPatterns] = useState<TranslationRecord[]>([]);
+  const [selectedPatternId, setSelectedPatternId] = useState('');
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractionNotes, setExtractionNotes] = useState<string[]>([]);
+  const [extractedTitle, setExtractedTitle] = useState<string | null>(null);
+  const [isBuyCreditsOpen, setIsBuyCreditsOpen] = useState(false);
   const [units, setUnits] = useState<GradingUnit>('cm');
   const [construction, setConstruction] = useState<GradingConstruction>('flat');
   const [measurementsAre, setMeasurementsAre] = useState<'body' | 'finished'>('finished');
@@ -93,7 +108,90 @@ export const GradingPage: React.FC = () => {
     checkGradingAccess(idToken)
       .then(setHasAccess)
       .catch((err) => console.error('[grading] access check failed:', err));
+    loadHistory(idToken)
+      .then(({ records }) => setSavedPatterns(records.filter((r) => r.hasSource)))
+      .catch((err) => console.error('[grading] failed to load saved patterns:', err));
   }, [idToken, isAuthenticated]);
+
+  const selectedPattern = savedPatterns.find((r) => r.id === selectedPatternId) ?? null;
+  const extractCost = selectedPattern?.pdfMetrics
+    ? estimateGradingExtractCost(selectedPattern.pdfMetrics)
+    : null;
+  const extractTooManyPages = selectedPattern?.pdfMetrics
+    ? selectedPattern.pdfMetrics.pages > PRICING.gradingExtract.maxPages
+    : false;
+
+  /** Fill the whole form from a pattern extraction; designer reviews before proposing. */
+  const applyExtraction = (input: GradingRequestInput) => {
+    setUnits(input.units);
+    setConstruction(input.construction);
+    setMeasurementsAre(input.measurementsAre);
+    setGaugeSts(String(input.gauge.stitches));
+    setGaugeRows(String(input.gauge.rows));
+    setGaugeWidth(String(input.gauge.widthCm));
+    setGaugeHeight(String(input.gauge.heightCm));
+    setStitchRepeat(String(input.stitchRepeat));
+    setEdgeStitches(String(input.edgeStitches));
+    setEase(String(input.ease));
+    setSizeNames(input.sizeNames);
+    setBaseSizeIndex(Math.min(input.baseSizeIndex, input.sizeNames.length - 1));
+    setMeasurements(
+      input.measurements.map((m) => ({
+        id: m.id,
+        name: m.name,
+        kind: m.kind,
+        values: m.values.map((v) => (v === null ? '' : String(v))),
+      })),
+    );
+    setShaping(
+      input.shaping.map((s) => ({
+        id: s.id,
+        name: s.name,
+        fromId: s.fromId,
+        toId: s.toId,
+        overId: s.overId,
+        stitchesPerEvent: String(s.stitchesPerEvent),
+      })),
+    );
+    setResult(null);
+    setApprovedSizes(new Set());
+    setCopied(false);
+  };
+
+  const handleExtract = useCallback(async () => {
+    if (!selectedPatternId || isExtracting) return;
+    setError(null);
+    setExtractionNotes([]);
+    setExtractedTitle(null);
+    setIsExtracting(true);
+    try {
+      const { extraction, balance } = await extractGradingFromPattern(selectedPatternId, idToken);
+      if (typeof balance === 'number') applyBalance(balance);
+      applyExtraction(extraction.input);
+      setExtractionNotes(extraction.notes);
+      setExtractedTitle(extraction.patternTitle);
+    } catch (err) {
+      console.error('[grading] extraction failed:', err);
+      void refreshBalance();
+      if (err instanceof GradingError && err.status === 402) {
+        setIsBuyCreditsOpen(true);
+        setError("You don't have enough credits for this extraction. Add credits and try again.");
+      } else if (err instanceof GradingError && err.code === 'BETA_REQUIRED') {
+        setHasAccess(false);
+      } else {
+        setError(err instanceof Error ? err.message : 'The extraction failed. Please try again.');
+      }
+    } finally {
+      setIsExtracting(false);
+    }
+  }, [selectedPatternId, isExtracting, idToken, applyBalance, refreshBalance]);
+
+  const handleCreditPurchase = useCallback(
+    async (pack: CreditPackage) => {
+      await startCheckout(pack.id);
+    },
+    [startCheckout],
+  );
 
   const widthMeasurements = useMemo(
     () => measurements.filter((m) => m.kind !== 'length'),
@@ -374,6 +472,84 @@ export const GradingPage: React.FC = () => {
           explains the proposal — <span className="font-medium text-on-surface">you approve the calculations</span>.
         </p>
       </div>
+
+      {/* --- Start from a saved pattern --- */}
+      {savedPatterns.length > 0 && (
+        <div className="bg-surface-container-low rounded-xl border border-outline-variant/15 p-6 sm:p-8 space-y-4">
+          <div>
+            <h3 className="font-semibold text-xs uppercase tracking-widest text-on-surface-variant">
+              Start from a saved pattern
+            </h3>
+            <p className="text-sm text-on-surface-variant mt-1 leading-relaxed">
+              Pick one of your uploaded patterns and StitchSpeak reads every detail from the document —
+              gauge, sizes, the full measurement table, shaping, construction and stitch repeat — and fills
+              the grading form for you. Review it, adjust anything, then propose the grading.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+            <select
+              className={`${inputClass} sm:max-w-md`}
+              value={selectedPatternId}
+              onChange={(e) => setSelectedPatternId(e.target.value)}
+              disabled={isExtracting}
+              aria-label="Saved pattern to extract from"
+            >
+              <option value="">Choose a pattern…</option>
+              {savedPatterns.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.fileName}
+                  {r.pdfMetrics ? ` · ${r.pdfMetrics.pages} pages` : ''}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => void handleExtract()}
+              disabled={!selectedPatternId || isExtracting || extractTooManyPages}
+              className="bg-primary text-on-primary px-6 py-2.5 rounded-full text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 flex items-center justify-center gap-2 shrink-0"
+            >
+              {isExtracting ? (
+                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden>
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <span className="material-symbols-outlined text-lg" aria-hidden>document_scanner</span>
+              )}
+              {isExtracting
+                ? 'Reading the pattern…'
+                : `Extract details${extractCost !== null ? ` (${extractCost.toFixed(1)} credits)` : ''}`}
+            </button>
+          </div>
+          {isExtracting && (
+            <p className="text-xs text-on-surface-variant">
+              The AI is transcribing the gauge, sizes, measurements and shaping from the document. This can
+              take a few minutes — leave the page open.
+            </p>
+          )}
+          {extractTooManyPages && selectedPattern?.pdfMetrics && (
+            <p className="rounded-xl border border-error/20 bg-error-container/40 px-4 py-3 text-sm text-on-error-container">
+              Extraction supports patterns up to {PRICING.gradingExtract.maxPages} pages — this document has{' '}
+              {selectedPattern.pdfMetrics.pages}.
+            </p>
+          )}
+          {(extractedTitle || extractionNotes.length > 0) && !isExtracting && (
+            <div className="rounded-xl border border-amber-300/60 bg-amber-50 p-4 space-y-2">
+              <p className="text-sm font-semibold text-amber-900">
+                {extractedTitle ? `Extracted from "${extractedTitle}"` : 'Extraction complete'} — review
+                the form below before proposing.
+              </p>
+              {extractionNotes.length > 0 && (
+                <ul className="list-disc pl-5 space-y-1">
+                  {extractionNotes.map((note, i) => (
+                    <li key={i} className="text-sm text-amber-900/85 leading-relaxed">{note}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* --- Setup --- */}
       <div className="bg-surface-container-low rounded-xl border border-outline-variant/15 p-6 sm:p-8 space-y-5">
@@ -899,6 +1075,12 @@ export const GradingPage: React.FC = () => {
           </p>
         </div>
       )}
+
+      <BuyCreditsModal
+        isOpen={isBuyCreditsOpen}
+        onClose={() => setIsBuyCreditsOpen(false)}
+        onPurchase={handleCreditPurchase}
+      />
     </div>
   );
 };

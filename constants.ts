@@ -61,6 +61,15 @@ export const PRICING = {
     pagesPerSurchargeStep: 5,
     maxPages: 30,
   },
+  gradingExtract: {
+    inputCostPer1MTokens: 2.00,
+    outputCostPer1MTokens: 12.00,
+    fixedMargin: 2.00,
+    includedPages: 10,
+    pageSurcharge: 1.00,
+    pagesPerSurchargeStep: 5,
+    maxPages: 30,
+  },
   tokenEstimation: {
     charsPerToken: 4,
     systemPromptTokens: 500,

@@ -41,6 +41,18 @@ export const PRICING = {
     // just charging more.
     maxPages: 30,
   },
+  gradingExtract: {
+    // One Gemini Pro structured-extraction pass over the pattern document
+    // (half a tech edit's API work), pulling gauge, sizes, the measurement
+    // table and shaping into the grading form.
+    inputCostPer1MTokens: 2.0,
+    outputCostPer1MTokens: 12.0,
+    fixedMargin: 2.0,
+    includedPages: 10,
+    pageSurcharge: 1.0,
+    pagesPerSurchargeStep: 5,
+    maxPages: 30,
+  },
   tokenEstimation: {
     charsPerToken: 4,
     systemPromptTokens: 500,
@@ -166,6 +178,24 @@ export function techEditCostFromMetrics(metrics: DocumentMetrics): number {
   const baseCost = roundUpToHalf(inputCost + outputCost + fixedMargin);
 
   const { includedPages, pageSurcharge, pagesPerSurchargeStep } = PRICING.techEdit;
+  const extraPages = Math.max(0, metrics.pages - includedPages);
+  const surcharge =
+    extraPages === 0 ? 0 : Math.ceil(extraPages / pagesPerSurchargeStep) * pageSurcharge;
+
+  return roundUpToHalf(baseCost + surcharge);
+}
+
+/** Grading extraction cost in credits (EUR), computed from server-side metrics. */
+export function gradingExtractCostFromMetrics(metrics: DocumentMetrics): number {
+  const { inputCostPer1MTokens, outputCostPer1MTokens, fixedMargin } = PRICING.gradingExtract;
+  // A single pass reads the full document; the structured JSON output is small
+  // relative to the document, so a quarter of the translation output estimate
+  // is generous.
+  const inputCost = (metrics.estimatedInputTokens / 1_000_000) * inputCostPer1MTokens;
+  const outputCost = (metrics.estimatedOutputTokens / 4 / 1_000_000) * outputCostPer1MTokens;
+  const baseCost = roundUpToHalf(inputCost + outputCost + fixedMargin);
+
+  const { includedPages, pageSurcharge, pagesPerSurchargeStep } = PRICING.gradingExtract;
   const extraPages = Math.max(0, metrics.pages - includedPages);
   const surcharge =
     extraPages === 0 ? 0 : Math.ceil(extraPages / pagesPerSurchargeStep) * pageSurcharge;

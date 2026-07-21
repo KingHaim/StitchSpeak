@@ -434,7 +434,7 @@ function sanitizeEditorial(raw: unknown): { summary: string; findings: TechEditF
 
 // --- Model calls ---
 
-interface DocumentPayload {
+export interface DocumentPayload {
   parts: Array<Record<string, unknown>>;
 }
 
@@ -442,7 +442,7 @@ interface DocumentPayload {
  * Build the document part of the prompt: PDFs go to Gemini as inline bytes
  * (multimodal — charts and tables stay visible), everything else as text.
  */
-async function buildDocumentPayload(
+export async function buildDocumentPayload(
   fileBuffer: Buffer,
   mimeType: string,
   fileName?: string,
