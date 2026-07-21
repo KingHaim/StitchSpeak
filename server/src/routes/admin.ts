@@ -21,6 +21,7 @@ import {
 } from '../services/betaApplicationStore.js';
 import { getBalance } from '../services/creditStore.js';
 import {
+  fetchRecordingsForSessions,
   fetchUserActivity,
   isPosthogActivityConfigured,
   summarizeActivity,
@@ -178,6 +179,13 @@ router.get('/members/:sub/activity', async (req, res) => {
       limit: 300,
     });
     const summary = summarizeActivity(events ?? []);
+    let recordings: Awaited<ReturnType<typeof fetchRecordingsForSessions>> = [];
+    try {
+      const sessionIds = (events ?? []).map((event) => event.sessionId).filter((id): id is string => Boolean(id));
+      recordings = await fetchRecordingsForSessions(sessionIds);
+    } catch (err) {
+      console.error('[admin] PostHog recordings lookup failed:', err);
+    }
     res.json({
       configured: true,
       days,
@@ -185,8 +193,16 @@ router.get('/members/:sub/activity', async (req, res) => {
       pages: summary.pages.map((page) => ({ ...page, name: friendlyPageName(page.path) })),
       actions: summary.actions.map((action) => ({
         ...action,
-        label: describeActivityEvent({ event: action.event, timestamp: action.lastAt, path: null, detail: null, props: {} }),
+        label: describeActivityEvent({
+          event: action.event,
+          timestamp: action.lastAt,
+          path: null,
+          detail: null,
+          props: {},
+          sessionId: null,
+        }),
       })),
+      recordings: recordings ?? [],
     });
   } catch (err) {
     console.error('[admin] PostHog activity lookup failed:', err);

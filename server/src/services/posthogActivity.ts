@@ -20,6 +20,19 @@ export interface ActivityEvent {
   detail: string | null;
   /** Same subset as `detail`, kept structured for plain-language rendering. */
   props: Record<string, string | number | boolean>;
+  /** Session replay id the event belongs to, used to link screen recordings. */
+  sessionId: string | null;
+}
+
+export interface RecordingSummary {
+  id: string;
+  /** Direct link to the PostHog replay player (requires a PostHog login). */
+  url: string;
+  /** ISO start time. */
+  startTime: string;
+  durationSeconds: number;
+  /** Seconds the user was actually interacting (not idle). */
+  activeSeconds: number;
 }
 
 export interface ActivitySummary {
@@ -124,14 +137,62 @@ export async function fetchUserActivity(
     .map((row) => {
       const properties = row.properties ?? {};
       const props = eventProps(properties);
+      const sessionId = properties['$session_id'];
       return {
         event: row.event!,
         timestamp: row.timestamp!,
         path: eventPath(properties),
         detail: eventDetail(props),
         props,
+        sessionId: typeof sessionId === 'string' && sessionId ? sessionId : null,
       };
     });
+}
+
+/**
+ * Fetch replay links for the sessions a user's events belong to. The
+ * recordings API has no distinct_id filter, so callers pass the session ids
+ * collected from `fetchUserActivity`. Returns null when not configured.
+ */
+export async function fetchRecordingsForSessions(sessionIds: string[]): Promise<RecordingSummary[] | null> {
+  if (!isPosthogActivityConfigured()) return null;
+  const unique = [...new Set(sessionIds)].slice(0, 20);
+  if (unique.length === 0) return [];
+
+  const apiKey = process.env.POSTHOG_PERSONAL_API_KEY!.trim();
+  const projectId = process.env.POSTHOG_PROJECT_ID!.trim();
+  const host = (process.env.POSTHOG_API_HOST?.trim() || 'https://us.posthog.com').replace(/\/$/, '');
+
+  const params = new URLSearchParams({ session_ids: JSON.stringify(unique), limit: String(unique.length) });
+  const response = await withExternalDeadline('PostHog recordings lookup', 10_000, (signal) =>
+    fetch(`${host}/api/projects/${encodeURIComponent(projectId)}/session_recordings?${params}`, {
+      signal,
+      headers: { Authorization: `Bearer ${apiKey}` },
+    }),
+  );
+  if (!response.ok) {
+    throw new Error(`PostHog recordings API responded ${response.status}`);
+  }
+
+  const data = (await response.json()) as {
+    results?: Array<{
+      id?: string;
+      start_time?: string;
+      recording_duration?: number;
+      active_seconds?: number;
+    }>;
+  };
+
+  return (data.results ?? [])
+    .filter((row) => typeof row.id === 'string' && typeof row.start_time === 'string')
+    .map((row) => ({
+      id: row.id!,
+      url: `${host}/project/${projectId}/replay/${row.id}`,
+      startTime: row.start_time!,
+      durationSeconds: Math.round(row.recording_duration ?? 0),
+      activeSeconds: Math.round(row.active_seconds ?? 0),
+    }))
+    .sort((a, b) => (a.startTime < b.startTime ? 1 : -1));
 }
 
 /** Group raw events into pages visited + actions performed, both newest first. */

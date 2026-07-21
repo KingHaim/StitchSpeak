@@ -7,7 +7,11 @@ import {
   type FeedbackActivityReport,
 } from '../services/feedbackEmail.js';
 import { getBalance, listCreditLedger } from '../services/creditStore.js';
-import { fetchUserActivity, summarizeActivity } from '../services/posthogActivity.js';
+import {
+  fetchRecordingsForSessions,
+  fetchUserActivity,
+  summarizeActivity,
+} from '../services/posthogActivity.js';
 
 const MAX_MESSAGE_LENGTH = 4000;
 const MAX_PAGE_LENGTH = 200;
@@ -31,6 +35,10 @@ async function buildActivityReport(userSub: string): Promise<FeedbackActivityRep
         limit: 200,
       });
       report.activity = events === null ? null : summarizeActivity(events);
+      if (events && events.length > 0) {
+        const sessionIds = events.map((event) => event.sessionId).filter((id): id is string => Boolean(id));
+        report.recordings = await fetchRecordingsForSessions(sessionIds);
+      }
     } catch (err) {
       console.error('[feedback] PostHog activity lookup failed:', err);
       report.activity = undefined;

@@ -12,6 +12,7 @@ export interface AdminMemberActivity {
   events?:AdminActivityEvent[];
   pages?:{ path:string; count:number; lastAt:string; name?:string }[];
   actions?:{ event:string; count:number; lastAt:string; label?:string }[];
+  recordings?:{ id:string; url:string; startTime:string; durationSeconds:number; activeSeconds:number }[];
 }
 export type BetaApplicationStatus='new'|'approved'|'rejected';
 export type AdminMemberSort='balance'|'creditsSpent'|'lastActivity';

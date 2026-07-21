@@ -12,6 +12,9 @@ export function initAnalytics(): void {
     person_profiles: 'identified_only',
     capture_pageview: true,
     capture_pageleave: true,
+    // Session replay is toggled per-project in PostHog. Keep everything the
+    // user types masked so recordings never contain passwords or messages.
+    session_recording: { maskAllInputs: true },
   });
   initialized = true;
 }

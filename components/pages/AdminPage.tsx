@@ -438,6 +438,24 @@ export const AdminPage: React.FC = () => {
                           </div>
                         ))}
                       </div>
+                      <p className="mt-4 text-[10px] font-bold uppercase tracking-wider text-white/45">Screen recordings</p>
+                      {(activity.recordings ?? []).length === 0 && (
+                        <p className="mt-2 text-xs text-white/55">No recordings in this window.</p>
+                      )}
+                      <div className="mt-2 space-y-1">
+                        {(activity.recordings ?? []).map((r) => (
+                          <a
+                            key={r.id}
+                            href={r.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex justify-between gap-2 text-xs text-emerald-200 underline decoration-emerald-200/40 hover:decoration-emerald-200"
+                          >
+                            <span className="truncate">{date(Date.parse(r.startTime))}</span>
+                            <span className="shrink-0 text-white/45">{Math.max(1, Math.round(r.durationSeconds / 60))} min</span>
+                          </a>
+                        ))}
+                      </div>
                       <p className="mt-4 text-[10px] font-bold uppercase tracking-wider text-white/45">Timeline</p>
                       <div className="mt-2 max-h-72 space-y-2 overflow-y-auto pr-1">
                         {(activity.events ?? []).slice(0, 60).map((ev, i) => (

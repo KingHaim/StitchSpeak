@@ -1,7 +1,7 @@
 import { withExternalDeadline } from './externalDeadline.js';
 import { escapeHtml, htmlToPlainText, paragraph, renderEmailHtml } from './emailTemplate.js';
 import type { CreditLedgerEntry } from './creditStore.js';
-import type { ActivitySummary } from './posthogActivity.js';
+import type { ActivitySummary, RecordingSummary } from './posthogActivity.js';
 import {
   describeActivityEvent,
   describeLedgerEntry,
@@ -15,6 +15,8 @@ export type FeedbackActivityReport = {
   ledger: CreditLedgerEntry[];
   /** PostHog activity; null = not configured, undefined = lookup failed. */
   activity?: ActivitySummary | null;
+  /** Screen recordings covering the activity window, when replay is enabled. */
+  recordings?: RecordingSummary[] | null;
   /** Hours of activity covered by the PostHog lookup. */
   activityWindowHours: number;
 };
@@ -125,6 +127,21 @@ function reportHtml(report: FeedbackActivityReport): string {
             })),
           ),
     );
+  }
+
+  if (report.recordings && report.recordings.length > 0) {
+    parts.push(sectionHeading('Watch their screen'));
+    const links = report.recordings
+      .slice(0, 5)
+      .map((recording) => {
+        const minutes = Math.max(1, Math.round(recording.durationSeconds / 60));
+        const active = Math.max(1, Math.round(recording.activeSeconds / 60));
+        const label = `Session from ${friendlyDate(recording.startTime)} — ${minutes} min (~${active} min active)`;
+        return `<p style="margin:0 0 8px;font-size:14px;"><a href="${escapeHtml(recording.url)}" target="_blank" rel="noopener noreferrer" style="color:#50604a;">${escapeHtml(label)}</a></p>`;
+      })
+      .join('');
+    parts.push(links);
+    parts.push(paragraph('<span style="font-size:12px;color:#8a8677;">Recordings open in PostHog and need a PostHog login. Typed text is masked for privacy.</span>'));
   }
 
   return parts.join('');

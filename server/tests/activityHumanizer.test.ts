@@ -12,6 +12,7 @@ const event = (name: string, props: ActivityEvent['props'] = {}, path: string | 
   path,
   detail: null,
   props,
+  sessionId: null,
 });
 
 describe('activity humanizer', () => {
