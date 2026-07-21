@@ -65,6 +65,20 @@ db.exec(`
   )
 `);
 
+// In-flight job charges. A row exists while a paid Gemini job (translation /
+// tech edit) is running and is settled on success or refunded on failure. If
+// the process dies mid-job (redeploy, crash), the row survives on the volume
+// and is refunded on the next startup so users never lose credits silently.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS pending_charges (
+    id         TEXT PRIMARY KEY,
+    sub        TEXT NOT NULL,
+    amount     REAL NOT NULL,
+    kind       TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )
+`);
+
 function subHash(sub: string): string {
   return crypto.createHash('sha256').update(sub).digest('hex');
 }
@@ -117,6 +131,12 @@ const stmts = {
   recentAnomalies: db.prepare<[number]>(`
     SELECT COUNT(*) AS count FROM payment_anomalies WHERE created_at >= ?
   `),
+  insertPendingCharge: db.prepare<[string, string, number, string, number]>(`
+    INSERT INTO pending_charges (id, sub, amount, kind, created_at) VALUES (?, ?, ?, ?, ?)
+  `),
+  getPendingCharge: db.prepare<[string]>('SELECT id, sub, amount, kind FROM pending_charges WHERE id = ?'),
+  deletePendingCharge: db.prepare<[string]>('DELETE FROM pending_charges WHERE id = ?'),
+  allPendingCharges: db.prepare('SELECT id, sub, amount, kind FROM pending_charges'),
   deleteCredits: db.prepare<[string]>('DELETE FROM credits WHERE sub = ?'),
   anonymizeOrders: db.prepare<[string, string]>('UPDATE payment_orders SET sub = ? WHERE sub = ?'),
   markDeleted: db.prepare<[string, number]>('INSERT OR IGNORE INTO deleted_accounts (sub_hash, deleted_at) VALUES (?, ?)'),
@@ -148,6 +168,66 @@ const deductTx = db.transaction((sub: string, amount: number): { ok: boolean; ba
 
 export function deductCredits(sub: string, amount: number): { ok: boolean; balance: number } {
   return deductTx(sub, amount);
+}
+
+interface PendingChargeRow {
+  id: string;
+  sub: string;
+  amount: number;
+  kind: string;
+}
+
+const chargeTx = db.transaction(
+  (sub: string, amount: number, kind: string): { ok: boolean; balance: number; chargeId: string | null } => {
+    const result = deductTx(sub, amount);
+    if (!result.ok) return { ...result, chargeId: null };
+    const chargeId = crypto.randomUUID();
+    stmts.insertPendingCharge.run(chargeId, sub, round(amount), kind, Date.now());
+    return { ...result, chargeId };
+  },
+);
+
+/**
+ * Deduct credits for a long-running job, atomically recording a pending charge
+ * that must be settled (job succeeded) or refunded (job failed / process died).
+ */
+export function chargeCreditsForJob(
+  sub: string,
+  amount: number,
+  kind: string,
+): { ok: boolean; balance: number; chargeId: string | null } {
+  if (amount <= 0) return { ok: true, balance: getBalance(sub), chargeId: null };
+  return chargeTx(sub, amount, kind);
+}
+
+/** The job delivered its result: keep the charge, drop the pending marker. */
+export function settlePendingCharge(chargeId: string): void {
+  stmts.deletePendingCharge.run(chargeId);
+}
+
+const refundChargeTx = db.transaction((chargeId: string): { refunded: boolean; balance: number } => {
+  const row = stmts.getPendingCharge.get(chargeId) as PendingChargeRow | undefined;
+  if (!row) return { refunded: false, balance: 0 };
+  stmts.deletePendingCharge.run(chargeId);
+  stmts.upsertAdd.run(row.sub, round(row.amount), Date.now(), null);
+  return { refunded: true, balance: round(getBalance(row.sub)) };
+});
+
+/** The job failed: give the credits back exactly once. */
+export function refundPendingCharge(chargeId: string, sub: string): number {
+  const result = refundChargeTx(chargeId);
+  return result.refunded ? result.balance : getBalance(sub);
+}
+
+/**
+ * Refund every pending charge left over from a previous process. Called on
+ * startup: any surviving row means the job was killed before it could settle
+ * or refund (redeploy / crash), so the user paid for nothing.
+ */
+export function refundOrphanedPendingCharges(): Array<{ sub: string; amount: number; kind: string }> {
+  const rows = stmts.allPendingCharges.all() as PendingChargeRow[];
+  for (const row of rows) refundChargeTx(row.id);
+  return rows.map(({ sub, amount, kind }) => ({ sub, amount, kind }));
 }
 
 const grantTx = db.transaction(

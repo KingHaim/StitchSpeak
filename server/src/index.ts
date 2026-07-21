@@ -30,6 +30,7 @@ import { requestGroup, requestMetrics } from './services/requestMetrics.js';
 import { operationalCleanupHealth, scheduleOperationalCleanup } from './services/operationalCleanup.js';
 import { recoveryDrillHealth, scheduleRecoveryDrills } from './services/recoveryDrill.js';
 import { clearAllTranslationLeases } from './services/translationLeaseStore.js';
+import { refundOrphanedPendingCharges } from './services/creditStore.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -275,6 +276,13 @@ const server = app.listen(PORT, () => {
 const orphanedLeases = clearAllTranslationLeases();
 if (orphanedLeases > 0) {
   console.log(`[startup] cleared ${orphanedLeases} orphaned translation lease(s)`);
+}
+
+// Same failure mode for money: jobs killed mid-run deducted credits but never
+// reached their refund path. Give those credits back.
+const refundedCharges = refundOrphanedPendingCharges();
+for (const charge of refundedCharges) {
+  console.log(`[startup] refunded orphaned ${charge.kind} charge: ${charge.amount} credits to ${charge.sub}`);
 }
 
 installGracefulShutdown(server, () => {

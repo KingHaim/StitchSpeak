@@ -3,7 +3,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { uploadPattern } from '../middleware/upload.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 import { translatePattern } from '../services/gemini.js';
-import { addCredits, deductCredits, getBalance } from '../services/creditStore.js';
+import { chargeCreditsForJob, refundPendingCharge, settlePendingCharge } from '../services/creditStore.js';
 import { computeDocumentMetrics, translationCostFromMetrics } from '../services/pricing.js';
 import { externalErrorStatus } from '../services/externalDeadline.js';
 import {
@@ -89,16 +89,14 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
     return;
   }
 
-  const { ok, balance } = cost === 0
-    ? { ok: true, balance: getBalance(userSub) }
-    : deductCredits(userSub, cost);
+  const { ok, balance, chargeId } = chargeCreditsForJob(userSub, cost, 'translation');
   if (!ok) {
     res.status(402).json({ error: 'Insufficient credits.', balance, cost });
     return;
   }
 
   // If the translation fails to produce output, give the credits back.
-  const refund = (): number => cost > 0 ? addCredits(userSub, cost) : balance;
+  const refund = (): number => (chargeId ? refundPendingCharge(chargeId, userSub) : balance);
 
   if (!clientWantsStream(req)) {
     try {
@@ -110,6 +108,7 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
         {},
         file.originalname,
       );
+      if (chargeId) settlePendingCharge(chargeId);
       res.json({ ...result, cost, balance });
     } catch (err: any) {
       console.error('[translate] Error:', err);
@@ -173,6 +172,7 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
       },
       file.originalname,
     );
+    if (chargeId) settlePendingCharge(chargeId);
     if (!clientGone) {
       writeEvent({ type: 'done', html: result.html, usage: result.usage, cost, balance });
     }

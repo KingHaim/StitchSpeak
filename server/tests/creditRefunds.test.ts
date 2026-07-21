@@ -74,6 +74,44 @@ describe('payment refund reconciliation', () => {
     expect(store.paymentReconciliationHealth()).toEqual({ ok: false, recentAnomalies: 1 });
   });
 
+  it('settles, refunds, and reconciles pending job charges', () => {
+    store.addCredits('user-job', 30);
+
+    // Successful job: charge is settled, credits stay spent.
+    const settled = store.chargeCreditsForJob('user-job', 10, 'tech-edit');
+    expect(settled).toMatchObject({ ok: true, balance: 20 });
+    store.settlePendingCharge(settled.chargeId!);
+
+    // Failed job: refund restores the balance, and only once.
+    const failed = store.chargeCreditsForJob('user-job', 5, 'translation');
+    expect(failed.balance).toBe(15);
+    expect(store.refundPendingCharge(failed.chargeId!, 'user-job')).toBe(20);
+    expect(store.refundPendingCharge(failed.chargeId!, 'user-job')).toBe(20);
+
+    // Killed job: the pending row survives and startup reconciliation refunds it.
+    const killed = store.chargeCreditsForJob('user-job', 8, 'tech-edit');
+    expect(killed.balance).toBe(12);
+    expect(store.refundOrphanedPendingCharges()).toEqual([
+      { sub: 'user-job', amount: 8, kind: 'tech-edit' },
+    ]);
+    expect(store.getBalance('user-job')).toBe(20);
+    expect(store.refundOrphanedPendingCharges()).toEqual([]);
+
+    // Insufficient balance: no charge row is left behind.
+    expect(store.chargeCreditsForJob('user-job', 100, 'tech-edit')).toMatchObject({
+      ok: false,
+      chargeId: null,
+    });
+    expect(store.refundOrphanedPendingCharges()).toEqual([]);
+
+    // Free jobs don't create charges.
+    expect(store.chargeCreditsForJob('user-job', 0, 'tech-edit')).toEqual({
+      ok: true,
+      balance: 20,
+      chargeId: null,
+    });
+  });
+
   it('deletes balances, anonymizes orders, and blocks late payment credits', () => {
     store.recordPurchaseAndGrantCredits({
       eventId: 'order_created:deleted', orderId: 'deleted-order', sub: 'user-delete',

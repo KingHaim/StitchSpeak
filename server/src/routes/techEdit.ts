@@ -4,7 +4,7 @@ import { isAdminIdentity } from '../middleware/admin.js';
 import { uploadPattern } from '../middleware/upload.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 import { runTechEdit } from '../services/techEdit.js';
-import { addCredits, deductCredits, getBalance } from '../services/creditStore.js';
+import { chargeCreditsForJob, refundPendingCharge, settlePendingCharge } from '../services/creditStore.js';
 import {
   computeDocumentMetrics,
   techEditCostFromMetrics,
@@ -154,14 +154,12 @@ router.post('/', requireAuth, techEditRateLimit, uploadPatternSafe, async (req: 
       return;
     }
 
-    const { ok, balance } = cost === 0
-      ? { ok: true, balance: getBalance(userSub) }
-      : deductCredits(userSub, cost);
+    const { ok, balance, chargeId } = chargeCreditsForJob(userSub, cost, 'tech-edit');
     if (!ok) {
       res.status(402).json({ error: 'Insufficient credits.', balance, cost });
       return;
     }
-    const refund = (): number => (cost > 0 ? addCredits(userSub, cost) : balance);
+    const refund = (): number => (chargeId ? refundPendingCharge(chargeId, userSub) : balance);
 
     // --- NDJSON streaming (always): a tech edit takes minutes, so flush
     // headers immediately and heartbeat to keep proxies from dropping us. ---
@@ -211,6 +209,7 @@ router.post('/', requireAuth, techEditRateLimit, uploadPatternSafe, async (req: 
         console.error('[tech-edit] Failed to persist report:', saveErr);
       }
 
+      if (chargeId) settlePendingCharge(chargeId);
       if (!clientGone) {
         writeEvent({ type: 'done', report, reportId, usage, cost, balance });
       }
