@@ -9,6 +9,7 @@ interface MobileBottomNavProps {
 const items: Array<{ page: PageId; label: string; icon: string }> = [
   { page: 'dashboard', label: 'Translate', icon: 'translate' },
   { page: 'techedit', label: 'Tech Edit', icon: 'fact_check' },
+  { page: 'grading', label: 'Grading', icon: 'straighten' },
   { page: 'history', label: 'Patterns', icon: 'folder_open' },
   { page: 'glossary', label: 'Glossary', icon: 'menu_book' },
 ];
@@ -18,7 +19,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ activePage, on
     aria-label="Primary navigation"
     className="fixed inset-x-0 bottom-0 z-40 border-t border-outline-variant/25 bg-surface/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-12px_30px_-20px_rgba(29,28,23,0.35)] backdrop-blur-xl lg:hidden"
   >
-    <div className="mx-auto grid max-w-md grid-cols-4 gap-1">
+    <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
       {items.map(({ page, label, icon }) => {
         const active = page === activePage;
         return (
