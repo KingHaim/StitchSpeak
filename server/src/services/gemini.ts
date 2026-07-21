@@ -111,12 +111,21 @@ function getLanguageSpecificRules(language: string): string {
     - Place Marker (PM) -> pm (poner marcador)
     - purl front and back (pfb) -> Rft (reves por el frente y por detras)
     - slip (sl) -> desl (deslizar) — NEVER use "des"
-    - slip slip knit (SSK) -> ddD (deslizar, deslizar, derecho)
+    - slip slip knit (SSK / ssk) -> ddD (deslizar, deslizar, derecho)
     - knit 2 together (k2tog) -> 2pjD (2 puntos juntos derecho)
-    - yarn over (yo) -> H (hebra)
+    - yarn over (yo / "yarn over") -> H (hebra / lazada)
+    - knit (K / "knit") -> D (derecho) — NEVER leave the English word "knit"
+    - centered double decrease (CDD / s2kp / sk2p) -> DDC (disminución doble centrada)
     - Sweater -> Jersey (NEVER use "suéter" or "sweater")
     - LH needle -> Ag-i (Aguja izquierda)
     - RH needle -> Ag-d (Aguja derecha)
+
+    ### CHART-LEGEND EXAMPLES (Spanish) — never leave these English forms:
+    - k2tog -> 2pjD (2 puntos juntos derecho)
+    - ssk -> ddD (deslizar, deslizar, derecho)
+    - CDD -> DDC (disminución doble centrada)
+    - knit -> D (derecho)
+    - yarn over -> H (hebra / lazada)
     `;
   }
   if (normalized === 'korean') {
@@ -165,30 +174,39 @@ export const createSystemInstruction = (language: string, sourceLanguage?: strin
 - **STITCH CHARTS**: If the PDF contains a grid/chart representing a stitch pattern, you MUST reconstruct it as an HTML table. Each cell in the table should represent one square of the chart. Translate any symbols in the chart legend accurately.
 - **NO SKIPPING**: Do not summarize tables or skip charts. Every piece of technical data in the PDF must be present in the HTML output.
 
-### 1b. STITCH CHART LEGENDS (CRITICAL):
-A "chart legend" (a.k.a. symbol key / leyenda de símbolos) is the small key, usually adjacent to or below a stitch chart, where each row pairs a tiny symbol image (a square or rectangle showing one stitch icon) with a short text description of what that symbol means.
+### 1b. STITCH CHART LEGENDS (CRITICAL — OVERRIDES ROW GROUPS):
+A "chart legend" (a.k.a. symbol key / leyenda de símbolos) is the small key, usually adjacent to or below a stitch chart, where each entry pairs a tiny stitch symbol (image square OR drawn chart cell / glyph) with a short text description of what that symbol means — often English abbreviations such as k2tog, ssk, CDD, knit, yarn over even when the rest of the pattern is in another language.
 
-Whenever you detect this pattern in the source — i.e. an image catalog item that is a small, square-ish, low-aspect-ratio symbol image accompanied by a short stitch description in the surrounding text — you MUST reconstruct the legend as a dedicated HTML <table> with EXACTLY 2 columns and one row per legend entry:
-  1. **First column (the symbol)**: contains ONLY the bare \`[IMG_N]\` marker for that symbol image (no <p> wrapper, no caption, no translation, no extra text). The original image must be preserved AS-IS — do NOT try to translate or describe it inside the cell.
-  2. **Second column (the meaning)**: contains ONLY the TRANSLATED ${language} description of that stitch (full term and/or localized abbreviation). Do NOT keep any source-language text in this column.
+Whenever you detect this pattern in the source — including any IMAGE CATALOG items marked as "likely stitch-chart LEGEND SYMBOL" or listed under "STITCH-CHART LEGEND CANDIDATES", AND also when the legend is plain text / chart cells without separate images — you MUST reconstruct the legend as a dedicated HTML <table> with EXACTLY 2 columns and one row per legend entry:
+  1. **First column (the symbol)**:
+     - If an extracted symbol image exists: ONLY the bare \`[IMG_N]\` marker (no <p> wrapper, no caption, no translation, no extra text). Preserve the original image AS-IS — do NOT redraw or describe it.
+     - If there is no separate image: put the original chart symbol glyph / cell content (e.g. /, \\, O, blank knit square) in the cell, preserving its visual meaning.
+  2. **Second column (the meaning)**: contains ONLY the TRANSLATED ${language} description of that stitch (localized abbreviation AND/OR full term). Do NOT keep English or any other source-language text in this column.
+
+HARD RULES for legend meanings:
+- Leaving English knitting abbreviations untranslated (k2tog, ssk, CDD, knit, yarn over, yo, K, P, etc.) is a hard failure.
+- Mixed-language sources are common (e.g. French written rounds + English legend). Translate the legend into ${language} anyway — English abbreviations are NOT "international" and MUST be localized.
+- Prefer the localized abbreviation plus a short full term when helpful (e.g. Spanish: "2pjD (2 puntos juntos derecho)").
+
+This legend table ALWAYS takes priority over IMAGE ROW GROUPS. Even if a legend symbol appears in a ROW group in the catalog, you MUST still place its bare \`[IMG_N]\` inside a legend \`<td>\` and you MUST NOT emit \`[ROW_N]\` for those legend-symbol members. Dumping the symbols as a photo strip / \`<p>[ROW_N]</p>\` / \`<p>[IMG_N]</p>\` blocks without a translated meaning column is a hard failure.
 
 Use this exact table structure for legends:
 \`\`\`
 <table style="width: auto; border-collapse: collapse; margin: 1em 0; border: 1px solid #ccc;">
-  <thead><tr><th style="padding: 0.4em 0.75em; text-align: center;">Símbolo</th><th style="padding: 0.4em 0.75em; text-align: left;">Significado</th></tr></thead>
+  <thead><tr><th style="padding: 0.4em 0.75em; text-align: center;">Symbol</th><th style="padding: 0.4em 0.75em; text-align: left;">Meaning</th></tr></thead>
   <tbody>
     <tr><td style="padding: 0.3em 0.5em; text-align: center; vertical-align: middle; width: 56px;">[IMG_5]</td><td style="padding: 0.3em 0.75em; vertical-align: middle;">Translated description here</td></tr>
     <tr><td style="padding: 0.3em 0.5em; text-align: center; vertical-align: middle; width: 56px;">[IMG_6]</td><td style="padding: 0.3em 0.75em; vertical-align: middle;">Translated description here</td></tr>
   </tbody>
 </table>
 \`\`\`
-The header labels themselves ("Símbolo" / "Significado") must be translated into ${language} (e.g. for English: "Symbol" / "Meaning"; French: "Symbole" / "Signification"; etc.). Each legend symbol image must appear EXACTLY ONCE — inside its legend cell. Do NOT also emit a separate \`<p>[IMG_N]</p>\` block for that same symbol.
+The header labels themselves ("Symbol" / "Meaning") must be translated into ${language} (e.g. Spanish: "Símbolo" / "Significado"; French: "Symbole" / "Signification"; etc.). Each legend symbol image must appear EXACTLY ONCE — inside its legend cell. Do NOT also emit a separate \`<p>[IMG_N]</p>\` or \`<p>[ROW_N]</p>\` for that same symbol.
 
 ${createSizeFormatPreservationRules(2)}
 
 ### 3. LANGUAGE & TECHNICAL RULES:
 - **NO SOURCE LANGUAGE IN GLOSSARY**: Remove all source-language abbreviations. The glossary must ONLY contain the ${language} abbreviation and its full definition.
-- **100% LOCALIZED**: Use the specific localized abbreviations for ${language} (e.g., MO, Rem, h, 2pjd).
+- **100% LOCALIZED**: Use the specific localized abbreviations for ${language} (e.g., MO, Rem, H, 2pjD, ddD, DDC). Never leave English chart/glossary forms such as k2tog, ssk, CDD, knit, or yarn over when the target is not English.
 - **PUNCTUATION**: Maintain the exact punctuation (brackets, colons, slashes) used in the original for sizing.
 
 ### 4. OUTPUT FORMAT:
@@ -210,7 +228,7 @@ ${createSizeFormatPreservationRules(2)}
     1. <p>[IMG_1]</p>  — for a standalone single image (default block-level placement).
     2. <p>[ROW_1]</p>  — for an entire side-by-side row of images. The server expands this into a horizontal flex container with all member images in left-to-right order.
     3. <td ...>[IMG_1]</td>  — bare marker (no <p> wrapper) inside a stitch-chart-legend table cell. The server detects markers inside <td> and renders the image small/inline so it fits the legend row.
-- When a ROW group is listed in the catalog, you MUST use the [ROW_N] marker once and you MUST NOT also emit individual [IMG_N] markers for any of that row's members. Choosing the row marker is REQUIRED whenever it exists.
+- When a ROW group is listed in the catalog, you MUST use the [ROW_N] marker once and you MUST NOT also emit individual [IMG_N] markers for any of that row's members — EXCEPT for stitch-chart legend symbols (see §1b and any "LEGEND SYMBOL" / "LEGEND CANDIDATES" catalog notes). Legend symbols always use form 3 above and never use [ROW_N].
 - Each marker (whether IMG or ROW) may appear at most once. Cover every catalog item exactly once via its row marker, its block <p>[IMG_N]</p> marker, OR its legend <td>[IMG_N]</td> cell — never combine forms for the same image. Logos and small banners are NOT optional and must always be emitted via their [IMG_N] markers in their original document position.
 - The marker text MUST match this exact structure: opening "[", literal "IMG_" or "ROW_", the integer ID, closing "]". No spaces, no hyphens, no quotes, no markdown, no <code>, and no raw <img> tags.
 - Do NOT invent IDs that are not in the catalog. The server will inject the actual images for every valid marker.
@@ -308,7 +326,7 @@ async function translatePdf(
             ...(typographyInstruction ? [{ text: typographyInstruction }] : []),
             ...(artifactInstruction ? [{ text: artifactInstruction }] : []),
             {
-              text: 'Remember: use the bracketed [ROW_N] marker for any catalog row group (the server will render its images side-by-side), and the [IMG_N] marker only for images that are not part of any row. For stitch-chart legends (small symbol images paired with descriptive text), build a 2-column <table> where column 1 is a <td> containing the bare [IMG_N] marker (no <p>) for the original symbol AS-IS and column 2 is a <td> containing only the TRANSLATED meaning text. Never emit raw <img> tags.',
+              text: 'Remember: for stitch-chart legends (including LEGEND SYMBOL / LEGEND CANDIDATES, and also text-only symbol keys), you MUST rebuild a 2-column <table>: column 1 = original symbol ([IMG_N] bare in <td>, or the drawn glyph if no image); column 2 = ONLY the TRANSLATED meaning. NEVER leave English abbreviations like k2tog, ssk, CDD, knit, yarn over untranslated. Legend symbols override ROW groups — never put them in [ROW_N] or <p>[IMG_N]</p>. For other side-by-side photo rows, use [ROW_N] once instead of individual members. Never emit raw <img> tags.',
             },
             {
               inlineData: { data: base64Data, mimeType },

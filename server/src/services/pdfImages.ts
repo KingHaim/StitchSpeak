@@ -25,6 +25,8 @@ export interface ExtractedImage {
   verticalCenterRatio: number;
   flexWeight: number;
   isCoverBanner: boolean;
+  /** Small square-ish icon likely used as a stitch-chart legend symbol. */
+  isLikelyLegendSymbol: boolean;
 }
 
 interface PageGeometry {
@@ -218,6 +220,17 @@ function groupRows(pending: PendingImage[]): void {
   const byPage = new Map<number, PendingImage[]>();
 
   for (const item of pending) {
+    // Legend symbols must stay as individual [IMG_N] markers inside a 2-column
+    // legend <table>. Grouping them into ROW_* would force the model to emit a
+    // horizontal photo strip and skip translating the symbol meanings.
+    if (item.image.isLikelyLegendSymbol) {
+      item.image.rowId = null;
+      item.image.rowOrder = 0;
+      item.image.rowSize = 1;
+      item.image.flexWeight = 1;
+      continue;
+    }
+
     const list = byPage.get(item.image.page) ?? [];
     list.push(item);
     byPage.set(item.image.page, list);
@@ -390,11 +403,13 @@ export async function extractImages(pdfBuffer: Buffer): Promise<ExtractedImage[]
         verticalCenterRatio,
         flexWeight: 1,
         isCoverBanner: false,
+        isLikelyLegendSymbol: false,
       };
       extracted.isCoverBanner = isCoverBannerImage(extracted);
+      extracted.isLikelyLegendSymbol = isLikelyLegendSymbolImage(extracted);
 
       console.log(
-        `[pdfImages] IMG_${counter}: page ${page.info.num}, ${img.width}x${img.height}, filter=${img.filter ?? 'raw'}, rotation=${rotation}deg, displayWidthRatio=${widthRatio.toFixed(2)}, verticalCenterRatio=${verticalCenterRatio.toFixed(2)}, coverBanner=${extracted.isCoverBanner}, encoded ${Math.round(encoded.base64.length / 1024)}KB`,
+        `[pdfImages] IMG_${counter}: page ${page.info.num}, ${img.width}x${img.height}, filter=${img.filter ?? 'raw'}, rotation=${rotation}deg, displayWidthRatio=${widthRatio.toFixed(2)}, verticalCenterRatio=${verticalCenterRatio.toFixed(2)}, coverBanner=${extracted.isCoverBanner}, legendSymbol=${extracted.isLikelyLegendSymbol}, encoded ${Math.round(encoded.base64.length / 1024)}KB`,
       );
 
       pending.push({ image: extracted, geometry, page: pageGeometry });
@@ -434,6 +449,19 @@ function isCoverBannerImage(img: ExtractedImage): boolean {
     aspectRatio >= 1.4 &&
     img.verticalCenterRatio >= 0.7
   );
+}
+
+/**
+ * Heuristic for stitch-chart legend icons: small, roughly square images that
+ * sit next to a short stitch description. Kept out of ROW groups so the model
+ * can rebuild them as a 2-column translated legend table.
+ */
+export function isLikelyLegendSymbolImage(img: ExtractedImage): boolean {
+  if (img.isCoverBanner) return false;
+  const aspectRatio = img.displayHeight ? img.displayWidth / img.displayHeight : 0;
+  if (aspectRatio < 0.35 || aspectRatio > 2.8) return false;
+  // Small on the page, or tiny in absolute PDF units (~points).
+  return img.widthRatio <= 0.14 || img.displayWidth <= 48;
 }
 
 function summarizeRows(images: ExtractedImage[]): RowSummary[] {
@@ -479,7 +507,10 @@ export function buildImageCatalog(images: ExtractedImage[]): string {
     const bannerSuffix = img.isCoverBanner
       ? ' (small top-of-page banner/logo image; keep centered above the following title)'
       : '';
-    return `${img.id}: Page ${img.page} (appears near the ${img.position} of the page)${rowSuffix}${bannerSuffix}`;
+    const legendSuffix = img.isLikelyLegendSymbol
+      ? ' (likely stitch-chart LEGEND SYMBOL — place bare [IMG_N] inside a 2-column legend <table> <td>, with the FULLY TRANSLATED meaning in the adjacent cell; never leave English abbreviations like k2tog/ssk/CDD/knit/yarn over; do NOT wrap in <p> and do NOT put this image in a ROW group)'
+      : '';
+    return `${img.id}: Page ${img.page} (appears near the ${img.position} of the page)${rowSuffix}${bannerSuffix}${legendSuffix}`;
   });
 
   const rows = summarizeRows(images);
@@ -492,6 +523,18 @@ export function buildImageCatalog(images: ExtractedImage[]): string {
 
   if (rowLines.length) {
     sections.push('', '--- IMAGE ROW GROUPS ---', ...rowLines);
+  }
+
+  const legendIds = images.filter((img) => img.isLikelyLegendSymbol).map((img) => img.id);
+  if (legendIds.length) {
+    sections.push(
+      '',
+      '--- STITCH-CHART LEGEND CANDIDATES ---',
+      `These images look like chart-legend symbols: [${legendIds.join(', ')}].`,
+      'Rebuild them as ONE dedicated 2-column HTML legend <table> (symbol | translated meaning).',
+      'Use each listed [IMG_N] bare inside its own <td>. Never use [ROW_N] for these IDs.',
+      'Column 2 must be fully translated into the target language — never leave English abbreviations such as k2tog, ssk, CDD, knit, yarn over, or any other source-language legend text.',
+    );
   }
 
   sections.push('--- END IMAGE CATALOG ---');
@@ -660,23 +703,10 @@ export function replaceImageMarkers(
 
   const consumedIds = new Set<string>();
 
-  let output = normalizedHtml.replace(ROW_MARKER_REGEX, (_, num: string) => {
-    const id = `ROW_${num}`;
-    const row = rowMap.get(id);
-    if (!row) {
-      console.warn(`[pdfImages] No row group found for ${id}; removing unmatched marker.`);
-      return '';
-    }
-    for (const member of row.members) {
-      consumedIds.add(member.id);
-    }
-    return buildRowHtml(row);
-  });
-
-  // Legend-cell pass: any [IMG_N] marker that the model placed inside a <td>
-  // is treated as a stitch-chart-legend symbol and rendered as a compact
-  // inline image, then marked as consumed so the global pass below skips it.
-  output = output.replace(TD_CELL_REGEX, (cell) => {
+  // Legend-cell pass FIRST: markers inside <td> win over ROW groups. Chart
+  // legends must keep their individual symbol images so the translated meaning
+  // column stays paired with the original icon.
+  let output = normalizedHtml.replace(TD_CELL_REGEX, (cell) => {
     return cell.replace(IMAGE_MARKER_REGEX, (_, num: string) => {
       const id = `IMG_${num}`;
       if (consumedIds.has(id)) return '';
@@ -688,6 +718,27 @@ export function replaceImageMarkers(
       consumedIds.add(id);
       return buildImageHtml(img, { legendCell: true });
     });
+  });
+
+  output = output.replace(ROW_MARKER_REGEX, (_, num: string) => {
+    const id = `ROW_${num}`;
+    const row = rowMap.get(id);
+    if (!row) {
+      console.warn(`[pdfImages] No row group found for ${id}; removing unmatched marker.`);
+      return '';
+    }
+    const remaining = row.members.filter((member) => !consumedIds.has(member.id));
+    if (remaining.length === 0) {
+      // Every member was claimed by a legend <td>; drop the redundant ROW.
+      return '';
+    }
+    for (const member of remaining) {
+      consumedIds.add(member.id);
+    }
+    if (remaining.length === row.members.length) {
+      return buildRowHtml(row);
+    }
+    return buildRowHtml({ ...row, members: remaining });
   });
 
   output = output.replace(IMAGE_MARKER_REGEX, (_, num: string) => {

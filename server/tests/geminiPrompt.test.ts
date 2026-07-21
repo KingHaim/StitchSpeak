@@ -24,4 +24,21 @@ describe('Gemini translation prompts', () => {
 
     expect(source).not.toMatch(/Zebra Bolding/i);
   });
+
+  it('requires PDF chart legends as translated 2-column tables over ROW groups', () => {
+    const prompt = createSystemInstruction('Spanish');
+
+    expect(prompt).toContain('STITCH CHART LEGENDS');
+    expect(prompt).toContain('OVERRIDES ROW GROUPS');
+    expect(prompt).toContain('EXACTLY 2 columns');
+    expect(prompt).toContain('LEGEND SYMBOL');
+    expect(prompt).toMatch(/Legend symbols always use form 3/i);
+    expect(prompt).toContain('Símbolo');
+    expect(prompt).toContain('Significado');
+    expect(prompt).toContain('k2tog');
+    expect(prompt).toContain('2pjD');
+    expect(prompt).toContain('DDC');
+    expect(prompt).toMatch(/Leaving English knitting abbreviations untranslated/i);
+    expect(prompt).toMatch(/English abbreviations are NOT "international"/i);
+  });
 });
