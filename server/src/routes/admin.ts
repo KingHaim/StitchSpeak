@@ -25,6 +25,12 @@ import {
   isPosthogActivityConfigured,
   summarizeActivity,
 } from '../services/posthogActivity.js';
+import {
+  describeActivityEvent,
+  describeLedgerEntry,
+  friendlyPageName,
+} from '../services/activityHumanizer.js';
+import type { CreditLedgerEntry } from '../services/creditStore.js';
 
 const router = Router();
 router.use(requireAdmin);
@@ -149,7 +155,13 @@ router.get('/members/:sub', (req, res) => {
   const sub = Array.isArray(req.params.sub) ? req.params.sub[0] : req.params.sub;
   const detail = getAdminMember(sub);
   if (!detail) return void res.status(404).json({ error: 'Member not found.' });
-  res.json(detail);
+  res.json({
+    ...detail,
+    ledger: (detail.ledger as CreditLedgerEntry[]).map((entry) => ({
+      ...entry,
+      label: describeLedgerEntry(entry),
+    })),
+  });
 });
 // PostHog activity for a member (pages visited + actions). Separate endpoint
 // because it hits the PostHog API and shouldn't slow down the member detail.
@@ -165,7 +177,17 @@ router.get('/members/:sub/activity', async (req, res) => {
       sinceMs: days * 24 * 60 * 60 * 1000,
       limit: 300,
     });
-    res.json({ configured: true, days, ...summarizeActivity(events ?? []) });
+    const summary = summarizeActivity(events ?? []);
+    res.json({
+      configured: true,
+      days,
+      events: summary.events.map((event) => ({ ...event, description: describeActivityEvent(event) })),
+      pages: summary.pages.map((page) => ({ ...page, name: friendlyPageName(page.path) })),
+      actions: summary.actions.map((action) => ({
+        ...action,
+        label: describeActivityEvent({ event: action.event, timestamp: action.lastAt, path: null, detail: null, props: {} }),
+      })),
+    });
   } catch (err) {
     console.error('[admin] PostHog activity lookup failed:', err);
     res.status(502).json({ error: 'PostHog activity lookup failed.' });

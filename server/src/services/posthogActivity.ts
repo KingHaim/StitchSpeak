@@ -18,6 +18,8 @@ export interface ActivityEvent {
   path: string | null;
   /** Small, safe subset of event properties worth showing to a human. */
   detail: string | null;
+  /** Same subset as `detail`, kept structured for plain-language rendering. */
+  props: Record<string, string | number | boolean>;
 }
 
 export interface ActivitySummary {
@@ -44,15 +46,22 @@ const DETAIL_PROPERTY_KEYS = [
   'pattern_id',
   'messages',
   'error',
+  'resolution',
+  'finding_category',
 ] as const;
 
-function eventDetail(properties: Record<string, unknown>): string | null {
-  const parts: string[] = [];
+function eventProps(properties: Record<string, unknown>): Record<string, string | number | boolean> {
+  const props: Record<string, string | number | boolean> = {};
   for (const key of DETAIL_PROPERTY_KEYS) {
     const value = properties[key];
     if (value === undefined || value === null || value === '') continue;
-    parts.push(`${key}=${String(value).slice(0, 120)}`);
+    props[key] = typeof value === 'number' || typeof value === 'boolean' ? value : String(value).slice(0, 120);
   }
+  return props;
+}
+
+function eventDetail(props: Record<string, string | number | boolean>): string | null {
+  const parts = Object.entries(props).map(([key, value]) => `${key}=${value}`);
   return parts.length > 0 ? parts.join(', ') : null;
 }
 
@@ -114,11 +123,13 @@ export async function fetchUserActivity(
     .filter((row) => row.event !== '$pageleave' && row.event !== '$feature_flag_called')
     .map((row) => {
       const properties = row.properties ?? {};
+      const props = eventProps(properties);
       return {
         event: row.event!,
         timestamp: row.timestamp!,
         path: eventPath(properties),
-        detail: eventDetail(properties),
+        detail: eventDetail(props),
+        props,
       };
     });
 }

@@ -2,6 +2,12 @@ import { withExternalDeadline } from './externalDeadline.js';
 import { escapeHtml, htmlToPlainText, paragraph, renderEmailHtml } from './emailTemplate.js';
 import type { CreditLedgerEntry } from './creditStore.js';
 import type { ActivitySummary } from './posthogActivity.js';
+import {
+  describeActivityEvent,
+  describeLedgerEntry,
+  friendlyDate,
+  friendlyPageName,
+} from './activityHumanizer.js';
 
 export type FeedbackActivityReport = {
   balance: number;
@@ -53,89 +59,72 @@ function sectionHeading(text: string): string {
   return `<h2 style="margin:24px 0 8px;font-family:Georgia,'Times New Roman',serif;font-size:17px;font-weight:700;color:#1d1c17;">${escapeHtml(text)}</h2>`;
 }
 
-function reportTable(headers: string[], rows: string[][]): string {
-  const th = headers
-    .map((h) => `<th style="padding:6px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#444841;border-bottom:1px solid #c4c8be;">${escapeHtml(h)}</th>`)
+/** Timeline-style rows: muted timestamp on the left, sentence on the right. */
+function storyList(rows: Array<{ when: string; text: string; highlight?: 'plus' | 'minus' }>): string {
+  const items = rows
+    .map((row) => {
+      const color = row.highlight === 'plus' ? '#1d6b3c' : row.highlight === 'minus' ? '#9a3324' : '#1d1c17';
+      return `<tr>
+  <td style="padding:5px 14px 5px 0;font-size:12px;color:#8a8677;white-space:nowrap;vertical-align:top;">${escapeHtml(row.when)}</td>
+  <td style="padding:5px 0;font-size:14px;line-height:1.5;color:${color};">${escapeHtml(row.text)}</td>
+</tr>`;
+    })
     .join('');
-  const trs = rows
-    .map(
-      (cells) =>
-        `<tr>${cells
-          .map((cell) => `<td style="padding:6px 10px;font-size:13px;color:#1d1c17;border-bottom:1px solid #eee9dd;vertical-align:top;">${escapeHtml(cell)}</td>`)
-          .join('')}</tr>`,
-    )
-    .join('');
-  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:0 0 8px;border-collapse:collapse;"><tr>${th}</tr>${trs}</table>`;
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px;">${items}</table>`;
 }
-
-const formatDate = (ms: number | string): string => {
-  const date = typeof ms === 'number' ? new Date(ms) : new Date(ms);
-  return date.toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
-};
-
-const formatDelta = (delta: number): string => `${delta > 0 ? '+' : ''}${delta.toFixed(2)}`;
 
 function reportHtml(report: FeedbackActivityReport): string {
   const parts: string[] = [];
 
-  parts.push(sectionHeading(`Credits — balance ${report.balance.toFixed(2)}`));
+  parts.push(sectionHeading('Their credits'));
+  parts.push(paragraph(`Current balance: <strong>${report.balance.toFixed(2)} credits</strong>.`));
   if (report.ledger.length === 0) {
-    parts.push(paragraph('No credit movements recorded.'));
+    parts.push(paragraph('No credit movements yet.'));
   } else {
     parts.push(
-      reportTable(
-        ['When', 'Movement', 'Δ credits', 'Balance after'],
-        report.ledger.map((entry) => [
-          formatDate(entry.createdAt),
-          entry.kind + (entry.reference ? ` · ${entry.reference.slice(0, 60)}` : ''),
-          formatDelta(entry.delta),
-          entry.balanceAfter.toFixed(2),
-        ]),
+      storyList(
+        report.ledger.map((entry) => ({
+          when: friendlyDate(entry.createdAt),
+          text: `${describeLedgerEntry(entry)} (balance: ${entry.balanceAfter.toFixed(2)})`,
+          highlight: entry.delta >= 0 ? 'plus' : 'minus',
+        })),
       ),
     );
   }
 
   const activity = report.activity;
   if (activity === null) {
-    parts.push(paragraph('PostHog activity: not configured on the server (set POSTHOG_PERSONAL_API_KEY and POSTHOG_PROJECT_ID).'));
+    parts.push(paragraph('Activity tracking is not set up on the server, so we can\u2019t show what they did before writing this.'));
   } else if (activity === undefined) {
-    parts.push(paragraph('PostHog activity: lookup failed — check the server logs.'));
+    parts.push(paragraph('We couldn\u2019t load their recent activity this time (the analytics lookup failed).'));
   } else {
-    parts.push(sectionHeading(`Pages visited (last ${report.activityWindowHours}h)`));
+    const hours = report.activityWindowHours;
+    const windowLabel = hours >= 48 ? `last ${Math.round(hours / 24)} days` : `last ${hours} hours`;
+
+    parts.push(sectionHeading(`Where they went (${windowLabel})`));
     parts.push(
       activity.pages.length === 0
-        ? paragraph('No pageviews recorded.')
-        : reportTable(
-            ['Page', 'Visits', 'Last visit'],
-            activity.pages.map((page) => [page.path, String(page.count), formatDate(page.lastAt)]),
+        ? paragraph('They didn\u2019t open any pages in this period.')
+        : storyList(
+            activity.pages.map((page) => ({
+              when: friendlyDate(page.lastAt),
+              text: `${friendlyPageName(page.path)} — ${page.count === 1 ? 'once' : `${page.count} times`}`,
+            })),
           ),
     );
 
-    parts.push(sectionHeading(`Actions (last ${report.activityWindowHours}h)`));
+    const actions = activity.events.filter((item) => item.event !== '$pageview').slice(0, 30);
+    parts.push(sectionHeading(`What they did (${windowLabel}, newest first)`));
     parts.push(
-      activity.actions.length === 0
-        ? paragraph('No actions recorded.')
-        : reportTable(
-            ['Action', 'Times', 'Last'],
-            activity.actions.map((action) => [action.event, String(action.count), formatDate(action.lastAt)]),
+      actions.length === 0
+        ? paragraph('No actions recorded in this period — they may have just browsed.')
+        : storyList(
+            actions.map((item) => ({
+              when: friendlyDate(item.timestamp),
+              text: describeActivityEvent(item),
+            })),
           ),
     );
-
-    const timeline = activity.events.slice(0, 40);
-    if (timeline.length > 0) {
-      parts.push(sectionHeading('Timeline (newest first)'));
-      parts.push(
-        reportTable(
-          ['When', 'Event', 'Page', 'Detail'],
-          timeline.map((item) => [
-            formatDate(item.timestamp),
-            item.event,
-            item.path ?? '',
-            item.detail ?? '',
-          ]),
-        ),
-      );
-    }
   }
 
   return parts.join('');

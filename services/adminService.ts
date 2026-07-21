@@ -3,15 +3,15 @@ export interface AdminMember { sub:string; email:string|null; balance:number; up
 export interface AdminOverview { members:number; uploads:number; credits:number; revenueCents:number; storageBytes:number }
 export interface AdminUpload { id:string; timestamp:number; fileName:string; sourceLanguage:string|null; targetLanguage:string; cost:number; sourceSize:number|null }
 export interface AdminAdjustment { id:number; delta:number; reason:string; actorEmail:string; createdAt:number }
-export interface AdminLedgerEntry { id:number; delta:number; balanceAfter:number; kind:string; reference:string|null; createdAt:number }
+export interface AdminLedgerEntry { id:number; delta:number; balanceAfter:number; kind:string; reference:string|null; createdAt:number; label?:string }
 export interface AdminMemberDetail { member:AdminMember; uploads:AdminUpload[]; orders:unknown[]; adjustments:AdminAdjustment[]; ledger:AdminLedgerEntry[] }
-export interface AdminActivityEvent { event:string; timestamp:string; path:string|null; detail:string|null }
+export interface AdminActivityEvent { event:string; timestamp:string; path:string|null; detail:string|null; description?:string }
 export interface AdminMemberActivity {
   configured:boolean;
   days?:number;
   events?:AdminActivityEvent[];
-  pages?:{ path:string; count:number; lastAt:string }[];
-  actions?:{ event:string; count:number; lastAt:string }[];
+  pages?:{ path:string; count:number; lastAt:string; name?:string }[];
+  actions?:{ event:string; count:number; lastAt:string; label?:string }[];
 }
 export type BetaApplicationStatus='new'|'approved'|'rejected';
 export type AdminMemberSort='balance'|'creditsSpent'|'lastActivity';

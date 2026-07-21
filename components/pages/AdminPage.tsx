@@ -381,7 +381,7 @@ export const AdminPage: React.FC = () => {
                     {(detail.ledger ?? []).map((entry) => (
                       <div key={entry.id} className="rounded-xl bg-white/8 p-3 text-xs">
                         <div className="flex justify-between gap-2">
-                          <span className="font-semibold">{entry.kind}</span>
+                          <span className="font-semibold">{entry.label ?? entry.kind}</span>
                           <span className={entry.delta >= 0 ? 'font-mono text-emerald-300' : 'font-mono text-red-300'}>
                             {entry.delta > 0 ? '+' : ''}
                             {entry.delta.toFixed(2)}
@@ -391,7 +391,6 @@ export const AdminPage: React.FC = () => {
                           <span>{date(entry.createdAt)}</span>
                           <span>balance {entry.balanceAfter.toFixed(2)}</span>
                         </div>
-                        {entry.reference && <p className="mt-1 truncate text-white/55">{entry.reference}</p>}
                       </div>
                     ))}
                   </div>
@@ -424,7 +423,7 @@ export const AdminPage: React.FC = () => {
                       <div className="mt-2 space-y-1">
                         {(activity.pages ?? []).map((p) => (
                           <div key={p.path} className="flex justify-between gap-2 text-xs">
-                            <span className="truncate">{p.path}</span>
+                            <span className="truncate">{p.name ?? p.path}</span>
                             <span className="shrink-0 text-white/45">×{p.count}</span>
                           </div>
                         ))}
@@ -434,7 +433,7 @@ export const AdminPage: React.FC = () => {
                       <div className="mt-2 space-y-1">
                         {(activity.actions ?? []).map((a) => (
                           <div key={a.event} className="flex justify-between gap-2 text-xs">
-                            <span className="truncate">{a.event}</span>
+                            <span className="truncate">{a.label ?? a.event}</span>
                             <span className="shrink-0 text-white/45">×{a.count}</span>
                           </div>
                         ))}
@@ -444,16 +443,9 @@ export const AdminPage: React.FC = () => {
                         {(activity.events ?? []).slice(0, 60).map((ev, i) => (
                           <div key={`${ev.timestamp}-${i}`} className="rounded-xl bg-white/8 p-2.5 text-xs">
                             <div className="flex justify-between gap-2">
-                              <span className="truncate font-semibold">{ev.event}</span>
+                              <span className="truncate font-semibold">{ev.description ?? ev.event}</span>
                               <span className="shrink-0 text-white/45">{date(Date.parse(ev.timestamp))}</span>
                             </div>
-                            {(ev.path || ev.detail) && (
-                              <p className="mt-1 truncate text-white/55">
-                                {ev.path}
-                                {ev.path && ev.detail ? ' · ' : ''}
-                                {ev.detail}
-                              </p>
-                            )}
                           </div>
                         ))}
                       </div>
