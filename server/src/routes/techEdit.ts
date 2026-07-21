@@ -21,8 +21,11 @@ import { hasActiveBetaAccess } from '../services/betaApplicationStore.js';
 import {
   deleteTechEdit,
   getTechEdit,
+  getTechEditFeedbackStats,
   listTechEdits,
   saveTechEdit,
+  setTechEditResolution,
+  type TechEditResolution,
 } from '../services/techEditStore.js';
 
 const router = Router();
@@ -37,6 +40,39 @@ const NDJSON_CONTENT_TYPE = 'application/x-ndjson';
 // Flip this to `() => true` for general availability.
 function hasTechEditAccess(req: AuthenticatedRequest): boolean {
   return hasActiveBetaAccess(req.userEmail) || isAdminIdentity(req);
+}
+
+/**
+ * Turn the user's apply/dismiss history into a short prompt block so future
+ * editorial passes calibrate to what this designer considers real findings.
+ * Only speaks up once there's enough signal (3+ decisions in a category).
+ */
+function buildDesignerPreferences(sub: string): string | undefined {
+  try {
+    const stats = getTechEditFeedbackStats(sub);
+    const lines: string[] = [];
+    for (const s of stats) {
+      const total = s.applied + s.dismissed;
+      if (total < 3) continue;
+      const dismissRate = s.dismissed / total;
+      if (dismissRate >= 0.6) {
+        const examples = s.dismissedExamples.length
+          ? ` Recently dismissed examples: ${s.dismissedExamples.map((t) => `"${t}"`).join('; ')}.`
+          : '';
+        lines.push(
+          `- ${s.category}: dismissed ${s.dismissed} of ${total} findings. Raise the bar here — only flag ${s.category} issues you are confident about.${examples}`,
+        );
+      } else if (dismissRate <= 0.25) {
+        lines.push(
+          `- ${s.category}: applied ${s.applied} of ${total} findings. These are valued — keep being thorough here.`,
+        );
+      }
+    }
+    return lines.length > 0 ? lines.join('\n') : undefined;
+  } catch (err) {
+    console.error('[tech-edit] Failed to build designer preferences:', err);
+    return undefined;
+  }
 }
 
 function uploadPatternSafe(req: Request, res: Response, next: NextFunction): void {
@@ -75,6 +111,36 @@ router.get('/:id', requireAuth, (req, res: Response) => {
   } catch (err) {
     console.error('[tech-edit] get failed:', err);
     res.status(500).json({ error: 'Could not load the report.' });
+  }
+});
+
+router.patch('/:id/findings/:index', requireAuth, (req, res: Response) => {
+  try {
+    const { userSub } = req as unknown as AuthenticatedRequest;
+    const findingIdx = Number.parseInt(String(req.params.index), 10);
+    if (!Number.isInteger(findingIdx) || findingIdx < 0) {
+      res.status(400).json({ error: 'Invalid finding index.' });
+      return;
+    }
+    const raw = (req.body as Record<string, unknown> | undefined)?.resolution ?? null;
+    if (raw !== null && raw !== 'applied' && raw !== 'dismissed') {
+      res.status(400).json({ error: 'resolution must be "applied", "dismissed" or null.' });
+      return;
+    }
+    const resolutions = setTechEditResolution(
+      userSub,
+      String(req.params.id),
+      findingIdx,
+      raw as TechEditResolution | null,
+    );
+    if (!resolutions) {
+      res.status(404).json({ error: 'Report or finding not found.' });
+      return;
+    }
+    res.json({ ok: true, resolutions });
+  } catch (err) {
+    console.error('[tech-edit] resolution update failed:', err);
+    res.status(500).json({ error: 'Could not save your decision.' });
   }
 });
 
@@ -195,6 +261,7 @@ router.post('/', requireAuth, techEditRateLimit, uploadPatternSafe, async (req: 
           if (clientGone) return;
           writeEvent({ type: 'stage', stage, ...(detail ? { detail } : {}) });
         },
+        designerPreferences: buildDesignerPreferences(userSub),
       });
 
       let reportId: string | null = null;

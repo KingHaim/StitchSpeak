@@ -222,8 +222,12 @@ Rules:
 - Charts: if a chart legend or written chart notes state stitch counts, treat them like any other event.
 Extract from the whole document. Missing sections are fine; empty arrays are fine.`;
 
-function editorialSystemInstruction(mathFindingsSummary: string): string {
+function editorialSystemInstruction(mathFindingsSummary: string, designerPreferences?: string): string {
+  const preferencesBlock = designerPreferences
+    ? `\n--- DESIGNER FEEDBACK ON PAST TECH EDITS ---\nThis designer has reviewed findings from previous tech edits. Use this to calibrate — do NOT stop checking any area, but avoid the kinds of findings they consistently reject:\n${designerPreferences}\n--- END DESIGNER FEEDBACK ---\n`
+    : '';
   return `You are an expert technical editor for knitwear design with 20 years of experience editing knitting and crochet patterns for publication. Perform a comprehensive technical edit of the provided pattern and report your findings as structured JSON.
+${preferencesBlock}
 
 A deterministic math audit has ALREADY been run on this pattern by software. Its results are below. It covered: running stitch counts vs. declared totals, repeat instructions (whether repeats fit the stitch count and produce the declared total), stitch gauge vs. widths, row gauge vs. lengths, flat/circular construction mixing, and whether joined pieces match. Do NOT re-derive or duplicate these arithmetic checks — they are already covered. Focus your "math" findings only on numerical issues the audit could not see (yardage plausibility, chart row/stitch dimensions vs. written instructions, shaping rates vs. the target silhouette, counts implied but never stated).
 
@@ -527,6 +531,12 @@ export type TechEditStage = 'extracting' | 'verifying' | 'reviewing' | 'finalizi
 
 export interface RunTechEditOptions {
   onStage?: (stage: TechEditStage, detail?: string) => void;
+  /**
+   * Short natural-language summary of which finding types this designer has
+   * applied vs. dismissed in past reports; injected into the editorial prompt
+   * so the review calibrates to their preferences.
+   */
+  designerPreferences?: string;
 }
 
 export interface TechEditRunResult {
@@ -580,7 +590,10 @@ export async function runTechEdit(
     EDITORIAL_DEADLINE_MS,
     (signal) =>
       generateJson(
-        editorialSystemInstruction(describeMathAudit(mathAudit.findings, mathAudit.checksRun)),
+        editorialSystemInstruction(
+          describeMathAudit(mathAudit.findings, mathAudit.checksRun),
+          options.designerPreferences,
+        ),
         'Perform the technical edit of this pattern and return your findings as JSON.',
         document,
         editorialSchema,

@@ -5,6 +5,7 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import App from './App';
 import { AuthProvider } from './contexts/AuthContext';
 import { CreditProvider } from './contexts/CreditContext';
+import { TechEditJobProvider } from './contexts/TechEditJobContext';
 import { getGoogleOAuthClientId } from './auth/googleConfig';
 import { HomepagePrototypePage } from './components/prototype/homepage/HomepagePrototypePage';
 import { initAnalytics } from './services/analytics';
@@ -29,7 +30,9 @@ const appTree = isHomepagePrototype() ? (
 ) : (
   <AuthProvider>
     <CreditProvider>
-      <App />
+      <TechEditJobProvider>
+        <App />
+      </TechEditJobProvider>
     </CreditProvider>
   </AuthProvider>
 );

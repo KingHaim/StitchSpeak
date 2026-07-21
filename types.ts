@@ -186,6 +186,12 @@ export interface TechEditReport {
   findings: TechEditFinding[];
 }
 
+/** User's decision on a single finding: fixed in the pattern, or not a real issue. */
+export type TechEditResolution = 'applied' | 'dismissed';
+
+/** Finding index (as string) → resolution, for one report. */
+export type TechEditResolutionMap = Record<string, TechEditResolution>;
+
 export interface TechEditRecord {
   id: string;
   timestamp: number;

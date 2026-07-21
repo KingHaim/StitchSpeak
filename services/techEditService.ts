@@ -1,5 +1,12 @@
-import type { TechEditRecord, TechEditReport, TechEditStage } from '../types';
+import type {
+  TechEditRecord,
+  TechEditReport,
+  TechEditResolution,
+  TechEditResolutionMap,
+  TechEditStage,
+} from '../types';
 import { apiUrl, authHeaders } from './apiBase';
+import { captureEvent } from './analytics';
 
 export class TechEditError extends Error {
   constructor(
@@ -41,7 +48,7 @@ export async function listTechEdits(idToken: string | null): Promise<TechEditLis
 export async function getTechEdit(
   idToken: string | null,
   id: string,
-): Promise<TechEditRecord & { report: TechEditReport }> {
+): Promise<TechEditRecord & { report: TechEditReport; resolutions?: TechEditResolutionMap }> {
   const response = await fetch(apiUrl(`/tech-edit/${encodeURIComponent(id)}`), {
     headers: authHeaders(idToken),
     credentials: 'include',
@@ -49,6 +56,35 @@ export async function getTechEdit(
   if (!response.ok) await throwFromResponse(response, 'Loading report');
   const data = await response.json();
   return data.report;
+}
+
+/**
+ * Persist the user's decision on one finding (tick = applied, cross = dismissed,
+ * null = undo). Also captures the analytics event that feeds the learning loop.
+ */
+export async function setFindingResolution(
+  idToken: string | null,
+  reportId: string,
+  findingIndex: number,
+  resolution: TechEditResolution | null,
+  meta?: { category: string; severity: string; verified: boolean },
+): Promise<void> {
+  captureEvent('tech_edit_finding_resolved', {
+    resolution: resolution ?? 'undone',
+    finding_category: meta?.category,
+    finding_severity: meta?.severity,
+    finding_verified: meta?.verified,
+  });
+  const response = await fetch(
+    apiUrl(`/tech-edit/${encodeURIComponent(reportId)}/findings/${findingIndex}`),
+    {
+      method: 'PATCH',
+      headers: { ...authHeaders(idToken), 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ resolution }),
+    },
+  );
+  if (!response.ok) await throwFromResponse(response, 'Saving your decision');
 }
 
 export async function deleteTechEdit(idToken: string | null, id: string): Promise<void> {
@@ -88,6 +124,22 @@ interface NdjsonEvent {
  * through extraction → verification → editorial review.
  */
 export async function runTechEdit(
+  file: File,
+  idToken: string | null,
+  callbacks: RunTechEditCallbacks = {},
+): Promise<RunTechEditResult> {
+  captureEvent('tech_edit_started', { file_type: file.type });
+  try {
+    const result = await runTechEditInner(file, idToken, callbacks);
+    captureEvent('tech_edit_completed', { cost: result.cost });
+    return result;
+  } catch (err) {
+    captureEvent('tech_edit_failed', { error: err instanceof Error ? err.message : 'unknown' });
+    throw err;
+  }
+}
+
+async function runTechEditInner(
   file: File,
   idToken: string | null,
   callbacks: RunTechEditCallbacks = {},

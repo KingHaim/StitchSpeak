@@ -1,26 +1,45 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { PatternUpload } from '../PatternUpload';
 import { BuyCreditsModal } from '../BuyCreditsModal';
 import { TechEditReportView } from '../TechEditReportView';
+import { FileThumbnail } from '../FileThumbnail';
 import { analyzeFile } from '../../services/fileAnalyzer';
 import { estimateTechEditCost } from '../../services/pricingService';
+import { loadHistory, loadPatternSource } from '../../services/historyService';
 import {
-  runTechEdit,
   listTechEdits,
   getTechEdit,
   deleteTechEdit,
+  setFindingResolution,
   TechEditError,
 } from '../../services/techEditService';
 import { useAuth } from '../../contexts/auth-context';
 import { useCredits } from '../../contexts/credit-context';
+import { useTechEditJob } from '../../contexts/tech-edit-job-context';
 import { PRICING } from '../../constants';
 import type {
   CreditPackage,
   PdfMetrics,
   TechEditRecord,
   TechEditReport,
+  TechEditResolution,
+  TechEditResolutionMap,
   TechEditStage,
+  TranslationRecord,
 } from '../../types';
+
+/** One entry per file name — prefer the newest record that still has a source. */
+function uniquePatternsWithSource(records: TranslationRecord[]): TranslationRecord[] {
+  const byFile = new Map<string, TranslationRecord>();
+  for (const record of records) {
+    if (!record.hasSource) continue;
+    const existing = byFile.get(record.fileName);
+    if (!existing || record.timestamp > existing.timestamp) {
+      byFile.set(record.fileName, record);
+    }
+  }
+  return Array.from(byFile.values()).sort((a, b) => b.timestamp - a.timestamp);
+}
 
 const STAGES: Array<{ id: TechEditStage; label: string; detail: string }> = [
   { id: 'extracting', label: 'Reading the pattern', detail: 'Extracting gauge, sizes, stitch counts and repeats' },
@@ -29,32 +48,44 @@ const STAGES: Array<{ id: TechEditStage; label: string; detail: string }> = [
   { id: 'finalizing', label: 'Building the report', detail: 'Compiling everything into a structured report' },
 ];
 
-type ViewState =
-  | { kind: 'idle' }
-  | { kind: 'running'; stage: TechEditStage; fileName: string; startedAt: number }
-  | { kind: 'report'; report: TechEditReport; fileName: string };
+type SavedReportView = {
+  report: TechEditReport;
+  fileName: string;
+  reportId: string;
+  resolutions: TechEditResolutionMap;
+};
 
 export const TechEditPage: React.FC = () => {
   const { idToken, isAuthenticated } = useAuth();
-  const { balance, applyBalance, refreshBalance, startCheckout } = useCredits();
+  const { balance, refreshBalance, startCheckout } = useCredits();
+  const { job, startJob, clearJob } = useTechEditJob();
 
-  const [view, setView] = useState<ViewState>({ kind: 'idle' });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedPatternId, setSelectedPatternId] = useState('');
+  const [savedPatterns, setSavedPatterns] = useState<TranslationRecord[]>([]);
   const [metrics, setMetrics] = useState<PdfMetrics | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isLoadingPattern, setIsLoadingPattern] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [savedReports, setSavedReports] = useState<TechEditRecord[]>([]);
   const [hasAccess, setHasAccess] = useState<boolean | null>(null);
   const [openingReportId, setOpeningReportId] = useState<string | null>(null);
   const [isBuyCreditsOpen, setIsBuyCreditsOpen] = useState(false);
+  const [savedReportView, setSavedReportView] = useState<SavedReportView | null>(null);
+  const [jobResolutions, setJobResolutions] = useState<TechEditResolutionMap>({});
 
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
-    if (view.kind !== 'running') return;
+    if (job?.status !== 'running') return;
     const interval = window.setInterval(() => setClock(Date.now()), 1000);
     return () => window.clearInterval(interval);
-  }, [view.kind]);
+  }, [job?.status]);
+
+  const patternsWithSource = useMemo(
+    () => uniquePatternsWithSource(savedPatterns),
+    [savedPatterns],
+  );
 
   const refreshSaved = useCallback(async () => {
     if (!isAuthenticated) return;
@@ -71,23 +102,94 @@ export const TechEditPage: React.FC = () => {
     void refreshSaved();
   }, [refreshSaved]);
 
-  const handleFilesSelect = useCallback(async (files: File[]) => {
-    setError(null);
-    const file = files[0] ?? null;
-    setSelectedFile(file);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    loadHistory(idToken)
+      .then(({ records }) => setSavedPatterns(records))
+      .catch((err) => console.error('[tech-edit] Failed to load saved patterns:', err));
+  }, [idToken, isAuthenticated]);
+
+  // When a background job finishes, refresh the saved list and clear the upload form.
+  useEffect(() => {
+    if (job?.status !== 'complete') return;
+    setSelectedFile(null);
+    setSelectedPatternId('');
     setMetrics(null);
-    if (!file) return;
+    setJobResolutions({});
+    void refreshSaved();
+  }, [job?.status, job?.reportId, refreshSaved]);
+
+  // Surface job errors when the user returns to (or stays on) this page.
+  useEffect(() => {
+    if (job?.status !== 'error') return;
+    if (job.errorStatus === 402) {
+      setIsBuyCreditsOpen(true);
+      setError("You don't have enough credits for this tech edit. Add credits and try again.");
+    } else if (job.errorCode === 'BETA_REQUIRED') {
+      setHasAccess(false);
+      setError(null);
+    } else {
+      setError(job.error ?? 'The tech edit failed. Please try again.');
+    }
+  }, [job]);
+
+  const analyzeSelectedFile = useCallback(async (file: File) => {
     setIsAnalyzing(true);
+    setMetrics(null);
     try {
       setMetrics(await analyzeFile(file));
     } catch (err) {
       console.error('[tech-edit] Could not analyze file:', err);
       setError('Could not analyze this file. Please try a different one.');
       setSelectedFile(null);
+      setSelectedPatternId('');
+      setMetrics(null);
     } finally {
       setIsAnalyzing(false);
     }
   }, []);
+
+  const handleFilesSelect = useCallback(
+    async (files: File[]) => {
+      setError(null);
+      const file = files[0] ?? null;
+      setSelectedPatternId('');
+      setSelectedFile(file);
+      setMetrics(null);
+      if (!file) return;
+      await analyzeSelectedFile(file);
+    },
+    [analyzeSelectedFile],
+  );
+
+  const handlePatternSelect = useCallback(
+    async (patternId: string) => {
+      setError(null);
+      setSelectedPatternId(patternId);
+      setSelectedFile(null);
+      setMetrics(null);
+      if (!patternId) return;
+
+      setIsLoadingPattern(true);
+      try {
+        const file = await loadPatternSource(patternId, idToken);
+        if (!file) {
+          setError('Could not load that pattern. Try uploading the file instead.');
+          setSelectedPatternId('');
+          return;
+        }
+        setSelectedFile(file);
+        await analyzeSelectedFile(file);
+      } catch (err) {
+        console.error('[tech-edit] Could not load pattern source:', err);
+        setError('Could not load that pattern. Try uploading the file instead.');
+        setSelectedPatternId('');
+      } finally {
+        setIsLoadingPattern(false);
+      }
+    },
+    [idToken, analyzeSelectedFile],
+  );
 
   const estimatedCost = metrics ? estimateTechEditCost(metrics) : null;
   const tooManyPages = metrics ? metrics.pages > PRICING.techEdit.maxPages : false;
@@ -98,25 +200,16 @@ export const TechEditPage: React.FC = () => {
       setIsBuyCreditsOpen(true);
       return;
     }
+    if (job?.status === 'running') return;
 
     setError(null);
-    const fileName = selectedFile.name;
-    setView({ kind: 'running', stage: 'extracting', fileName, startedAt: Date.now() });
+    setSavedReportView(null);
 
     try {
-      const result = await runTechEdit(selectedFile, idToken, {
-        onStage: (stage) => {
-          setView((prev) =>
-            prev.kind === 'running' ? { ...prev, stage } : prev,
-          );
-        },
-      });
-      if (typeof result.balance === 'number') applyBalance(result.balance);
-      setView({ kind: 'report', report: result.report, fileName });
-      setSelectedFile(null);
-      setMetrics(null);
-      void refreshSaved();
+      await startJob(selectedFile);
     } catch (err) {
+      // Job error state is also kept in context for when the user navigates away
+      // and returns; this path covers the case where they stayed on the page.
       console.error('[tech-edit] Run failed:', err);
       void refreshBalance();
       const status = err instanceof TechEditError ? err.status : undefined;
@@ -129,9 +222,8 @@ export const TechEditPage: React.FC = () => {
       } else {
         setError(err instanceof Error ? err.message : 'The tech edit failed. Please try again.');
       }
-      setView({ kind: 'idle' });
     }
-  }, [selectedFile, estimatedCost, balance, idToken, applyBalance, refreshBalance, refreshSaved]);
+  }, [selectedFile, estimatedCost, balance, job?.status, startJob, refreshBalance]);
 
   const handleOpenSaved = useCallback(
     async (record: TechEditRecord) => {
@@ -139,7 +231,12 @@ export const TechEditPage: React.FC = () => {
       setError(null);
       try {
         const full = await getTechEdit(idToken, record.id);
-        setView({ kind: 'report', report: full.report, fileName: full.fileName });
+        setSavedReportView({
+          report: full.report,
+          fileName: full.fileName,
+          reportId: record.id,
+          resolutions: full.resolutions ?? {},
+        });
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } catch (err) {
         console.error('[tech-edit] Could not open report:', err);
@@ -156,11 +253,63 @@ export const TechEditPage: React.FC = () => {
       try {
         await deleteTechEdit(idToken, record.id);
         setSavedReports((prev) => prev.filter((r) => r.id !== record.id));
+        setSavedReportView((prev) => (prev?.reportId === record.id ? null : prev));
       } catch (err) {
         console.error('[tech-edit] Could not delete report:', err);
       }
     },
     [idToken],
+  );
+
+  const handleResolveFinding = useCallback(
+    (findingIndex: number, resolution: TechEditResolution | null) => {
+      const applyToMap = (
+        previous: TechEditResolutionMap,
+      ): TechEditResolutionMap => {
+        const next = { ...previous };
+        if (resolution === null) delete next[String(findingIndex)];
+        else next[String(findingIndex)] = resolution;
+        return next;
+      };
+
+      if (savedReportView) {
+        const previousResolutions = savedReportView.resolutions;
+        const resolutions = applyToMap(previousResolutions);
+        const reportId = savedReportView.reportId;
+        const finding = savedReportView.report.findings[findingIndex];
+        setSavedReportView({ ...savedReportView, resolutions });
+        void setFindingResolution(idToken, reportId, findingIndex, resolution, finding && {
+          category: finding.category,
+          severity: finding.severity,
+          verified: finding.verified,
+        }).catch((err) => {
+          console.error('[tech-edit] Could not save finding decision:', err);
+          setSavedReportView((current) =>
+            current && current.reportId === reportId
+              ? { ...current, resolutions: previousResolutions }
+              : current,
+          );
+        });
+        return;
+      }
+
+      if (job?.status === 'complete' && job.reportId) {
+        const previousResolutions = jobResolutions;
+        const resolutions = applyToMap(previousResolutions);
+        const reportId = job.reportId;
+        const finding = job.report?.findings[findingIndex];
+        setJobResolutions(resolutions);
+        void setFindingResolution(idToken, reportId, findingIndex, resolution, finding && {
+          category: finding.category,
+          severity: finding.severity,
+          verified: finding.verified,
+        }).catch((err) => {
+          console.error('[tech-edit] Could not save finding decision:', err);
+          setJobResolutions(previousResolutions);
+        });
+      }
+    },
+    [savedReportView, job, jobResolutions, idToken],
   );
 
   const handleCreditPurchase = useCallback(
@@ -169,6 +318,16 @@ export const TechEditPage: React.FC = () => {
     },
     [startCheckout],
   );
+
+  const handleBackToIdle = useCallback(() => {
+    if (savedReportView) {
+      setSavedReportView(null);
+      setError(null);
+      return;
+    }
+    if (job?.status === 'complete' || job?.status === 'error') clearJob();
+    setError(null);
+  }, [savedReportView, job?.status, clearJob]);
 
   // --- Beta gate ---
   if (hasAccess === false) {
@@ -194,17 +353,29 @@ export const TechEditPage: React.FC = () => {
     );
   }
 
-  const runningStageIndex =
-    view.kind === 'running' ? STAGES.findIndex((s) => s.id === view.stage) : -1;
+  const showJobReport = !savedReportView && job?.status === 'complete' && !!job.report;
+  const showRunning = !savedReportView && job?.status === 'running';
+  const showIdle = !savedReportView && !showJobReport && !showRunning;
+  const runningStageIndex = showRunning ? STAGES.findIndex((s) => s.id === job.stage) : -1;
+  const reportView = savedReportView
+    ? savedReportView
+    : showJobReport
+      ? {
+          report: job.report!,
+          fileName: job.fileName,
+          reportId: job.reportId ?? null,
+          resolutions: jobResolutions,
+        }
+      : null;
 
   return (
     <>
       <div className="max-w-4xl mx-auto text-on-background antialiased pb-8 space-y-8">
-        {view.kind === 'report' && (
+        {reportView && (
           <div className="space-y-4">
             <button
               type="button"
-              onClick={() => setView({ kind: 'idle' })}
+              onClick={handleBackToIdle}
               className="inline-flex items-center gap-1 text-sm text-primary font-medium hover:underline"
             >
               <span className="material-symbols-outlined text-base" aria-hidden>
@@ -212,25 +383,40 @@ export const TechEditPage: React.FC = () => {
               </span>
               New tech edit
             </button>
-            <TechEditReportView report={view.report} fileName={view.fileName} />
+            <TechEditReportView
+              report={reportView.report}
+              fileName={reportView.fileName}
+              resolutions={reportView.resolutions}
+              onResolveFinding={handleResolveFinding}
+            />
           </div>
         )}
 
-        {view.kind === 'running' && (
+        {showRunning && job && (
           <div className="bg-surface-container-low rounded-xl border border-outline-variant/15 p-6 sm:p-8">
-            <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
-              <div className="min-w-0">
-                <h2 className="text-lg font-semibold text-on-surface font-body truncate">
-                  Tech editing {view.fileName}
-                </h2>
-                <p className="text-sm text-on-surface-variant mt-1">
-                  This usually takes a few minutes. You can leave this page open.
-                </p>
+            <div className="flex items-start gap-4 mb-6">
+              <div className="h-20 w-14 shrink-0 overflow-hidden rounded-md border border-outline-variant/20 bg-surface-container-highest flex items-center justify-center">
+                <FileThumbnail
+                  file={job.file}
+                  fallbackText={job.fileName.trim().charAt(0).toUpperCase() || 'P'}
+                  className="h-full w-full object-cover object-top"
+                />
               </div>
-              <span className="text-sm tabular-nums text-on-surface-variant shrink-0">
-                {Math.floor((clock - view.startedAt) / 60000)}:
-                {String(Math.floor(((clock - view.startedAt) % 60000) / 1000)).padStart(2, '0')}
-              </span>
+              <div className="min-w-0 flex-1 flex items-start justify-between gap-4 flex-wrap">
+                <div className="min-w-0">
+                  <h2 className="text-lg font-semibold text-on-surface font-body truncate">
+                    Tech editing {job.fileName}
+                  </h2>
+                  <p className="text-sm text-on-surface-variant mt-1">
+                    This usually takes a few minutes. Feel free to leave — a thumbnail stays
+                    available so you can come back.
+                  </p>
+                </div>
+                <span className="text-sm tabular-nums text-on-surface-variant shrink-0">
+                  {Math.floor((clock - job.startedAt) / 60000)}:
+                  {String(Math.floor(((clock - job.startedAt) % 60000) / 1000)).padStart(2, '0')}
+                </span>
+              </div>
             </div>
             <ol className="space-y-4">
               {STAGES.map((stage, index) => {
@@ -273,27 +459,70 @@ export const TechEditPage: React.FC = () => {
           </div>
         )}
 
-        {view.kind === 'idle' && (
+        {showIdle && (
           <div className="bg-surface-container-low rounded-xl border border-outline-variant/15 p-6 sm:p-8 shadow-[0_2px_24px_-8px_rgba(29,28,23,0.06)]">
             <div className="mb-4">
               <h2 className="text-lg font-semibold text-on-surface font-body">
                 Get your pattern tech edited
               </h2>
               <p className="text-sm text-on-surface-variant mt-1 leading-relaxed">
-                Upload a pattern and StitchSpeak runs it row by row: verified stitch counts per size,
-                repeats that don&rsquo;t fit or don&rsquo;t add up, gauge vs. measurements, flat vs.
-                circular construction, whether pieces match at the joins — plus consistency, clarity and
-                grammar review — before you send it to testers or publish it.
+                Upload a pattern or pick one from My Patterns. StitchSpeak runs it row by row: verified
+                stitch counts per size, repeats that don&rsquo;t fit or don&rsquo;t add up, gauge vs.
+                measurements, flat vs. circular construction, whether pieces match at the joins — plus
+                consistency, clarity and grammar review — before you send it to testers or publish it.
               </p>
             </div>
+
+            {patternsWithSource.length > 0 && (
+              <div className="mb-5 space-y-2">
+                <label
+                  htmlFor="tech-edit-saved-pattern"
+                  className="block text-xs font-semibold uppercase tracking-widest text-on-surface-variant"
+                >
+                  Choose from My Patterns
+                </label>
+                <select
+                  id="tech-edit-saved-pattern"
+                  className="w-full rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-2.5 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
+                  value={selectedPatternId}
+                  onChange={(e) => void handlePatternSelect(e.target.value)}
+                  disabled={isLoadingPattern || isAnalyzing}
+                  aria-label="Saved pattern to tech edit"
+                >
+                  <option value="">Choose a pattern…</option>
+                  {patternsWithSource.map((record) => (
+                    <option key={record.id} value={record.id}>
+                      {record.fileName}
+                      {record.pdfMetrics ? ` · ${record.pdfMetrics.pages} pages` : ''}
+                    </option>
+                  ))}
+                </select>
+                {isLoadingPattern && (
+                  <p className="text-sm text-on-surface-variant">Loading pattern…</p>
+                )}
+                <div className="flex items-center gap-3 pt-1" aria-hidden>
+                  <div className="h-px flex-1 bg-outline-variant/30" />
+                  <span className="text-xs font-medium uppercase tracking-widest text-on-surface-variant/70">
+                    or upload
+                  </span>
+                  <div className="h-px flex-1 bg-outline-variant/30" />
+                </div>
+              </div>
+            )}
 
             <PatternUpload
               selectedFiles={selectedFile ? [selectedFile] : []}
               onFilesSelect={(files) => void handleFilesSelect(files)}
-              disabled={false}
+              disabled={isLoadingPattern || isAnalyzing}
             />
 
-            {isAnalyzing && (
+            {selectedPatternId && selectedFile && !isLoadingPattern && (
+              <p className="mt-2 text-xs text-on-surface-variant">
+                Loaded from My Patterns. Clear the file above or pick another pattern to change it.
+              </p>
+            )}
+
+            {isAnalyzing && !isLoadingPattern && (
               <p className="mt-4 text-sm text-on-surface-variant">Analyzing the document…</p>
             )}
 
@@ -336,7 +565,7 @@ export const TechEditPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => void handleStart()}
-                  disabled={tooManyPages || isAnalyzing}
+                  disabled={tooManyPages || isAnalyzing || isLoadingPattern}
                   className="w-full sm:w-auto bg-primary text-on-primary px-8 py-3 rounded-full text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 flex items-center justify-center gap-2"
                 >
                   <span className="material-symbols-outlined text-lg" aria-hidden>
@@ -354,14 +583,13 @@ export const TechEditPage: React.FC = () => {
             )}
 
             <p className="mt-6 text-xs text-on-surface-variant/80 leading-relaxed">
-              Math findings marked &ldquo;verified by calculation&rdquo; are checked by software, not by the
-              AI. Everything else is an AI review — a strong first pass, but not a replacement for a human
-              tech editor.
+              This is an AI tech edit — please double-check all findings before acting on them. A human tech
+              editor is still recommended before publication.
             </p>
           </div>
         )}
 
-        {savedReports.length > 0 && view.kind !== 'running' && (
+        {savedReports.length > 0 && !showRunning && (
           <div>
             <h2 className="font-semibold text-xs uppercase tracking-widest text-on-surface-variant mb-4">
               Previous reports

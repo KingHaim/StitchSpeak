@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { MobileBottomNav } from './MobileBottomNav';
+import { TechEditJobChip } from './TechEditJobChip';
 import type { PageId } from '../types';
 import { useCredits } from '../contexts/credit-context';
+import { useTechEditJob } from '../contexts/tech-edit-job-context';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -14,8 +16,11 @@ interface DashboardLayoutProps {
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activePage, onNavigate }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { checkoutReturnStatus, dismissCheckoutReturn, retryCheckoutReconciliation } = useCredits();
+  const { job } = useTechEditJob();
 
   const isTranslate = activePage === 'dashboard';
+  const showTechEditChip =
+    activePage !== 'techedit' && !!job && (job.status === 'running' || job.status === 'complete');
 
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-background">
@@ -65,6 +70,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
           {children}
         </main>
       </div>
+      {showTechEditChip && <TechEditJobChip onOpen={() => onNavigate('techedit')} />}
       <MobileBottomNav activePage={activePage} onNavigate={onNavigate} />
     </div>
   );
