@@ -33,6 +33,11 @@ const TechEditPage = lazy(() =>
     default: module.TechEditPage,
   })),
 );
+const GradingPage = lazy(() =>
+  import('./components/pages/GradingPage').then((module) => ({
+    default: module.GradingPage,
+  })),
+);
 const AdminPage = lazy(() =>
   import('./components/pages/AdminPage').then((module) => ({ default: module.AdminPage })),
 );
@@ -95,6 +100,8 @@ const App: React.FC = () => {
         return <HistoryPage onNavigateToTranslate={() => navigate('dashboard')} />;
       case 'techedit':
         return <TechEditPage />;
+      case 'grading':
+        return <GradingPage />;
       case 'settings':
         return <SettingsPage />;
     }

@@ -45,7 +45,109 @@ export interface TranslationResult {
   balance?: number;
 }
 
-export type PageId = 'dashboard' | 'glossary' | 'history' | 'techedit' | 'settings';
+export type PageId = 'dashboard' | 'glossary' | 'history' | 'techedit' | 'grading' | 'settings';
+
+// --- Size grading ---
+
+export type GradingUnit = 'cm' | 'in';
+export type GradingConstruction = 'flat' | 'circular';
+export type GradingMeasurementKind = 'circumference' | 'width' | 'length';
+
+export interface GradingGauge {
+  stitches: number;
+  rows: number;
+  widthCm: number;
+  heightCm: number;
+}
+
+export interface GradingMeasurementInput {
+  id: string;
+  name: string;
+  kind: GradingMeasurementKind;
+  /** One value per size in the request's units; null = not graded for that size. */
+  values: (number | null)[];
+}
+
+export interface GradingShapingInput {
+  id: string;
+  name: string;
+  fromId: string;
+  toId: string;
+  overId: string;
+  /** Stitches added/removed by one shaping row (e.g. 2 = inc 1 st each end). */
+  stitchesPerEvent: number;
+}
+
+export interface GradingRequestInput {
+  units: GradingUnit;
+  construction: GradingConstruction;
+  stitchRepeat: number;
+  edgeStitches: number;
+  ease: number;
+  measurementsAre: 'body' | 'finished';
+  baseSizeIndex: number;
+  sizeNames: string[];
+  gauge: GradingGauge;
+  measurements: GradingMeasurementInput[];
+  shaping: GradingShapingInput[];
+}
+
+export interface GradedCell {
+  finishedCm: number | null;
+  exact: number | null;
+  count: number | null;
+  achievedCm: number | null;
+}
+
+export interface GradedLine {
+  measurementId: string;
+  name: string;
+  kind: GradingMeasurementKind;
+  countUnit: 'sts' | 'rows';
+  perSize: GradedCell[];
+}
+
+export interface GradedShapingCell {
+  startCount: number | null;
+  endCount: number | null;
+  rows: number | null;
+  events: number | null;
+  plan: string | null;
+  ok: boolean;
+  problem: string | null;
+}
+
+export interface GradedShapingPlan {
+  shapingId: string;
+  name: string;
+  perSize: GradedShapingCell[];
+}
+
+export interface GradingWarning {
+  severity: 'critical' | 'warning';
+  sizeName: string | null;
+  title: string;
+  detail: string;
+  calculation?: string;
+}
+
+export interface GradingResult {
+  sizeNames: string[];
+  baseSizeIndex: number;
+  units: GradingUnit;
+  construction: GradingConstruction;
+  stitchLines: GradedLine[];
+  rowLines: GradedLine[];
+  shapingPlans: GradedShapingPlan[];
+  warnings: GradingWarning[];
+  checksRun: number;
+}
+
+export interface GradingExplanation {
+  summary: string;
+  sizeNotes: Array<{ sizeName: string; note: string }>;
+  cautions: string[];
+}
 
 // --- Tech editing ---
 
