@@ -16,9 +16,12 @@ const TECH_EDIT_MODEL = 'gemini-3.1-pro-preview';
 
 // Extraction is a transcription task: MEDIUM keeps numbers accurate without
 // the multi-minute stalls HIGH can produce. The editorial pass is a genuine
-// reasoning task, so it gets the full budget.
-const EXTRACTION_DEADLINE_MS = 3 * 60 * 1000;
-const EDITORIAL_DEADLINE_MS = 3.5 * 60 * 1000;
+// reasoning task, so it keeps HIGH thinking — but gemini-3.1-pro-preview with
+// HIGH on a real multi-size PDF regularly needs 4–6 minutes, so the deadlines
+// below leave headroom past the old 3 / 3.5 minute caps that timed out in prod.
+// The /api/tech-edit route streams NDJSON heartbeats, so longer wall time is fine.
+const EXTRACTION_DEADLINE_MS = 4 * 60 * 1000;
+const EDITORIAL_DEADLINE_MS = 7 * 60 * 1000;
 
 /** Cap the text fed to the model for non-PDF documents. */
 const MAX_SOURCE_CHARS = 300_000;
