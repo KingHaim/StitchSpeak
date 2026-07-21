@@ -211,18 +211,16 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
             </div>
           </div>
 
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-outline-variant/25 bg-surface px-4 py-4 text-sm leading-relaxed text-on-surface-variant">
+          <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-outline-variant/25 bg-surface px-4 py-4 text-sm leading-relaxed text-on-surface-variant">
             <input
               type="checkbox"
               checked={aiAcknowledged}
               onChange={(event) => setAiAcknowledged(event.target.checked)}
-              className="mt-0.5 h-5 w-5 shrink-0 accent-primary"
+              className="h-5 w-5 shrink-0 accent-primary"
             />
             <span>
-              I understand that my selected pattern and extracted content will be sent to Google Gemini to create the translation. I have the right to process this file and will not upload unnecessary personal or confidential information. AI output can contain errors and must be reviewed.{' '}
-              <a className="font-semibold text-primary underline" href="/privacy.html" target="_blank" rel="noreferrer">Privacy details</a>
-              {' · '}
-              <a className="font-semibold text-primary underline" href="/terms.html" target="_blank" rel="noreferrer">Terms</a>
+              I accept the{' '}
+              <a className="font-semibold text-primary underline" href="/terms.html" target="_blank" rel="noreferrer">terms and conditions</a>
             </span>
           </label>
         </div>
