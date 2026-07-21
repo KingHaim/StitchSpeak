@@ -8,6 +8,7 @@ import type { CreditPackage, PageId } from '../types';
 const PAGE_HEADER: Record<PageId, { kicker: string; title: string }> = {
   dashboard: { kicker: 'Translation Studio', title: 'Pattern Translator' },
   techedit: { kicker: 'Tech Editing', title: 'Pattern Tech Editor' },
+  grading: { kicker: 'Size Grading', title: 'Automatic Size Grading' },
   history: { kicker: 'My Patterns', title: 'Your Tactile Collection' },
   glossary: { kicker: 'Glossary', title: 'Knitting & Crochet Glossary' },
   settings: { kicker: 'Account', title: 'Settings' },
