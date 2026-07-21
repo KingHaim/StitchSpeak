@@ -43,3 +43,12 @@ export function releaseTranslationLease(sub: string, leaseId: string): void {
 export function cleanupExpiredTranslationLeases(now = Date.now()): number {
   return db.prepare('DELETE FROM translation_leases WHERE expires_at <= ?').run(now).changes;
 }
+
+/**
+ * Drop every lease. Safe on process start for a single-replica deploy: in-flight
+ * Gemini jobs die with the old container, but volume-backed lease rows survive
+ * and otherwise block the user with TRANSLATION_IN_PROGRESS until TTL expires.
+ */
+export function clearAllTranslationLeases(): number {
+  return db.prepare('DELETE FROM translation_leases').run().changes;
+}

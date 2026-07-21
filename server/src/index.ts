@@ -29,6 +29,7 @@ import { backupHealth, scheduleOffsiteBackups } from './services/offsiteBackup.j
 import { requestGroup, requestMetrics } from './services/requestMetrics.js';
 import { operationalCleanupHealth, scheduleOperationalCleanup } from './services/operationalCleanup.js';
 import { recoveryDrillHealth, scheduleRecoveryDrills } from './services/recoveryDrill.js';
+import { clearAllTranslationLeases } from './services/translationLeaseStore.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -268,6 +269,13 @@ app.use(
 const server = app.listen(PORT, () => {
   console.log(`[StitchSpeak Server] listening on port ${PORT}`);
 });
+
+// Redeploys kill in-flight tech edits / translations before their finally
+// blocks can release the lease. Clear orphans so users aren't stuck waiting.
+const orphanedLeases = clearAllTranslationLeases();
+if (orphanedLeases > 0) {
+  console.log(`[startup] cleared ${orphanedLeases} orphaned translation lease(s)`);
+}
 
 installGracefulShutdown(server, () => {
   draining = true;

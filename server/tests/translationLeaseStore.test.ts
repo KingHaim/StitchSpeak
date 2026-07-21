@@ -36,4 +36,13 @@ describe('translation concurrency lease', () => {
     expect(leases.renewTranslationLease('user-3', 'wrong')).toBe(false);
     expect(leases.renewTranslationLease('user-3', lease!)).toBe(true);
   });
+
+  it('clears all leases so a restarted process does not inherit orphans', () => {
+    expect(leases.acquireTranslationLease('user-4')).toBeTruthy();
+    expect(leases.acquireTranslationLease('user-5')).toBeTruthy();
+    expect(leases.acquireTranslationLease('user-4')).toBeNull();
+    expect(leases.clearAllTranslationLeases()).toBeGreaterThanOrEqual(2);
+    expect(leases.acquireTranslationLease('user-4')).toBeTruthy();
+    expect(leases.acquireTranslationLease('user-5')).toBeTruthy();
+  });
 });
