@@ -4,19 +4,27 @@ import { submitBetaApplication, type BetaApplicationInput, type BetaAttributionI
 const DEMOS = [
   {
     number: '01',
-    title: 'Terminology that stays pattern-native',
-    description: 'Watch your instructions translate while rows, repeats, and abbreviations stay intact for release.',
-    src: '/demos/terminology-translation.mp4',
-    poster: '/demos/terminology-translation.jpg',
-    duration: '0:26',
+    title: 'Translation that speaks knitting',
+    description: 'Upload a pattern, confirm the estimate, and get a side-by-side translation with rows, repeats, and abbreviations intact.',
+    src: '/demos/pattern-translation.mp4',
+    poster: '/demos/pattern-translation.jpg',
+    duration: '0:19',
   },
   {
     number: '02',
-    title: 'Review before you publish',
-    description: 'Use the pattern assistant to clarify a line in the translated copy before it goes to customers.',
-    src: '/demos/pattern-assistant.mp4',
-    poster: '/demos/pattern-assistant.jpg',
-    duration: '0:23',
+    title: 'AI tech editing, row by row',
+    description: 'StitchSpeak runs your pattern like a knitter: stitch counts per size, repeats, gauge, and construction — compiled into a findings report.',
+    src: '/demos/tech-edit.mp4',
+    poster: '/demos/tech-edit.jpg',
+    duration: '0:25',
+  },
+  {
+    number: '03',
+    title: 'Size grading, verified by calculation',
+    description: 'Extract gauge, sizes, and measurements straight from your pattern, then get a graded size table computed from your numbers.',
+    src: '/demos/size-grading.mp4',
+    poster: '/demos/size-grading.jpg',
+    duration: '0:31',
   },
 ];
 
@@ -208,8 +216,8 @@ export const BetaCampaignPage: React.FC = () => {
           <div className="mx-auto max-w-7xl">
             <p className="mb-4 text-xs font-bold uppercase tracking-[0.28em] text-primary">Inside the app</p>
             <h2 className="max-w-[14ch] font-headline text-3xl font-bold leading-tight sm:text-5xl">See the workflow before you apply.</h2>
-            <p className="mt-4 max-w-[58ch] leading-relaxed text-on-surface-variant">Two short walkthroughs of the workflow independent designers use before trusting a translation for release.</p>
-            <div className="mt-10 grid gap-6 lg:grid-cols-2">
+            <p className="mt-4 max-w-[58ch] leading-relaxed text-on-surface-variant">Three short walkthroughs of the workflow independent designers use before trusting a translation for release.</p>
+            <div className="mt-10 grid gap-6 lg:grid-cols-3">
               {DEMOS.map((demo) => (
                 <article key={demo.number} className="rounded-xl bg-surface p-5 shadow-ambient">
                   <div className="mb-4 flex items-center justify-between">
@@ -218,10 +226,13 @@ export const BetaCampaignPage: React.FC = () => {
                   </div>
                   <video
                     className="aspect-[16/10] w-full rounded-xl bg-on-surface object-cover"
-                    controls
+                    autoPlay
+                    muted
+                    loop
                     playsInline
-                    preload="metadata"
+                    preload="auto"
                     poster={demo.poster}
+                    aria-label={demo.title}
                   >
                     <source src={demo.src} type="video/mp4" />
                     Your browser does not support embedded video.

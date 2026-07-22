@@ -3,6 +3,7 @@ import { PatternUpload } from '../PatternUpload';
 import { BuyCreditsModal } from '../BuyCreditsModal';
 import { TechEditReportView } from '../TechEditReportView';
 import { FileThumbnail } from '../FileThumbnail';
+import { SelectDropdown } from '../SelectDropdown';
 import { analyzeFile } from '../../services/fileAnalyzer';
 import { estimateTechEditCost } from '../../services/pricingService';
 import { loadHistory, loadPatternSource } from '../../services/historyService';
@@ -475,28 +476,22 @@ export const TechEditPage: React.FC = () => {
 
             {patternsWithSource.length > 0 && (
               <div className="mb-5 space-y-2">
-                <label
-                  htmlFor="tech-edit-saved-pattern"
-                  className="block text-xs font-semibold uppercase tracking-widest text-on-surface-variant"
-                >
-                  Choose from My Patterns
-                </label>
-                <select
+                <SelectDropdown
                   id="tech-edit-saved-pattern"
-                  className="w-full rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-2.5 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
+                  label="Choose from My Patterns"
+                  labelClassName="tracking-widest"
+                  placeholder="Choose a pattern…"
                   value={selectedPatternId}
-                  onChange={(e) => void handlePatternSelect(e.target.value)}
+                  onChange={(id) => void handlePatternSelect(id)}
                   disabled={isLoadingPattern || isAnalyzing}
                   aria-label="Saved pattern to tech edit"
-                >
-                  <option value="">Choose a pattern…</option>
-                  {patternsWithSource.map((record) => (
-                    <option key={record.id} value={record.id}>
-                      {record.fileName}
-                      {record.pdfMetrics ? ` · ${record.pdfMetrics.pages} pages` : ''}
-                    </option>
-                  ))}
-                </select>
+                  options={patternsWithSource.map((record) => ({
+                    id: record.id,
+                    label: record.pdfMetrics
+                      ? `${record.fileName} · ${record.pdfMetrics.pages} pages`
+                      : record.fileName,
+                  }))}
+                />
                 {isLoadingPattern && (
                   <p className="text-sm text-on-surface-variant">Loading pattern…</p>
                 )}

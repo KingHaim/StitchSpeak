@@ -1,8 +1,12 @@
 
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadEnv, type ProxyOptions } from 'vite';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+
+const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 const LOCAL_SESSION_COOKIE = 'ss_session';
 const HOST_SESSION_COOKIE = '__Host-ss_session';
@@ -53,6 +57,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), tailwindcss()],
+    resolve: {
+      alias: {
+        '@': path.resolve(rootDir, 'src'),
+      },
+    },
     test: {
       exclude: ['e2e/**', '**/node_modules/**', '**/dist/**'],
     },

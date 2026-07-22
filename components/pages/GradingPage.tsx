@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../contexts/auth-context';
 import { useCredits } from '../../contexts/credit-context';
 import { BuyCreditsModal } from '../BuyCreditsModal';
+import { SelectDropdown } from '../SelectDropdown';
 import {
   checkGradingAccess,
   extractGradingFromPattern,
@@ -62,7 +63,7 @@ function defaultMeasurements(): MeasurementForm[] {
 
 const inputClass =
   'w-full rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/40';
-const labelClass = 'block text-xs font-medium text-on-surface-variant mb-1';
+const labelClass = 'block text-xs font-medium text-on-surface-variant mb-1 normal-case tracking-normal';
 
 function parseNumber(raw: string): number | null {
   const trimmed = raw.trim().replace(',', '.');
@@ -487,21 +488,19 @@ export const GradingPage: React.FC = () => {
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-            <select
-              className={`${inputClass} sm:max-w-md`}
+            <SelectDropdown
+              className="sm:max-w-md"
+              buttonClassName={inputClass}
               value={selectedPatternId}
-              onChange={(e) => setSelectedPatternId(e.target.value)}
+              onChange={setSelectedPatternId}
               disabled={isExtracting}
+              placeholder="Choose a pattern…"
               aria-label="Saved pattern to extract from"
-            >
-              <option value="">Choose a pattern…</option>
-              {savedPatterns.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.fileName}
-                  {r.pdfMetrics ? ` · ${r.pdfMetrics.pages} pages` : ''}
-                </option>
-              ))}
-            </select>
+              options={savedPatterns.map((r) => ({
+                id: r.id,
+                label: r.pdfMetrics ? `${r.fileName} · ${r.pdfMetrics.pages} pages` : r.fileName,
+              }))}
+            />
             <button
               type="button"
               onClick={() => void handleExtract()}
@@ -576,18 +575,32 @@ export const GradingPage: React.FC = () => {
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div>
-            <label className={labelClass} htmlFor="grading-units">Units</label>
-            <select id="grading-units" className={inputClass} value={units} onChange={(e) => setUnits(e.target.value as GradingUnit)}>
-              <option value="cm">cm</option>
-              <option value="in">inches</option>
-            </select>
+            <SelectDropdown
+              id="grading-units"
+              label="Units"
+              labelClassName={labelClass}
+              buttonClassName={inputClass}
+              value={units}
+              onChange={(v) => setUnits(v as GradingUnit)}
+              options={[
+                { id: 'cm', label: 'cm' },
+                { id: 'in', label: 'inches' },
+              ]}
+            />
           </div>
           <div>
-            <label className={labelClass} htmlFor="grading-construction">Construction</label>
-            <select id="grading-construction" className={inputClass} value={construction} onChange={(e) => setConstruction(e.target.value as GradingConstruction)}>
-              <option value="flat">Flat (back and forth)</option>
-              <option value="circular">In the round</option>
-            </select>
+            <SelectDropdown
+              id="grading-construction"
+              label="Construction"
+              labelClassName={labelClass}
+              buttonClassName={inputClass}
+              value={construction}
+              onChange={(v) => setConstruction(v as GradingConstruction)}
+              options={[
+                { id: 'flat', label: 'Flat (back and forth)' },
+                { id: 'circular', label: 'In the round' },
+              ]}
+            />
           </div>
           <div>
             <label className={labelClass} htmlFor="grading-repeat">Stitch repeat</label>
@@ -600,11 +613,18 @@ export const GradingPage: React.FC = () => {
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div>
-            <label className={labelClass} htmlFor="grading-measurements-are">Measurements are</label>
-            <select id="grading-measurements-are" className={inputClass} value={measurementsAre} onChange={(e) => setMeasurementsAre(e.target.value as 'body' | 'finished')}>
-              <option value="finished">Finished garment</option>
-              <option value="body">Body (apply ease)</option>
-            </select>
+            <SelectDropdown
+              id="grading-measurements-are"
+              label="Measurements are"
+              labelClassName={labelClass}
+              buttonClassName={inputClass}
+              value={measurementsAre}
+              onChange={(v) => setMeasurementsAre(v as 'body' | 'finished')}
+              options={[
+                { id: 'finished', label: 'Finished garment' },
+                { id: 'body', label: 'Body (apply ease)' },
+              ]}
+            />
           </div>
           <div>
             <label className={labelClass} htmlFor="grading-ease">
@@ -687,16 +707,18 @@ export const GradingPage: React.FC = () => {
                         onChange={(e) => updateMeasurement(m.id, { name: e.target.value })}
                         aria-label="Measurement name"
                       />
-                      <select
-                        className={`${inputClass} w-auto`}
+                      <SelectDropdown
+                        className="w-auto shrink-0"
+                        buttonClassName={`${inputClass} w-auto min-w-28`}
                         value={m.kind}
-                        onChange={(e) => updateMeasurement(m.id, { kind: e.target.value as GradingMeasurementKind })}
+                        onChange={(v) => updateMeasurement(m.id, { kind: v as GradingMeasurementKind })}
                         aria-label="Measurement kind"
-                      >
-                        <option value="circumference">circumf.</option>
-                        <option value="width">width</option>
-                        <option value="length">length</option>
-                      </select>
+                        options={[
+                          { id: 'circumference', label: 'circumf.' },
+                          { id: 'width', label: 'width' },
+                          { id: 'length', label: 'length' },
+                        ]}
+                      />
                     </div>
                   </td>
                   {sizeNames.map((_, i) => (
@@ -773,27 +795,30 @@ export const GradingPage: React.FC = () => {
                 </div>
                 <div>
                   <label className={labelClass}>From</label>
-                  <select className={inputClass} value={s.fromId} onChange={(e) => updateShaping(s.id, { fromId: e.target.value })}>
-                    {widthMeasurements.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
+                  <SelectDropdown
+                    buttonClassName={inputClass}
+                    value={s.fromId}
+                    onChange={(fromId) => updateShaping(s.id, { fromId })}
+                    options={widthMeasurements.map((m) => ({ id: m.id, label: m.name }))}
+                  />
                 </div>
                 <div>
                   <label className={labelClass}>To</label>
-                  <select className={inputClass} value={s.toId} onChange={(e) => updateShaping(s.id, { toId: e.target.value })}>
-                    {widthMeasurements.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
+                  <SelectDropdown
+                    buttonClassName={inputClass}
+                    value={s.toId}
+                    onChange={(toId) => updateShaping(s.id, { toId })}
+                    options={widthMeasurements.map((m) => ({ id: m.id, label: m.name }))}
+                  />
                 </div>
                 <div>
                   <label className={labelClass}>Over</label>
-                  <select className={inputClass} value={s.overId} onChange={(e) => updateShaping(s.id, { overId: e.target.value })}>
-                    {lengthMeasurements.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
+                  <SelectDropdown
+                    buttonClassName={inputClass}
+                    value={s.overId}
+                    onChange={(overId) => updateShaping(s.id, { overId })}
+                    options={lengthMeasurements.map((m) => ({ id: m.id, label: m.name }))}
+                  />
                 </div>
                 <div>
                   <label className={labelClass}>Sts per shaping row</label>

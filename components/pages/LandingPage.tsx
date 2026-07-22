@@ -302,13 +302,13 @@ export const LandingPage: React.FC = () => {
                 What you actually use.
               </h2>
               <p className="text-on-surface-variant leading-relaxed mb-8">
-                Upload one pattern, choose a market, confirm the estimate, and review the translated copy in your saved library.
+                Upload one pattern, choose a language, confirm the estimate, and review the translated copy in your saved library.
               </p>
               <div className="space-y-3">
                 {[
                   { icon: 'upload_file', title: 'Upload PDF, DOCX, TXT, or RTF', body: 'Sign in with Google or email, then upload your pattern file.' },
                   { icon: 'payments', title: 'Buy credits, then confirm the estimate', body: 'Translation costs credits. You see the price before anything is charged.' },
-                  { icon: 'folder_special', title: 'Reuse one upload', body: 'Return to My Patterns and translate the same source for another market.' },
+                  { icon: 'folder_special', title: 'Reuse one upload', body: 'Return to My Patterns and translate the same source for another language.' },
                 ].map((item) => (
                   <div key={item.title} className="flex items-start gap-3">
                     <span className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-fixed text-on-primary-fixed">
@@ -325,104 +325,18 @@ export const LandingPage: React.FC = () => {
 
             <div className="lg:col-span-8">
               <div className="overflow-hidden rounded-2xl border border-outline-variant/20 bg-surface-container-lowest shadow-ambient">
-                <div className="flex items-center justify-between gap-4 border-b border-outline-variant/15 bg-surface-container-low px-5 py-4">
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold uppercase tracking-[0.22em] text-primary">Translation studio</p>
-                    <h3 className="mt-1 truncate font-headline text-2xl font-bold text-on-surface">cable-cardigan.pdf</h3>
-                  </div>
-                  <span className="shrink-0 rounded-full bg-primary text-on-primary px-3 py-1 text-xs font-bold uppercase tracking-widest">
-                    Saved
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 xl:grid-cols-[0.88fr_1.12fr]">
-                  <div className="border-b border-outline-variant/15 p-5 xl:border-b-0 xl:border-r">
-                    <div className="rounded-xl border border-dashed border-outline-variant/40 bg-surface-container-low p-5">
-                      <div className="flex items-center gap-3">
-                        <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                          <Icon name="description" className="text-2xl" />
-                        </span>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-bold text-on-surface">cable-cardigan.pdf</p>
-                          <p className="text-xs text-on-surface-variant">12 pages · 842 KB</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-5 grid grid-cols-2 gap-3">
-                      <div className="rounded-xl bg-surface-container-low p-4">
-                        <p className="text-xs text-on-surface-variant">Source</p>
-                        <p className="mt-1 font-semibold text-on-surface">Auto-detect</p>
-                      </div>
-                      <div className="rounded-xl bg-surface-container-low p-4">
-                        <p className="text-xs text-on-surface-variant">Translate to</p>
-                        <p className="mt-1 font-semibold text-on-surface">German</p>
-                      </div>
-                      <div className="rounded-xl bg-primary-fixed p-4">
-                        <p className="text-xs text-on-primary-fixed-variant">This translation</p>
-                        <p className="mt-1 font-bold text-on-primary-fixed">8.5 credits</p>
-                      </div>
-                      <div className="rounded-xl bg-surface-container-low p-4">
-                        <p className="text-xs text-on-surface-variant">Balance after</p>
-                        <p className="mt-1 font-semibold text-on-surface">16.5 credits</p>
-                      </div>
-                    </div>
-
-                    <div className="mt-5 rounded-xl bg-surface-container-low p-4">
-                      <div className="mb-3 flex items-center justify-between">
-                        <p className="text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">Progress</p>
-                        <p className="text-xs font-semibold text-primary">Complete</p>
-                      </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-surface-container-highest">
-                        <div className="h-full w-full rounded-full bg-primary" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="p-5">
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <div className="rounded-xl bg-surface-container-low p-4">
-                        <div className="mb-3 flex items-center justify-between gap-3">
-                          <p className="text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">Original</p>
-                          <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-on-surface-variant">English</span>
-                        </div>
-                        <div className="space-y-2 font-mono text-xs leading-relaxed text-on-surface">
-                          <p>Row 12: P2, C6F, k4, C6B, p2.</p>
-                          <p>Row 13: K2, p16, k2.</p>
-                          <p>Continue until piece measures 18 cm.</p>
-                        </div>
-                      </div>
-
-                      <div className="rounded-xl bg-on-surface p-4 text-background">
-                        <div className="mb-3 flex items-center justify-between gap-3">
-                          <p className="text-xs font-bold uppercase tracking-[0.2em] text-background/65">Translation</p>
-                          <span className="rounded-full bg-background/10 px-2.5 py-1 text-xs font-semibold text-background">German</span>
-                        </div>
-                        <div className="space-y-2 font-mono text-xs leading-relaxed">
-                          <p>R 12: 2 li, Z6V, 4 re, Z6H, 2 li.</p>
-                          <p>R 13: 2 re, 16 li, 2 re.</p>
-                          <p>Weiterstricken bis das Teil 18 cm misst.</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {[
-                        { icon: 'download', label: 'Export PDF / DOCX' },
-                        { icon: 'forum', label: 'Ask AI about this pattern' },
-                        { icon: 'history', label: 'Reopen from My Patterns' },
-                      ].map((action) => (
-                        <span
-                          key={action.label}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-xs font-semibold text-on-surface"
-                        >
-                          <Icon name={action.icon} className="text-base text-primary" />
-                          {action.label}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                <video
+                  className="aspect-video w-full bg-on-surface object-cover"
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload="auto"
+                  poster="/demos/watch-it-work.jpg"
+                  aria-label="StitchSpeak workflow: upload a pattern, confirm the estimate, and review the translated copy"
+                >
+                  <source src="/demos/watch-it-work.mp4" type="video/mp4" />
+                </video>
               </div>
             </div>
           </div>

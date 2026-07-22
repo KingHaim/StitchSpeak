@@ -7,6 +7,7 @@
     "dev": "tsx watch --env-file=.env src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "seed:local-user": "tsx --env-file=.env src/scripts/seedLocalUser.ts",
     "backup:restore": "tsx src/scripts/restoreBackup.ts",
     "backup:drill": "tsx src/scripts/backupDrill.ts"
   },

@@ -15,6 +15,7 @@ import {
   type AdminOverview,
 } from '../../services/adminService';
 import { BetaApplicationsSection } from '../admin/BetaApplicationsSection';
+import { SelectDropdown } from '../SelectDropdown';
 
 const money = (n: number) => new Intl.NumberFormat('en', { style: 'currency', currency: 'EUR' }).format(n / 100);
 const date = (n: number | null) => (n ? new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(n) : 'No activity');
@@ -398,16 +399,19 @@ export const AdminPage: React.FC = () => {
                 <div className="mt-7 border-t border-white/12 pt-5">
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="font-semibold">Activity (PostHog)</h3>
-                    <select
-                      value={activityDays}
-                      onChange={(e) => setActivityDays(Number(e.target.value))}
-                      className="rounded-lg bg-white/10 px-2 py-1 text-xs"
+                    <SelectDropdown
+                      variant="inverse"
+                      className="w-auto"
+                      buttonClassName="rounded-lg border-0 bg-white/10 px-2 py-1 text-xs"
+                      value={String(activityDays)}
+                      onChange={(v) => setActivityDays(Number(v))}
                       aria-label="Activity window"
-                    >
-                      <option value={1}>24h</option>
-                      <option value={7}>7 days</option>
-                      <option value={30}>30 days</option>
-                    </select>
+                      options={[
+                        { id: '1', label: '24h' },
+                        { id: '7', label: '7 days' },
+                        { id: '30', label: '30 days' },
+                      ]}
+                    />
                   </div>
                   {activityError && <p className="mt-3 text-xs text-red-300">{activityError}</p>}
                   {!activityError && !activity && <p className="mt-3 text-xs text-white/55">Loading activity…</p>}

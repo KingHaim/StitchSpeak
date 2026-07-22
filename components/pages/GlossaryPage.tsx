@@ -3,6 +3,7 @@ import { GLOSSARY_TERMS, GLOSSARY_LANGUAGES } from '../../data/glossary';
 import { lookupTermWithAI, type AiTermResult } from '../../services/glossaryService';
 import { useAuth } from '../../contexts/auth-context';
 import { SearchIcon } from '../icons/NavIcons';
+import { SelectDropdown } from '../SelectDropdown';
 
 export const GlossaryPage: React.FC = () => {
   const { idToken, isAuthenticated } = useAuth();
@@ -99,16 +100,14 @@ export const GlossaryPage: React.FC = () => {
       <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-brand-200 mb-6">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
-            <label className="block text-xs font-semibold text-brand-500 uppercase tracking-wider mb-1.5">Source language</label>
-            <select
+            <SelectDropdown
+              label="Source language"
+              labelClassName="text-brand-500"
               value={sourceLang}
-              onChange={e => setSourceLang(e.target.value)}
-              className="w-full bg-white border border-brand-200 rounded-lg px-3 py-2 text-sm text-brand-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
-            >
-              {GLOSSARY_LANGUAGES.map(l => (
-                <option key={l.code} value={l.code}>{l.name}</option>
-              ))}
-            </select>
+              onChange={setSourceLang}
+              buttonClassName="border-brand-200 bg-white py-2 text-brand-800"
+              options={GLOSSARY_LANGUAGES.map((l) => ({ id: l.code, label: l.name }))}
+            />
           </div>
           <div className="flex items-center justify-center sm:items-end sm:pb-2">
             <button
@@ -123,16 +122,14 @@ export const GlossaryPage: React.FC = () => {
             </button>
           </div>
           <div className="flex-1">
-            <label className="block text-xs font-semibold text-brand-500 uppercase tracking-wider mb-1.5">Target language</label>
-            <select
+            <SelectDropdown
+              label="Target language"
+              labelClassName="text-brand-500"
               value={targetLang}
-              onChange={e => setTargetLang(e.target.value)}
-              className="w-full bg-white border border-brand-200 rounded-lg px-3 py-2 text-sm text-brand-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
-            >
-              {GLOSSARY_LANGUAGES.map(l => (
-                <option key={l.code} value={l.code}>{l.name}</option>
-              ))}
-            </select>
+              onChange={setTargetLang}
+              buttonClassName="border-brand-200 bg-white py-2 text-brand-800"
+              options={GLOSSARY_LANGUAGES.map((l) => ({ id: l.code, label: l.name }))}
+            />
           </div>
         </div>
 
