@@ -38,10 +38,13 @@ type EdgeDragState = {
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activePage, onNavigate }) => {
   const { isAuthenticated, idToken } = useAuth();
-  const { balance, startCheckout } = useCredits();
+  const { balance, betaAccess, startCheckout } = useCredits();
   const [showCreditsOverview, setShowCreditsOverview] = useState(false);
   const [showBuyCredits, setShowBuyCredits] = useState(false);
   const [historyRecords, setHistoryRecords] = useState<TranslationRecord[]>([]);
+  const visibleNavItems = navItems.filter(
+    (item) => item.pageId !== 'grading' || betaAccess,
+  );
 
   // On lg+, the rail is a 5rem strip showing icons only. Click or slide the
   // right-edge grip to expand/collapse the full 16rem layout.
@@ -219,7 +222,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, activePage, o
         </div>
 
         <nav className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-1 pt-2">
-          {navItems.map(({ label, icon, pageId }) => {
+          {visibleNavItems.map(({ label, icon, pageId }) => {
             const active = activePage === pageId;
             const isSettings = pageId === 'settings';
             return (
