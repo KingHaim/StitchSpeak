@@ -101,7 +101,7 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({
                   <p className="text-2xl font-bold text-on-surface">{pack.credits}</p>
                   <p className="text-xs text-primary font-medium">credits</p>
                   <div className="mt-2 pt-2 border-t border-outline-variant/20">
-                    <p className="text-lg font-bold text-on-surface">€{pack.price.toFixed(2)}</p>
+                    <p className="text-lg font-bold text-on-surface">€{pack.price.toFixed(2)} EUR</p>
                     <p className="text-[10px] text-on-surface-variant/70">€{perCredit.toFixed(2)} / credit</p>
                   </div>
                 </button>
@@ -111,10 +111,18 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({
 
           <div className="mb-6 text-center">
             <p className="text-on-surface-variant mb-1">Total Amount</p>
-            <p className="text-4xl font-bold text-on-surface">€{selectedPack.price.toFixed(2)}</p>
+            <p className="text-4xl font-bold text-on-surface">
+              €{selectedPack.price.toFixed(2)} <span className="text-lg text-on-surface-variant">EUR</span>
+            </p>
             <p className="text-xs text-primary mt-2 font-medium px-3 py-1 bg-primary/10 inline-block rounded-full">
               {selectedPack.credits} credits
             </p>
+          </div>
+
+          <div className="mb-4 rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-3 text-xs leading-relaxed text-on-surface-variant">
+            Prices are in EUR and include applicable taxes. If you pay in another currency,
+            PayPal or your bank will apply its exchange rate. You&apos;ll see the final
+            converted amount before confirming.
           </div>
 
           {error && (
@@ -137,7 +145,7 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({
                 Redirecting…
               </span>
             ) : (
-              `Continue to checkout — €${selectedPack.price.toFixed(2)}`
+              `Continue to checkout — €${selectedPack.price.toFixed(2)} EUR`
             )}
           </button>
         </form>

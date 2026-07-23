@@ -47,7 +47,7 @@ export const TopBar: React.FC<TopBarProps> = ({ activePage, onNavigate }) => {
 
   return (
     <>
-      <div className="bg-surface-container-low/85 glass-nav border-b border-outline-variant/25 px-4 sm:px-6 lg:px-10 py-3 sm:py-4">
+      <div className="relative z-30 shrink-0 bg-surface-container-low/85 glass-nav border-b border-outline-variant/25 px-4 sm:px-6 lg:px-10 py-3 sm:py-4">
         <div className="flex justify-between gap-3 items-center sm:items-end">
           <div className="flex items-start gap-3 min-w-0">
             <div className="min-w-0 pt-0.5">
