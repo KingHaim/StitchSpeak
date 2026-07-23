@@ -349,7 +349,7 @@ export const DashboardPage: React.FC = () => {
 
   /**
    * "Open in studio" handoff from My Patterns: rebuild a TranslationJob from a
-   * saved pattern record so the user can keep chatting with the AI about it.
+   * saved pattern record so the user can keep chatting about it.
    * We hydrate the persisted chat history, start a fresh Gemini chat session
    * primed with that history, and pre-fetch the original source for the side
    * preview when it's available.
@@ -1135,7 +1135,7 @@ export const DashboardPage: React.FC = () => {
                         <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>
                           auto_awesome
                         </span>
-                        Need help? Ask AI
+                        Need help? Ask about this pattern
                       </button>
                     )}
                   </div>

@@ -340,7 +340,7 @@ export const TechEditPage: React.FC = () => {
           </span>
           <h2 className="text-2xl font-headline italic text-on-surface">Tech editing is in beta</h2>
           <p className="text-sm text-on-surface-variant max-w-md mx-auto leading-relaxed">
-            AI tech editing — math audits, gauge checks, consistency and clarity review — is currently
+            Assisted tech editing — math audits, gauge checks, consistency and clarity review — is currently
             available to beta testers only. Apply for beta access and we&rsquo;ll open it up for your account.
           </p>
           <a
@@ -578,7 +578,7 @@ export const TechEditPage: React.FC = () => {
             )}
 
             <p className="mt-6 text-xs text-on-surface-variant/80 leading-relaxed">
-              This is an AI tech edit — please double-check all findings before acting on them. A human tech
+              This is an assisted tech edit — please double-check all findings before acting on them. A human tech
               editor is still recommended before publication.
             </p>
           </div>

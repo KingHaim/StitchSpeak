@@ -15,7 +15,7 @@ StitchSpeak translates knitting pattern PDFs using localized terminology and inc
 2. Set environment variables: `GEMINI_API_KEY` and `GOOGLE_CLIENT_ID` (same value as `VITE_GOOGLE_CLIENT_ID`).
 3. `npm run dev`
 
-All AI features (translation, chat, glossary lookup) run through the Express server. No API keys are exposed to the browser.
+All assisted features (translation, chat, glossary lookup) run through the Express server. No API keys are exposed to the browser.
 
 ## Launch checklist
 
@@ -51,7 +51,7 @@ Before switching real users on:
 ### Production operations
 
 - Railway must mount its persistent volume at `/data` and set `DATA_DIR=/data`.
-- Configure the Railway health check to use `/health/deep`; it verifies AI, OAuth,
+- Configure the Railway health check to use `/health/deep`; it verifies Gemini, OAuth,
   payments, webhook configuration, and both persistent stores.
 - Enable automated Railway volume backups before accepting payments. Periodically
   test restoring `credits.db` and the pattern store into a non-production environment.

@@ -3,28 +3,22 @@ import { submitBetaApplication, type BetaApplicationInput, type BetaAttributionI
 
 const DEMOS = [
   {
-    number: '01',
     title: 'Translation that speaks knitting',
     description: 'Upload a pattern, confirm the estimate, and get a side-by-side translation with rows, repeats, and abbreviations intact.',
     src: '/demos/pattern-translation.mp4',
     poster: '/demos/pattern-translation.jpg',
-    duration: '0:19',
   },
   {
-    number: '02',
-    title: 'AI tech editing, row by row',
+    title: 'Assisted tech editing, row by row',
     description: 'StitchSpeak runs your pattern like a knitter: stitch counts per size, repeats, gauge, and construction — compiled into a findings report.',
     src: '/demos/tech-edit.mp4',
     poster: '/demos/tech-edit.jpg',
-    duration: '0:25',
   },
   {
-    number: '03',
     title: 'Size grading, verified by calculation',
     description: 'Extract gauge, sizes, and measurements straight from your pattern, then get a graded size table computed from your numbers.',
     src: '/demos/size-grading.mp4',
     poster: '/demos/size-grading.jpg',
-    duration: '0:31',
   },
 ];
 
@@ -219,11 +213,7 @@ export const BetaCampaignPage: React.FC = () => {
             <p className="mt-4 max-w-[58ch] leading-relaxed text-on-surface-variant">Three short walkthroughs of the workflow independent designers use before trusting a translation for release.</p>
             <div className="mt-10 grid gap-6 lg:grid-cols-3">
               {DEMOS.map((demo) => (
-                <article key={demo.number} className="rounded-xl bg-surface p-5 shadow-ambient">
-                  <div className="mb-4 flex items-center justify-between">
-                    <span className="font-mono text-sm font-bold text-primary">{demo.number}</span>
-                    <span className="rounded-full bg-primary-fixed px-3 py-1 text-xs font-bold text-on-primary-fixed">{demo.duration}</span>
-                  </div>
+                <article key={demo.src} className="rounded-xl bg-surface p-5 shadow-ambient">
                   <video
                     className="aspect-[16/10] w-full rounded-xl bg-on-surface object-cover"
                     autoPlay
@@ -246,14 +236,24 @@ export const BetaCampaignPage: React.FC = () => {
         </section>
 
         <section className="bg-primary px-6 py-14 text-on-primary sm:px-8 sm:py-20">
-          <div className="mx-auto grid max-w-[1200px] items-start gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-20">
-            <div>
-              <Icon name="rule" className="text-4xl text-on-primary/70" />
-              <h2 className="mt-6 font-headline text-3xl font-bold leading-tight sm:text-4xl">A translation is a starting point, not a substitute for judgment.</h2>
+          <div className="mx-auto max-w-[1200px]">
+            <div className="max-w-2xl">
+              <p className="mb-4 text-xs font-bold uppercase tracking-[0.28em] text-on-primary/60">Built for original work</p>
+              <h2 className="font-headline text-3xl font-bold leading-tight sm:text-4xl">Your patterns stay yours.</h2>
+              <p className="mt-5 text-base leading-relaxed text-on-primary/80">You&apos;re trusting us with unreleased designs. That&apos;s not something we take lightly — here&apos;s how StitchSpeak treats your work.</p>
             </div>
-            <div className="space-y-6 text-base leading-relaxed text-on-primary/80">
-              <p>StitchSpeak translations are intended for your own original patterns or patterns you have the rights to publish in additional languages. Do not redistribute translated copies of another designer&apos;s work without permission.</p>
-              <p>Always review translated instructions, stitch counts, measurements, charts, and abbreviations before publishing or releasing to customers. If something looks inconsistent, compare it with your source pattern and revise before launch.</p>
+            <div className="mt-12 grid gap-10 sm:grid-cols-2 lg:grid-cols-3 lg:gap-12">
+              {[
+                ['lock', 'Private by default', 'Your uploads and translations live in your own workspace. No public gallery, no sharing — nobody sees your pattern but you.'],
+                ['workspace_premium', 'You keep every right', 'A translation of your pattern is yours. Publish it, sell it, and release it in any market — no license fees, no strings.'],
+                ['fact_check', 'Designed for your final say', 'Side-by-side output keeps rows, repeats, and stitch counts next to your original, so you sign off on every line before release.'],
+              ].map(([icon, title, body]) => (
+                <div key={title}>
+                  <Icon name={icon} className="text-3xl text-on-primary/70" />
+                  <h3 className="mt-4 font-headline text-xl font-bold">{title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-on-primary/75">{body}</p>
+                </div>
+              ))}
             </div>
           </div>
         </section>

@@ -3,8 +3,8 @@ import type { TranslationRecord } from '../types';
 /**
  * Hint passed from My Patterns → Dashboard when the user clicks "Open in
  * studio" on a saved pattern. The Dashboard reads this on mount and rebuilds
- * a TranslationJob from the saved record so the user can keep chatting with
- * the AI about that pattern, with full chat history hydrated from the server.
+ * a TranslationJob from the saved record so the user can keep chatting about
+ * that pattern, with full chat history hydrated from the server.
  *
  * Intentionally lives in module memory (one-shot) — no need to round-trip
  * everything through sessionStorage.

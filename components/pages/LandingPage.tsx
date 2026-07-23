@@ -43,6 +43,75 @@ const Icon: React.FC<{ name: string; className?: string }> = ({ name, className 
   </span>
 );
 
+/** Muted looping video — retries play() when visible (Safari/Chrome block off-screen autoplay). */
+const AutoLoopVideo: React.FC<{
+  src: string;
+  poster: string;
+  className?: string;
+  'aria-label'?: string;
+}> = ({ src, poster, className, 'aria-label': ariaLabel }) => {
+  const videoRef = React.useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    video.muted = true;
+    video.defaultMuted = true;
+    video.playsInline = true;
+
+    const tryPlay = () => {
+      if (video.paused) {
+        void video.play().catch(() => {
+          /* Low Power Mode / autoplay policy — stay on poster. */
+        });
+      }
+    };
+
+    tryPlay();
+    video.addEventListener('loadeddata', tryPlay);
+    video.addEventListener('canplay', tryPlay);
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) tryPlay();
+        }
+      },
+      { threshold: 0.2 },
+    );
+    observer.observe(video);
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') tryPlay();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      observer.disconnect();
+      video.removeEventListener('loadeddata', tryPlay);
+      video.removeEventListener('canplay', tryPlay);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [src]);
+
+  return (
+    <video
+      ref={videoRef}
+      className={className}
+      src={src}
+      poster={poster}
+      autoPlay
+      muted
+      loop
+      playsInline
+      preload="auto"
+      disablePictureInPicture
+      aria-label={ariaLabel}
+    />
+  );
+};
+
 const JourneySection: React.FC = () => (
   <section className="border-b border-outline-variant/10 px-6 py-14 sm:px-8 sm:py-18">
     <div className="mx-auto max-w-7xl">
@@ -325,18 +394,12 @@ export const LandingPage: React.FC = () => {
 
             <div className="lg:col-span-8">
               <div className="overflow-hidden rounded-2xl border border-outline-variant/20 bg-surface-container-lowest shadow-ambient">
-                <video
+                <AutoLoopVideo
                   className="aspect-video w-full bg-on-surface object-cover"
-                  autoPlay
-                  muted
-                  loop
-                  playsInline
-                  preload="auto"
-                  poster="/demos/watch-it-work.jpg"
+                  src="/demos/openvid-1280x720.mp4"
+                  poster="/demos/openvid-1280x720.jpg"
                   aria-label="StitchSpeak workflow: upload a pattern, confirm the estimate, and review the translated copy"
-                >
-                  <source src="/demos/watch-it-work.mp4" type="video/mp4" />
-                </video>
+                />
               </div>
             </div>
           </div>
@@ -436,7 +499,7 @@ export const LandingPage: React.FC = () => {
               },
               {
                 q: 'Can I ask questions about a translated pattern?',
-                a: 'Yes. Finished translations can be reopened from My Patterns, exported, or used with the AI chat so you can ask about abbreviations, confusing rows, sizing notes, or next steps.',
+                a: 'Yes. Finished translations can be reopened from My Patterns, exported, or used with assisted chat so you can ask about abbreviations, confusing rows, sizing notes, or next steps.',
               },
               {
                 q: 'Are my pattern files private?',

@@ -512,7 +512,7 @@ async function generateJson(
   try {
     return JSON.parse(text);
   } catch {
-    throw new Error('The AI returned an unreadable review. Please try again.');
+    throw new Error('The assisted review returned an unreadable result. Please try again.');
   }
 }
 

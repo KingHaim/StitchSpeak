@@ -177,7 +177,7 @@ router.post('/', requireAuth, techEditRateLimit, uploadPatternSafe, async (req: 
   }
   if (req.body?.aiAcknowledged !== 'true') {
     res.status(400).json({
-      error: 'Confirm the AI processing notice before starting a tech edit.',
+      error: 'Confirm the processing notice before starting a tech edit.',
       code: 'AI_PROCESSING_ACKNOWLEDGEMENT_REQUIRED',
     });
     return;

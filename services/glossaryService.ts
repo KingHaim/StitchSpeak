@@ -27,10 +27,10 @@ export async function lookupTermWithAI(
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     if (res.status === 401) {
-      throw new Error('You must be signed in to use AI lookup.');
+      throw new Error('You must be signed in to use assisted lookup.');
     }
     throw new Error(
-      typeof body?.error === 'string' ? body.error : 'AI lookup failed. Please try again.',
+      typeof body?.error === 'string' ? body.error : 'Assisted lookup failed. Please try again.',
     );
   }
 

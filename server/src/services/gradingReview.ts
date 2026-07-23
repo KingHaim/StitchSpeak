@@ -4,7 +4,7 @@ import { withExternalDeadline } from './externalDeadline.js';
 import type { GradingRequestInput, GradingResult } from './grading.js';
 
 /**
- * The AI proposes nothing numeric: all counts come from the deterministic
+ * Assisted notes propose nothing numeric: all counts come from the deterministic
  * engine in grading.ts. This pass only EXPLAINS the proposal so the designer
  * can review and approve the calculations — per-size notes, and cautions
  * about anything the math can't judge (fit, style, construction habits).
@@ -95,6 +95,6 @@ export async function explainGrading(
   try {
     return sanitize(JSON.parse(text));
   } catch {
-    throw new Error('The AI returned an unreadable explanation.');
+    throw new Error('The assisted explanation was unreadable. Please try again.');
   }
 }

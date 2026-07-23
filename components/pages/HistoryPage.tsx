@@ -524,7 +524,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
 
   /**
    * Re-open a saved translation in the dashboard so the user can keep chatting
-   * with the AI about it. We fetch the translated HTML up-front (the dashboard
+   * about it. We fetch the translated HTML up-front (the dashboard
    * needs it to start a chat session) and hand the record off via the
    * openPatternHint module.
    */

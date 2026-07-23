@@ -10,7 +10,7 @@ let store: typeof import('../src/services/legalAcknowledgementStore');
 beforeAll(async () => { store = await import('../src/services/legalAcknowledgementStore'); });
 afterAll(() => fs.rmSync(dataDir, { recursive: true, force: true }));
 
-describe('AI processing acknowledgements', () => {
+describe('Assisted processing acknowledgements', () => {
   it('records the current notice version and removes it with the account', () => {
     store.recordAiProcessingAcknowledgement('user-1');
     expect(store.listLegalAcknowledgements('user-1')).toEqual([

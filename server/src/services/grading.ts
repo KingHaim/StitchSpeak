@@ -5,7 +5,7 @@
  * the gauge, the ease, and the construction rules. Everything numeric is
  * computed here in plain TypeScript — stitch counts, row counts, shaping
  * distribution, size-jump sanity checks — so every number shown to the
- * designer is backed by a real calculation, never a model guess. The AI's
+ * designer is backed by a real calculation, never a model guess. Assisted notes'
  * only job (see gradingReview.ts) is to explain the proposal; the designer
  * approves the calculations in the UI.
  */

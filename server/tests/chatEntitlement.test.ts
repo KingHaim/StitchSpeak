@@ -47,7 +47,7 @@ describe('chat entitlement reservation', () => {
     });
   });
 
-  it('releases a reserved slot when the AI call fails', () => {
+  it('releases a reserved slot when the model call fails', () => {
     const pattern = store.savePattern('user-2', {
       fileName: 'pattern.pdf',
       targetLanguage: 'German',

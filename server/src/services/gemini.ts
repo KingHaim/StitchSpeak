@@ -679,6 +679,6 @@ Respond ONLY with valid JSON (no markdown fences):
   try {
     return JSON.parse(cleaned) as GlossaryTermResult;
   } catch {
-    throw new Error('Could not parse AI response. Please try a different term.');
+    throw new Error('Could not parse the lookup response. Please try a different term.');
   }
 }

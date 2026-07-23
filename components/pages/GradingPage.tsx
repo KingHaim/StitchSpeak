@@ -469,8 +469,8 @@ export const GradingPage: React.FC = () => {
         <p className="text-sm text-on-surface-variant mt-1 leading-relaxed">
           Enter your base size, target measurements, ease, gauge and construction rules. StitchSpeak
           recalculates stitches and rows for every size, distributes increases and decreases, flags
-          unreasonable jumps between sizes and checks that the pattern still works in each one. The AI
-          explains the proposal — <span className="font-medium text-on-surface">you approve the calculations</span>.
+          unreasonable jumps between sizes and checks that the pattern still works in each one. Assisted
+          notes explain the proposal — <span className="font-medium text-on-surface">you approve the calculations</span>.
         </p>
       </div>
 
@@ -522,7 +522,7 @@ export const GradingPage: React.FC = () => {
           </div>
           {isExtracting && (
             <p className="text-xs text-on-surface-variant">
-              The AI is transcribing the gauge, sizes, measurements and shaping from the document. This can
+              StitchSpeak is reading the gauge, sizes, measurements and shaping from the document. This can
               take a few minutes — leave the page open.
             </p>
           )}
@@ -878,7 +878,7 @@ export const GradingPage: React.FC = () => {
               </div>
               <span
                 className="inline-flex items-center gap-1 rounded-full bg-primary/12 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary"
-                title="Every number was computed deterministically from your gauge and measurements — not by the AI."
+                title="Every number was computed deterministically from your gauge and measurements — not guessed."
               >
                 <span className="material-symbols-outlined text-xs" aria-hidden>calculate</span>
                 Verified by calculation
@@ -1002,19 +1002,19 @@ export const GradingPage: React.FC = () => {
             </div>
           )}
 
-          {/* AI explanation */}
+          {/* Assisted explanation */}
           {result.explanation && (result.explanation.sizeNotes.length > 0 || result.explanation.cautions.length > 0) && (
             <div className="bg-surface-container-low rounded-xl border border-outline-variant/15 p-6 sm:p-8 space-y-4">
               <div className="flex items-center gap-2">
                 <h3 className="font-semibold text-xs uppercase tracking-widest text-on-surface-variant">
-                  AI explanation
+                  Assisted explanation
                 </h3>
                 <span
                   className="inline-flex items-center gap-1 rounded-full bg-surface-container-high px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant"
-                  title="Written by the AI to explain the deterministic proposal — it does not change any number."
+                  title="Written to explain the deterministic proposal — it does not change any number."
                 >
                   <span className="material-symbols-outlined text-xs" aria-hidden>auto_awesome</span>
-                  AI review
+                  Assisted review
                 </span>
               </div>
               {result.explanation.sizeNotes.length > 0 && (
@@ -1095,7 +1095,7 @@ export const GradingPage: React.FC = () => {
           </div>
 
           <p className="text-xs text-on-surface-variant/80 text-center px-4">
-            All counts are computed from your gauge and measurements by software; the AI only explains them.
+            All counts are computed from your gauge and measurements by software; assisted notes only explain them.
             You stay responsible for the final numbers — approve each size before using the grading.
           </p>
         </div>

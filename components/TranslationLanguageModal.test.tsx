@@ -49,7 +49,7 @@ describe('TranslationLanguageModal authentication action', () => {
     await act(async () => root.unmount());
   });
 
-  it('requires the AI-processing acknowledgement before translation', async () => {
+  it('requires the processing acknowledgement before translation', async () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     const root = createRoot(container);

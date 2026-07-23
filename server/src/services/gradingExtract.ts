@@ -280,7 +280,7 @@ export async function extractGradingInput(
   try {
     raw = JSON.parse(text);
   } catch {
-    throw new Error('The AI returned an unreadable extraction. Please try again.');
+    throw new Error('The assisted extraction was unreadable. Please try again.');
   }
   return { extraction: sanitizeGradingExtraction(raw), usage };
 }

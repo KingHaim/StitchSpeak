@@ -2,7 +2,7 @@
 
 ## Cursor Cloud specific instructions
 
-StitchSpeak is a React 19 + TypeScript + Tailwind CSS v4 frontend (Vite) with an Express backend (`server/`). Translation, chat, and glossary AI lookup all go through the server, which calls the Gemini API server-side.
+StitchSpeak is a React 19 + TypeScript + Tailwind CSS v4 frontend (Vite) with an Express backend (`server/`). Translation, chat, and glossary lookup all go through the server, which calls the Gemini API server-side.
 
 ### Commands
 

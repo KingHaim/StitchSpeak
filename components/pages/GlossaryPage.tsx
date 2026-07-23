@@ -50,7 +50,7 @@ export const GlossaryPage: React.FC = () => {
     const q = aiQuery.trim() || search.trim();
     if (!q) return;
     if (!isAuthenticated || !idToken) {
-      setAiError('Please sign in to use AI lookup.');
+      setAiError('Please sign in to use assisted lookup.');
       return;
     }
     setAiLoading(true);
@@ -161,7 +161,7 @@ export const GlossaryPage: React.FC = () => {
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-4 py-12 text-center text-brand-400">
-                    No terms found. Try the AI lookup below.
+                    No terms found. Try the assisted lookup below.
                   </td>
                 </tr>
               ) : (
@@ -183,7 +183,7 @@ export const GlossaryPage: React.FC = () => {
         </div>
         <div className="divide-y divide-brand-100 sm:hidden">
           {filtered.length === 0 ? (
-            <p className="px-4 py-10 text-center text-sm text-brand-400">No terms found. Try the AI lookup below.</p>
+            <p className="px-4 py-10 text-center text-sm text-brand-400">No terms found. Try the assisted lookup below.</p>
           ) : filtered.map((term) => {
             const src = term.terms[sourceLang];
             const tgt = term.terms[targetLang];
@@ -209,10 +209,10 @@ export const GlossaryPage: React.FC = () => {
         </div>
       </div>
 
-      {/* AI Lookup */}
+      {/* Assisted lookup */}
       <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-brand-200">
         <h3 className="text-lg font-bold text-brand-800 mb-1">Can't find a term?</h3>
-        <p className="text-sm text-brand-400 mb-4">Ask our AI to look it up for you.</p>
+        <p className="text-sm text-brand-400 mb-4">Ask for an assisted lookup.</p>
 
         <div className="flex flex-col gap-3 sm:flex-row">
           <input
@@ -228,7 +228,7 @@ export const GlossaryPage: React.FC = () => {
             disabled={aiLoading || (!aiQuery.trim() && !search.trim())}
             className="min-h-11 px-5 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition-colors disabled:bg-brand-200 disabled:cursor-not-allowed"
           >
-            {aiLoading ? 'Looking up...' : 'Ask AI'}
+            {aiLoading ? 'Looking up...' : 'Look up'}
           </button>
         </div>
 

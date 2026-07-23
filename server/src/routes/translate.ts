@@ -56,7 +56,7 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
   }
   if (req.body?.aiAcknowledged !== 'true') {
     res.status(400).json({
-      error: 'Confirm the AI processing notice before starting a translation.',
+      error: 'Confirm the processing notice before starting a translation.',
       code: 'AI_PROCESSING_ACKNOWLEDGEMENT_REQUIRED',
     });
     return;

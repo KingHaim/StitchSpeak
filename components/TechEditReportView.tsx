@@ -17,7 +17,7 @@ interface TechEditReportViewProps {
 }
 
 const AI_FINDING_TIP =
-  'This is an AI tech edit — please double-check all findings before acting on them.';
+  'This is an assisted tech edit — please double-check all findings before acting on them.';
 
 const SEVERITY_GROUPS: Array<{
   severity: TechEditSeverity;
@@ -228,7 +228,7 @@ export const TechEditReportView: React.FC<TechEditReportViewProps> = ({
 
         <p className="text-xs text-on-surface-variant">
           {report.stats.checksRun} arithmetic checks run across {report.stats.sizesChecked}{' '}
-          {report.stats.sizesChecked === 1 ? 'size' : 'sizes'}. This is an AI tech edit — please
+          {report.stats.sizesChecked === 1 ? 'size' : 'sizes'}. This is an assisted tech edit — please
           double-check all findings before acting on them.
         </p>
 
@@ -321,7 +321,7 @@ export const TechEditReportView: React.FC<TechEditReportViewProps> = ({
       )}
 
       <p className="text-xs text-on-surface-variant/80 text-center px-4">
-        AI tech editing is a first pass, not a replacement for a human tech editor. Always verify critical
+        Assisted tech editing is a first pass, not a replacement for a human tech editor. Always verify critical
         numbers before publishing a pattern.
       </p>
     </div>
