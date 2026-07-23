@@ -131,6 +131,14 @@ router.post(
       return;
     }
 
+    // With tax-inclusive store pricing, `subtotal` is the net-of-VAT amount and
+    // is legitimately below the pack price; the tax-inclusive `total` is what
+    // the customer actually paid. Accept the order when either covers the pack.
+    const expectedCents = Math.round(pack ? pack.price * 100 : Number.POSITIVE_INFINITY);
+    const coversPackPrice =
+      (subtotal != null && subtotal >= expectedCents) ||
+      (total != null && total >= expectedCents);
+
     const isExpectedOrder =
       orderId &&
       sub &&
@@ -140,7 +148,7 @@ router.post(
       attrs?.refunded !== true &&
       variantId === expectedVariantId &&
       amountPaid != null &&
-      amountPaid >= Math.round(pack.price * 100);
+      coversPackPrice;
 
     if (!isExpectedOrder || !pack || credits == null) {
       recordPaymentAnomaly('rejected_paid_order', orderId || undefined);
