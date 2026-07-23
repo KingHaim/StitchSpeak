@@ -6,6 +6,11 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const source = path.join(projectRoot, 'sites-worker', 'index.js');
 const outputDirectory = path.join(projectRoot, 'dist', 'server');
 const output = path.join(outputDirectory, 'index.js');
+const hostingSource = path.join(projectRoot, '.openai', 'hosting.json');
+const hostingOutputDirectory = path.join(projectRoot, 'dist', '.openai');
+const hostingOutput = path.join(hostingOutputDirectory, 'hosting.json');
 
 await mkdir(outputDirectory, { recursive: true });
 await copyFile(source, output);
+await mkdir(hostingOutputDirectory, { recursive: true });
+await copyFile(hostingSource, hostingOutput);
