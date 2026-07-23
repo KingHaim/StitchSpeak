@@ -100,6 +100,15 @@ const AutoLoopVideo: React.FC<{
 };
 
 const STORY_ICONS = ['upload_file', 'auto_awesome', 'language', 'compare_arrows', 'download'] as const;
+const LANGUAGE_FLAGS: Record<string, string> = {
+  DE: '🇩🇪',
+  ES: '🇪🇸',
+  FR: '🇫🇷',
+  IT: '🇮🇹',
+  JA: '🇯🇵',
+  KO: '🇰🇷',
+};
+const MARKET_LANGUAGES = ['ES', 'FR', 'DE', 'JA', 'IT', 'KO'] as const;
 
 const StoryVisual: React.FC<{
   activeStage: number;
@@ -117,7 +126,7 @@ const StoryVisual: React.FC<{
             key={language}
             className={`story-language-node story-language-node--${index + 1}`}
           >
-            {language}
+            {LANGUAGE_FLAGS[language] ?? language}
           </span>
         ))}
       </div>
@@ -518,12 +527,12 @@ export const LandingPage: React.FC = () => {
                   <Icon name="description" />
                   PDF
                 </span>
-                {['ES', 'FR', 'DE', 'JA', 'IT', 'KO'].map((language, index) => (
+                {MARKET_LANGUAGES.map((language, index) => (
                   <span
                     key={language}
                     className={`market-language-node market-language-node--${index + 1}`}
                   >
-                    {language}
+                    {LANGUAGE_FLAGS[language]}
                   </span>
                 ))}
                 <i className="market-route market-route--one" />
@@ -768,10 +777,10 @@ export const LandingPage: React.FC = () => {
         <section className="closing-section">
           <div className="closing-orbit" aria-hidden="true">
             <i />
-            <span>ES</span>
-            <span>FR</span>
-            <span>DE</span>
-            <span>JA</span>
+            <span>{LANGUAGE_FLAGS.ES}</span>
+            <span>{LANGUAGE_FLAGS.FR}</span>
+            <span>{LANGUAGE_FLAGS.DE}</span>
+            <span>{LANGUAGE_FLAGS.JA}</span>
           </div>
           <div className="mx-auto flex max-w-5xl flex-col items-start justify-between gap-8 md:flex-row md:items-center">
             <div className="max-w-2xl">
