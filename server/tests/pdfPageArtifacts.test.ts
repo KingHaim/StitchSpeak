@@ -27,22 +27,22 @@ describe('PDF page artifact filtering', () => {
   it('detects repeated margin headers, footers, hashtags, and page numbers', () => {
     const profile = detectPdfPageArtifactsFromPages([
       page(1, [
-        textLine(1, 778, 'Anleitung von @Knitting_with_calm'),
-        textLine(1, 762, '#NaturaTop'),
+        textLine(1, 778, 'Anleitung von @example_pattern_studio'),
+        textLine(1, 762, '#SampleTop'),
         textLine(1, 405, 'Mit Bündchen:'),
         textLine(1, 18, '1'),
       ]),
       page(2, [
-        textLine(2, 778, 'Anleitung von @Knitting_with_calm'),
-        textLine(2, 762, '#NaturaTop'),
+        textLine(2, 778, 'Anleitung von @example_pattern_studio'),
+        textLine(2, 762, '#SampleTop'),
         textLine(2, 407, 'Zu größeren Nadeln wechseln'),
         textLine(2, 18, '2'),
       ]),
     ]);
 
     expect(profile.phrases).toEqual(expect.arrayContaining([
-      'Anleitung von @Knitting_with_calm',
-      '#NaturaTop',
+      'Anleitung von @example_pattern_studio',
+      '#SampleTop',
       '1',
       '2',
     ]));
@@ -54,21 +54,21 @@ describe('PDF page artifact filtering', () => {
   it('builds a prompt guard and removes emitted artifact blocks from HTML', () => {
     const profile = {
       phrases: [
-        'Pattern by @Knitting_with_calm',
-        '#NaturaTop',
+        'Pattern by @example_pattern_studio',
+        '#SampleTop',
         '2',
       ],
     };
 
     const instruction = buildPdfPageArtifactInstruction(profile);
     expect(instruction).toContain('PDF PAGE ARTIFACTS TO OMIT');
-    expect(instruction).toContain('Pattern by @Knitting_with_calm');
+    expect(instruction).toContain('Pattern by @example_pattern_studio');
 
     const cleaned = removePdfPageArtifacts(
       `<div>
         <p data-seg="1" data-o="Cast on with smaller needles.">Mit kleineren Nadeln anschlagen.</p>
-        <p data-seg="2" data-o="Pattern by @Knitting_with_calm">Anleitung von @Knitting_with_calm</p>
-        <p data-seg="3" data-o="#NaturaTop">#NaturaTop</p>
+        <p data-seg="2" data-o="Pattern by @example_pattern_studio">Anleitung von @example_pattern_studio</p>
+        <p data-seg="3" data-o="#SampleTop">#SampleTop</p>
         <p data-seg="4" data-o="2">2</p>
         <p>[IMG_1]</p>
         <p data-seg="5" data-o="Switch to larger needles.">Zu größeren Nadeln wechseln.</p>
@@ -77,8 +77,8 @@ describe('PDF page artifact filtering', () => {
     );
 
     expect(cleaned).toContain('Mit kleineren Nadeln anschlagen.');
-    expect(cleaned).not.toContain('Anleitung von @Knitting_with_calm');
-    expect(cleaned).not.toContain('#NaturaTop');
+    expect(cleaned).not.toContain('Anleitung von @example_pattern_studio');
+    expect(cleaned).not.toContain('#SampleTop');
     expect(cleaned).not.toContain('data-o="2"');
     expect(cleaned).toContain('<p>[IMG_1]</p>');
     expect(cleaned).toContain('Zu größeren Nadeln wechseln.');
