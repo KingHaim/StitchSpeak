@@ -639,9 +639,8 @@ export const LandingPage: React.FC = () => {
 
             <div className="inside-video-shell">
               <div className="inside-video-topbar">
-                <span>
+                <span aria-hidden="true">
                   <i />
-                  StitchSpeak
                 </span>
                 <small>{copy.inside.eyebrow}</small>
               </div>
