@@ -91,7 +91,7 @@ describe('beta invite flow', () => {
 });
 
 describe('admin member sorting', () => {
-  it('sorts members by balance and credits spent', async () => {
+  it('sorts members by balance, email, revenue, and joined date', async () => {
     const Database = (await import('better-sqlite3')).default;
     // adminStore ATTACHes patterns.db; ensure the tables the member query expects exist.
     const patternsDb = new Database(path.join(dataDir, 'patterns.db'));
@@ -108,6 +108,8 @@ describe('admin member sorting', () => {
     patternsDb.close();
 
     adminStore.adjustMemberCredits('sort-low', 10, 'seed', 'admin@example.com', 'low@example.com');
+    // Ensure a later joinedAt for the high-balance member.
+    await new Promise((resolve) => setTimeout(resolve, 5));
     adminStore.adjustMemberCredits('sort-high', 80, 'seed', 'admin@example.com', 'high@example.com');
 
     const byBalanceAsc = adminStore.listAdminMembers({ sort: 'balance', dir: 'asc' });
@@ -121,6 +123,20 @@ describe('admin member sorting', () => {
     expect(byBalanceDesc.findIndex((m) => m.sub === 'sort-high')).toBeLessThan(
       byBalanceDesc.findIndex((m) => m.sub === 'sort-low'),
     );
+
+    const byEmailAsc = adminStore.listAdminMembers({ sort: 'email', dir: 'asc' });
+    expect(byEmailAsc.findIndex((m) => m.sub === 'sort-high')).toBeLessThan(
+      byEmailAsc.findIndex((m) => m.sub === 'sort-low'),
+    );
+
+    const byJoinedAsc = adminStore.listAdminMembers({ sort: 'joinedAt', dir: 'asc' });
+    expect(byJoinedAsc.findIndex((m) => m.sub === 'sort-low')).toBeLessThan(
+      byJoinedAsc.findIndex((m) => m.sub === 'sort-high'),
+    );
+
+    const high = adminStore.listAdminMembers({ query: 'high@example.com' })[0];
+    expect(high?.joinedAt).toBeTruthy();
+    expect(high?.revenueCents).toBe(0);
   });
 });
 
