@@ -5,6 +5,7 @@ import { deleteAccount, downloadAccountExport } from '../../services/accountServ
 import { requestPasswordReset } from '../../services/api';
 import { loadHistory } from '../../services/historyService';
 import type { CreditPackage, TranslationRecord } from '../../types';
+import { BillingHistoryModal } from '../BillingHistoryModal';
 import { BuyCreditsModal } from '../BuyCreditsModal';
 import { CreditsOverviewModal } from '../CreditsOverviewModal';
 import { DeleteAccountModal } from '../DeleteAccountModal';
@@ -16,6 +17,7 @@ export const SettingsPage: React.FC = () => {
   const [avatarFailed, setAvatarFailed] = useState(false);
   const [showBuyCredits, setShowBuyCredits] = useState(false);
   const [showCreditsOverview, setShowCreditsOverview] = useState(false);
+  const [showBillingHistory, setShowBillingHistory] = useState(false);
   const [historyRecords, setHistoryRecords] = useState<TranslationRecord[]>([]);
 
   const [exportingData, setExportingData] = useState(false);
@@ -177,11 +179,11 @@ export const SettingsPage: React.FC = () => {
           Review your credit purchases and payment documents.
         </p>
         <div className="mt-5 border-y border-outline-variant/30">
-          <SettingsLinkRow
+          <SettingsRow
             icon="receipt_long"
             title="Invoices"
-            description="View orders, receipts, and downloadable invoices"
-            href="https://app.lemonsqueezy.com/my-orders"
+            description="View receipts without signing in again"
+            onClick={() => setShowBillingHistory(true)}
           />
         </div>
       </section>
@@ -288,6 +290,11 @@ export const SettingsPage: React.FC = () => {
         balance={balance}
         records={historyRecords}
       />
+      <BillingHistoryModal
+        isOpen={showBillingHistory}
+        idToken={idToken}
+        onClose={() => setShowBillingHistory(false)}
+      />
       <DeleteAccountModal
         isOpen={showDeleteAccount}
         isDeleting={deletingAccount}
@@ -355,43 +362,4 @@ const SettingsRow: React.FC<SettingsRowProps> = ({
       chevron_right
     </span>
   </button>
-);
-
-interface SettingsLinkRowProps {
-  icon: string;
-  title: string;
-  description: string;
-  href: string;
-}
-
-const SettingsLinkRow: React.FC<SettingsLinkRowProps> = ({
-  icon,
-  title,
-  description,
-  href,
-}) => (
-  <a
-    href={href}
-    target="_blank"
-    rel="noopener noreferrer"
-    aria-label={`${title} (opens in a new tab)`}
-    className="flex w-full items-center gap-3 py-4 text-left transition-colors hover:bg-surface-container-high/60"
-  >
-    <span
-      className="material-symbols-outlined shrink-0 text-[22px] text-primary"
-      aria-hidden
-    >
-      {icon}
-    </span>
-    <span className="min-w-0 flex-1">
-      <span className="block text-sm font-semibold text-on-surface">{title}</span>
-      <span className="block text-xs text-on-surface-variant">{description}</span>
-    </span>
-    <span
-      className="material-symbols-outlined shrink-0 text-lg text-on-surface-variant/60"
-      aria-hidden
-    >
-      open_in_new
-    </span>
-  </a>
 );

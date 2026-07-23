@@ -46,6 +46,27 @@ export interface CreditPackagesResponse {
   paymentsEnabled: boolean;
 }
 
+export interface BillingOrder {
+  orderId: string;
+  creditsGranted: number;
+  amountPaidCents: number;
+  refundedAmountCents: number;
+  createdAt: number;
+}
+
+export async function getBillingOrders(
+  idToken: string,
+): Promise<{ orders: BillingOrder[] }> {
+  const data = await apiFetch('/orders', idToken);
+  return {
+    orders: Array.isArray(data.orders) ? (data.orders as BillingOrder[]) : [],
+  };
+}
+
+export function getBillingReceiptUrl(orderId: string): string {
+  return apiUrl(`/credits/orders/${encodeURIComponent(orderId)}/receipt`);
+}
+
 export async function getPackages(idToken: string): Promise<CreditPackagesResponse> {
   const data = await apiFetch('/packages', idToken);
   return {

@@ -1,12 +1,23 @@
 import crypto from 'node:crypto';
 import type { CreditPack } from './pricing.js';
 
-const API_URL = 'https://api.lemonsqueezy.com/v1/checkouts';
+const API_BASE_URL = 'https://api.lemonsqueezy.com/v1';
+const CHECKOUTS_API_URL = `${API_BASE_URL}/checkouts`;
 
 interface LemonSqueezyCheckoutResponse {
   data?: {
     attributes?: {
       url?: unknown;
+    };
+  };
+}
+
+interface LemonSqueezyOrderResponse {
+  data?: {
+    attributes?: {
+      urls?: {
+        receipt?: unknown;
+      };
     };
   };
 }
@@ -43,7 +54,7 @@ export async function createLemonSqueezyCheckout(params: {
   const storeId = requiredEnv('LEMON_SQUEEZY_STORE_ID');
   const variantId = requiredEnv('LEMON_SQUEEZY_VARIANT_ID');
 
-  const response = await fetch(API_URL, {
+  const response = await fetch(CHECKOUTS_API_URL, {
     method: 'POST',
     signal: AbortSignal.timeout(10_000),
     headers: {
@@ -108,6 +119,33 @@ export async function createLemonSqueezyCheckout(params: {
     throw new Error('Lemon Squeezy did not return a checkout URL.');
   }
   return url;
+}
+
+export async function getLemonSqueezyOrderReceipt(orderId: string): Promise<string> {
+  const apiKey = requiredEnv('LEMON_SQUEEZY_API_KEY');
+  const response = await fetch(`${API_BASE_URL}/orders/${encodeURIComponent(orderId)}`, {
+    signal: AbortSignal.timeout(10_000),
+    headers: {
+      Accept: 'application/vnd.api+json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+
+  const data = (await response.json().catch(() => null)) as LemonSqueezyOrderResponse | null;
+  if (!response.ok) {
+    throw new Error(`Lemon Squeezy order lookup failed (${response.status}).`);
+  }
+
+  const receipt = data?.data?.attributes?.urls?.receipt;
+  if (typeof receipt !== 'string' || !receipt) {
+    throw new Error('Lemon Squeezy did not return a receipt URL.');
+  }
+
+  const parsed = new URL(receipt);
+  if (parsed.protocol !== 'https:' || parsed.hostname !== 'app.lemonsqueezy.com') {
+    throw new Error('Lemon Squeezy returned an invalid receipt URL.');
+  }
+  return parsed.toString();
 }
 
 export function verifyLemonSqueezySignature(rawBody: Buffer, signatureHeader: unknown): boolean {

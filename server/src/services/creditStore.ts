@@ -139,6 +139,17 @@ const stmts = {
     FROM payment_orders
     WHERE order_id = ?
   `),
+  listOrdersForSub: db.prepare<[string]>(`
+    SELECT order_id, credits_granted, amount_paid_cents, refunded_amount_cents, created_at
+    FROM payment_orders
+    WHERE sub = ?
+    ORDER BY created_at DESC, order_id DESC
+  `),
+  getOwnedOrder: db.prepare<[string, string]>(`
+    SELECT order_id
+    FROM payment_orders
+    WHERE order_id = ? AND sub = ?
+  `),
   updateRefund: db.prepare<[number, number, number, string]>(`
     UPDATE payment_orders
     SET refunded_amount_cents = ?, credits_revoked = ?, updated_at = ?
@@ -395,6 +406,35 @@ export function recordPurchaseAndGrantCredits(params: {
   email?: string;
 }): { applied: boolean; balance: number } {
   return purchaseTx(params);
+}
+
+export interface PaymentOrderSummary {
+  orderId: string;
+  creditsGranted: number;
+  amountPaidCents: number;
+  refundedAmountCents: number;
+  createdAt: number;
+}
+
+export function listPaymentOrders(sub: string): PaymentOrderSummary[] {
+  const rows = stmts.listOrdersForSub.all(sub) as Array<{
+    order_id: string;
+    credits_granted: number;
+    amount_paid_cents: number;
+    refunded_amount_cents: number;
+    created_at: number;
+  }>;
+  return rows.map((row) => ({
+    orderId: row.order_id,
+    creditsGranted: row.credits_granted,
+    amountPaidCents: row.amount_paid_cents,
+    refundedAmountCents: row.refunded_amount_cents,
+    createdAt: row.created_at,
+  }));
+}
+
+export function userOwnsPaymentOrder(sub: string, orderId: string): boolean {
+  return Boolean(stmts.getOwnedOrder.get(orderId, sub));
 }
 
 interface PaymentOrderRow {

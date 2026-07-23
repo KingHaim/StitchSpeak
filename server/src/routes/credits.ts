@@ -1,11 +1,16 @@
 import { Router, type Request, type Response } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rateLimit.js';
-import { getBalance } from '../services/creditStore.js';
+import {
+  getBalance,
+  listPaymentOrders,
+  userOwnsPaymentOrder,
+} from '../services/creditStore.js';
 import { CREDIT_PACKS, getCreditPack } from '../services/pricing.js';
 import { hasActiveBetaAccess } from '../services/betaApplicationStore.js';
 import {
   createLemonSqueezyCheckout,
+  getLemonSqueezyOrderReceipt,
   isLemonSqueezyConfigured,
 } from '../services/lemonSqueezy.js';
 
@@ -15,6 +20,7 @@ router.use(requireAuth);
 
 // Creating a checkout session is cheap but still worth throttling.
 const checkoutRateLimit = rateLimit({ windowMs: 60_000, max: 20, name: 'checkout' });
+const receiptRateLimit = rateLimit({ windowMs: 60_000, max: 30, name: 'billing-receipt' });
 
 router.get('/', (req, res: Response) => {
   const { userSub, userEmail } = req as AuthenticatedRequest;
@@ -25,6 +31,34 @@ router.get('/', (req, res: Response) => {
 router.get('/packages', (_req: Request, res: Response) => {
   res.json({ packages: CREDIT_PACKS, paymentsEnabled: isLemonSqueezyConfigured() });
 });
+
+router.get('/orders', (req: Request, res: Response) => {
+  const { userSub } = req as AuthenticatedRequest;
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ orders: listPaymentOrders(userSub) });
+});
+
+router.get(
+  '/orders/:orderId/receipt',
+  receiptRateLimit,
+  async (req: Request, res: Response) => {
+    const { userSub } = req as AuthenticatedRequest;
+    const orderId = typeof req.params.orderId === 'string' ? req.params.orderId : '';
+    if (!orderId || !userOwnsPaymentOrder(userSub, orderId)) {
+      res.status(404).json({ error: 'Invoice not found.' });
+      return;
+    }
+
+    try {
+      const receiptUrl = await getLemonSqueezyOrderReceipt(orderId);
+      res.setHeader('Cache-Control', 'no-store');
+      res.redirect(receiptUrl);
+    } catch (err) {
+      console.error('[credits/receipt] Lemon Squeezy error:', err);
+      res.status(502).json({ error: 'Could not open this invoice. Please try again.' });
+    }
+  },
+);
 
 /**
  * Start a Lemon Squeezy checkout for a credit pack. Credits are NOT granted
