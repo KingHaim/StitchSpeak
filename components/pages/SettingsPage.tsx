@@ -169,6 +169,23 @@ export const SettingsPage: React.FC = () => {
         </div>
       </section>
 
+      <section aria-labelledby="settings-billing-heading">
+        <h2 id="settings-billing-heading" className="font-headline text-2xl text-on-surface">
+          Billing
+        </h2>
+        <p className="mt-1 text-sm text-on-surface-variant">
+          Review your credit purchases and payment documents.
+        </p>
+        <div className="mt-5 border-y border-outline-variant/30">
+          <SettingsLinkRow
+            icon="receipt_long"
+            title="Invoices"
+            description="View orders, receipts, and downloadable invoices"
+            href="https://app.lemonsqueezy.com/my-orders"
+          />
+        </div>
+      </section>
+
       {isEmailAccount && user?.email && (
         <section aria-labelledby="settings-security-heading">
           <h2 id="settings-security-heading" className="font-headline text-2xl text-on-surface">
@@ -338,4 +355,43 @@ const SettingsRow: React.FC<SettingsRowProps> = ({
       chevron_right
     </span>
   </button>
+);
+
+interface SettingsLinkRowProps {
+  icon: string;
+  title: string;
+  description: string;
+  href: string;
+}
+
+const SettingsLinkRow: React.FC<SettingsLinkRowProps> = ({
+  icon,
+  title,
+  description,
+  href,
+}) => (
+  <a
+    href={href}
+    target="_blank"
+    rel="noopener noreferrer"
+    aria-label={`${title} (opens in a new tab)`}
+    className="flex w-full items-center gap-3 py-4 text-left transition-colors hover:bg-surface-container-high/60"
+  >
+    <span
+      className="material-symbols-outlined shrink-0 text-[22px] text-primary"
+      aria-hidden
+    >
+      {icon}
+    </span>
+    <span className="min-w-0 flex-1">
+      <span className="block text-sm font-semibold text-on-surface">{title}</span>
+      <span className="block text-xs text-on-surface-variant">{description}</span>
+    </span>
+    <span
+      className="material-symbols-outlined shrink-0 text-lg text-on-surface-variant/60"
+      aria-hidden
+    >
+      open_in_new
+    </span>
+  </a>
 );
