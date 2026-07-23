@@ -1335,6 +1335,7 @@ h1, h2, h3, h4, h5, h6 {
 .craft-main-card {
   display: grid;
   grid-template-columns: minmax(0, 0.95fr) minmax(18rem, 1.05fr);
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 2rem;
   min-height: 34rem;
   padding: clamp(2rem, 4vw, 3.5rem);
@@ -1353,8 +1354,11 @@ h1, h2, h3, h4, h5, h6 {
 
 .craft-card-copy {
   display: flex;
+  grid-column: 1;
+  grid-row: 1;
   align-self: end;
   flex-direction: column;
+  padding-bottom: 0.75rem;
 }
 
 .craft-card-icon {
@@ -1388,6 +1392,8 @@ h1, h2, h3, h4, h5, h6 {
 
 .craft-term-board {
   display: flex;
+  grid-column: 2;
+  grid-row: 1 / span 2;
   align-self: center;
   flex-direction: column;
   gap: 0.75rem;
@@ -1417,10 +1423,10 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .craft-tags {
-  position: absolute;
-  left: clamp(2rem, 4vw, 3.5rem);
-  bottom: clamp(2rem, 4vw, 3.5rem);
   display: flex;
+  grid-column: 1;
+  grid-row: 2;
+  align-self: end;
   flex-wrap: wrap;
   gap: 0.55rem;
 }
@@ -2012,17 +2018,28 @@ h1, h2, h3, h4, h5, h6 {
 
   .craft-main-card {
     grid-template-columns: 1fr;
-    min-height: 43rem;
+    grid-template-rows: auto auto auto;
+    min-height: 0;
+  }
+
+  .craft-card-copy {
+    grid-column: 1;
+    grid-row: 1;
+    padding-bottom: 0;
   }
 
   .craft-term-board {
+    grid-column: 1;
+    grid-row: 2;
     align-self: start;
+    margin-top: 1rem;
   }
 
   .craft-tags {
-    position: static;
     grid-column: 1;
+    grid-row: 3;
     align-self: end;
+    margin-top: 0.5rem;
   }
 
   .craft-library-card {
