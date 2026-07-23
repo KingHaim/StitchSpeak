@@ -116,7 +116,6 @@ const LANGUAGE_FLAGS: Record<string, string> = {
   RU: '🇷🇺',
   SV: '🇸🇪',
 };
-const MARKET_LANGUAGES = ['ES', 'KO', 'FR', 'DE', 'JA', 'IT', 'EN', 'PT', 'NL', 'SV', 'NO', 'DA', 'FI', 'RU'] as const;
 
 const StoryVisual: React.FC<{
   activeStage: number;
@@ -484,8 +483,9 @@ export const LandingPage: React.FC = () => {
       </header>
 
       <main>
-        <section className="market-hero">
+        <section className="market-hero market-hero--photo-background">
           <div className="market-hero-grid" aria-hidden="true" />
+          <span className="sr-only">{copy.hero.imageAlt}</span>
           <div className="market-hero-inner">
             <div className="market-hero-copy">
               <p className="market-eyebrow">StitchSpeak · 14 languages</p>
@@ -522,25 +522,6 @@ export const LandingPage: React.FC = () => {
                 </div>
               </dl>
             </div>
-
-            <figure className="market-hero-visual">
-              <div className="market-photo-frame">
-                <img src="/images/stitchspeak-hero-bg.png" alt={copy.hero.imageAlt} />
-                <div className="market-photo-wash" aria-hidden="true" />
-              </div>
-              <figcaption>{copy.hero.imageLabel}</figcaption>
-
-              <div className="market-constellation" aria-hidden="true">
-                {MARKET_LANGUAGES.map((language, index) => (
-                  <span
-                    key={language}
-                    className={`market-language-node market-language-node--${index + 1}`}
-                  >
-                    {LANGUAGE_FLAGS[language]}
-                  </span>
-                ))}
-              </div>
-            </figure>
           </div>
         </section>
 
