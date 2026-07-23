@@ -148,11 +148,30 @@ export async function sendMemberJoinedEmail(notice: NewMemberNotice): Promise<vo
 }
 
 /**
+ * True when this Google sub already has usage history. Used to avoid emailing
+ * admins for long-time users the first time they sign in after this feature ships.
+ */
+function hasPreexistingMemberFootprint(sub: string): boolean {
+  const credits = db.prepare('SELECT 1 AS ok FROM credits WHERE sub = ? LIMIT 1').get(sub);
+  if (credits) return true;
+  try {
+    return Boolean(db.prepare('SELECT 1 AS ok FROM credit_ledger WHERE sub = ? LIMIT 1').get(sub));
+  } catch {
+    // credit_ledger may not exist yet in brand-new environments.
+    return false;
+  }
+}
+
+/**
  * Notify admins the first time this member is seen. Never throws; safe to fire-and-forget from auth.
  */
 export async function notifyNewMember(notice: NewMemberNotice): Promise<boolean> {
   try {
     if (!claimFirstMemberJoin(notice)) return false;
+    if (notice.source === 'google' && hasPreexistingMemberFootprint(notice.sub)) {
+      markJoinEmailSent(notice.sub);
+      return false;
+    }
     await sendMemberJoinedEmail(notice);
     markJoinEmailSent(notice.sub);
     return true;

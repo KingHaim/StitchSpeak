@@ -56,4 +56,40 @@ describe('member join notifications', () => {
   it('exposes configuration helper when recipients and Resend are set', () => {
     expect(memberJoin.isMemberJoinEmailConfigured()).toBe(true);
   });
+
+  it('skips email for Google users who already have a credits footprint', async () => {
+    const Database = (await import('better-sqlite3')).default;
+    const creditsDb = new Database(path.join(dataDir, 'credits.db'));
+    creditsDb.exec(`
+      CREATE TABLE IF NOT EXISTS credits (
+        sub TEXT PRIMARY KEY,
+        balance REAL NOT NULL DEFAULT 0,
+        email TEXT,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+    creditsDb.prepare('INSERT INTO credits(sub,balance,email,updated_at) VALUES(?,?,?,?)')
+      .run('legacy-google', 5, 'legacy@example.com', Date.now());
+    creditsDb.close();
+
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: 'email_2' }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const notified = await memberJoin.notifyNewMember({
+      sub: 'legacy-google',
+      email: 'legacy@example.com',
+      source: 'google',
+    });
+
+    expect(notified).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    // Second call still no-ops via claim dedupe.
+    expect(await memberJoin.notifyNewMember({
+      sub: 'legacy-google',
+      email: 'legacy@example.com',
+      source: 'google',
+    })).toBe(false);
+
+    vi.unstubAllGlobals();
+  });
 });
