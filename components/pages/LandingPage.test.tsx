@@ -36,6 +36,21 @@ afterEach(async () => {
 });
 
 describe('LandingPage FAQ', () => {
+  it('shows all supported markets as animated flag bubbles without a PDF node', async () => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(<LandingPage />);
+    });
+
+    const constellation = container.querySelector('.market-constellation');
+    expect(constellation?.querySelectorAll('.market-language-node')).toHaveLength(14);
+    expect(constellation?.querySelector('.market-origin-node')).toBeNull();
+    expect(constellation?.textContent).not.toContain('PDF');
+  });
+
   it('answers the practical questions that affect purchase and publishing decisions', async () => {
     container = document.createElement('div');
     document.body.appendChild(container);

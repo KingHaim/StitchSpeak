@@ -102,13 +102,21 @@ const AutoLoopVideo: React.FC<{
 const STORY_ICONS = ['upload_file', 'auto_awesome', 'language', 'compare_arrows', 'download'] as const;
 const LANGUAGE_FLAGS: Record<string, string> = {
   DE: '🇩🇪',
+  EN: '🇬🇧',
   ES: '🇪🇸',
+  FI: '🇫🇮',
   FR: '🇫🇷',
   IT: '🇮🇹',
   JA: '🇯🇵',
   KO: '🇰🇷',
+  DA: '🇩🇰',
+  NL: '🇳🇱',
+  NO: '🇳🇴',
+  PT: '🇵🇹',
+  RU: '🇷🇺',
+  SV: '🇸🇪',
 };
-const MARKET_LANGUAGES = ['ES', 'FR', 'DE', 'JA', 'IT', 'KO'] as const;
+const MARKET_LANGUAGES = ['ES', 'KO', 'FR', 'DE', 'JA', 'IT', 'EN', 'PT', 'NL', 'SV', 'NO', 'DA', 'FI', 'RU'] as const;
 
 const StoryVisual: React.FC<{
   activeStage: number;
@@ -523,10 +531,6 @@ export const LandingPage: React.FC = () => {
               <figcaption>{copy.hero.imageLabel}</figcaption>
 
               <div className="market-constellation" aria-hidden="true">
-                <span className="market-origin-node">
-                  <Icon name="description" />
-                  PDF
-                </span>
                 {MARKET_LANGUAGES.map((language, index) => (
                   <span
                     key={language}
@@ -535,10 +539,6 @@ export const LandingPage: React.FC = () => {
                     {LANGUAGE_FLAGS[language]}
                   </span>
                 ))}
-                <i className="market-route market-route--one" />
-                <i className="market-route market-route--two" />
-                <i className="market-route market-route--three" />
-                <i className="market-route market-route--four" />
               </div>
             </figure>
           </div>
