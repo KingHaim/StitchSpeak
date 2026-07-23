@@ -18,6 +18,7 @@ import {
 } from '../services/authEmail.js';
 import { SESSION_COOKIE, requestSessionToken, requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { createSession, revokeSession, type SessionIdentity } from '../services/sessionStore.js';
+import { notifyNewMember } from '../services/memberJoinedEmail.js';
 
 const router = Router();
 const oauthClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID || '');
@@ -72,6 +73,12 @@ router.post('/google', loginRateLimit, async (req, res) => {
       emailVerified: payload.email_verified === true,
     };
     setSessionCookie(res, identity);
+    void notifyNewMember({
+      sub: identity.sub,
+      email: identity.email,
+      name: identity.name,
+      source: 'google',
+    });
     res.json({ user: publicUser(identity) });
   } catch {
     res.status(401).json({ error: 'Invalid Google credential.' });
@@ -133,6 +140,12 @@ router.post('/verify-email', recoveryRateLimit, (req, res) => {
   const user = token ? verifyEmailToken(token) : null;
   if (!user) return void res.status(400).json({ error: 'This verification link is invalid or expired.' });
   setSessionCookie(res, { ...user, identityProvider: 'email', emailVerified: true });
+  void notifyNewMember({
+    sub: user.sub,
+    email: user.email,
+    name: user.name,
+    source: 'email_verify',
+  });
   res.json({ user });
 });
 

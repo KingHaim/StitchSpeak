@@ -20,6 +20,18 @@ db.exec(`
     created_at INTEGER NOT NULL
   )
 `);
+// Populated by memberJoinedEmail; created here so member list queries work even
+// before the first join notification runs.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS member_join_events (
+    sub TEXT PRIMARY KEY,
+    email TEXT,
+    name TEXT,
+    source TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    email_sent INTEGER NOT NULL DEFAULT 0
+  )
+`);
 
 export interface AdminMember {
   sub: string;
@@ -32,6 +44,8 @@ export interface AdminMember {
   orders: number;
   revenueCents: number;
   lastActivity: number | null;
+  /** Earliest known activity / join timestamp for this member. */
+  joinedAt: number | null;
 }
 
 const memberSelect = `
@@ -40,25 +54,39 @@ const memberSelect = `
     UNION SELECT sub FROM patternsdb.patterns
   ), pattern_stats AS (
     SELECT sub, COUNT(*) uploads, COALESCE(SUM(cost), 0) credits_spent,
-           COALESCE(SUM(source_size), 0) storage_bytes, MAX(timestamp) last_upload
+           COALESCE(SUM(source_size), 0) storage_bytes, MAX(timestamp) last_upload,
+           MIN(timestamp) first_upload
     FROM patternsdb.patterns GROUP BY sub
   ), chat_stats AS (
-    SELECT sub, COUNT(*) chat_messages, MAX(created_at) last_chat
+    SELECT sub, COUNT(*) chat_messages, MAX(created_at) last_chat, MIN(created_at) first_chat
     FROM patternsdb.chat_messages GROUP BY sub
   ), order_stats AS (
     SELECT sub, COUNT(*) orders, COALESCE(SUM(amount_paid_cents - refunded_amount_cents), 0) revenue_cents,
-           MAX(updated_at) last_order FROM payment_orders GROUP BY sub
+           MAX(updated_at) last_order, MIN(created_at) first_order FROM payment_orders GROUP BY sub
+  ), ledger_stats AS (
+    SELECT sub, MIN(created_at) first_ledger FROM credit_ledger GROUP BY sub
+  ), join_stats AS (
+    SELECT sub, created_at first_join FROM member_join_events
   )
   SELECT u.sub, c.email, COALESCE(c.balance, 0) balance,
          COALESCE(p.uploads, 0) uploads, COALESCE(p.credits_spent, 0) credits_spent,
          COALESCE(p.storage_bytes, 0) storage_bytes, COALESCE(ch.chat_messages, 0) chat_messages,
          COALESCE(o.orders, 0) orders, COALESCE(o.revenue_cents, 0) revenue_cents,
-         MAX(COALESCE(c.updated_at, 0), COALESCE(p.last_upload, 0), COALESCE(ch.last_chat, 0), COALESCE(o.last_order, 0)) last_activity
+         MAX(COALESCE(c.updated_at, 0), COALESCE(p.last_upload, 0), COALESCE(ch.last_chat, 0), COALESCE(o.last_order, 0)) last_activity,
+         NULLIF(MIN(
+           COALESCE(j.first_join, 9223372036854775807),
+           COALESCE(l.first_ledger, 9223372036854775807),
+           COALESCE(p.first_upload, 9223372036854775807),
+           COALESCE(ch.first_chat, 9223372036854775807),
+           COALESCE(o.first_order, 9223372036854775807)
+         ), 9223372036854775807) joined_at
   FROM users u
   LEFT JOIN credits c ON c.sub = u.sub
   LEFT JOIN pattern_stats p ON p.sub = u.sub
   LEFT JOIN chat_stats ch ON ch.sub = u.sub
   LEFT JOIN order_stats o ON o.sub = u.sub
+  LEFT JOIN ledger_stats l ON l.sub = u.sub
+  LEFT JOIN join_stats j ON j.sub = u.sub
 `;
 
 function mapMember(row: Record<string, unknown>): AdminMember {
@@ -68,6 +96,7 @@ function mapMember(row: Record<string, unknown>): AdminMember {
     storageBytes: Number(row.storage_bytes), chatMessages: Number(row.chat_messages),
     orders: Number(row.orders), revenueCents: Number(row.revenue_cents),
     lastActivity: Number(row.last_activity) || null,
+    joinedAt: Number(row.joined_at) || null,
   };
 }
 
@@ -78,7 +107,44 @@ export function adminOverview(): { members: number; uploads: number; credits: nu
   return { members: members.count, uploads: totals.uploads, credits: totals.credits, revenueCents: revenue.revenueCents, storageBytes: totals.storageBytes };
 }
 
-export type AdminMemberSort = 'balance' | 'creditsSpent' | 'lastActivity';
+export type AdminMemberSort =
+  | 'balance'
+  | 'creditsSpent'
+  | 'lastActivity'
+  | 'joinedAt'
+  | 'revenue'
+  | 'uploads'
+  | 'email';
+
+export const ADMIN_MEMBER_SORTS: AdminMemberSort[] = [
+  'balance',
+  'creditsSpent',
+  'lastActivity',
+  'joinedAt',
+  'revenue',
+  'uploads',
+  'email',
+];
+
+function sortColumnFor(sort: AdminMemberSort | undefined): string {
+  switch (sort) {
+    case 'balance':
+      return 'balance';
+    case 'creditsSpent':
+      return 'credits_spent';
+    case 'joinedAt':
+      return 'joined_at';
+    case 'revenue':
+      return 'revenue_cents';
+    case 'uploads':
+      return 'uploads';
+    case 'email':
+      return 'LOWER(COALESCE(c.email, u.sub))';
+    case 'lastActivity':
+    default:
+      return 'last_activity';
+  }
+}
 
 export function listAdminMembers(options: {
   query?: string;
@@ -90,10 +156,7 @@ export function listAdminMembers(options: {
   const opts = typeof options === 'string' ? { query: options } : options;
   const query = opts.query ?? '';
   const q = `%${query.trim().toLowerCase()}%`;
-  const sortColumn =
-    opts.sort === 'balance' ? 'balance'
-      : opts.sort === 'creditsSpent' ? 'credits_spent'
-        : 'last_activity';
+  const sortColumn = sortColumnFor(opts.sort);
   const dir = opts.dir === 'asc' ? 'ASC' : 'DESC';
   const betaEmails = (opts.betaEmails ?? []).map((email) => email.trim().toLowerCase()).filter(Boolean);
   const betaOnly = Boolean(opts.betaOnly && betaEmails.length > 0);
@@ -105,7 +168,8 @@ export function listAdminMembers(options: {
     sql += ` AND LOWER(COALESCE(c.email, '')) IN (${placeholders})`;
     params.push(...betaEmails);
   }
-  sql += ` ORDER BY ${sortColumn} ${dir} LIMIT 250`;
+  // Null join/activity timestamps sort last in both directions.
+  sql += ` ORDER BY CASE WHEN ${sortColumn} IS NULL THEN 1 ELSE 0 END, ${sortColumn} ${dir}, LOWER(COALESCE(c.email, u.sub)) ASC LIMIT 250`;
 
   const rows = db.prepare(sql).all(...params) as Record<string, unknown>[];
   return rows.map(mapMember);

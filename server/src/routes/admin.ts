@@ -6,6 +6,7 @@ import {
   adjustMemberCredits,
   findAdminMemberByEmail,
   getAdminMember,
+  ADMIN_MEMBER_SORTS,
   listAdminMembers,
   type AdminMemberSort,
 } from '../services/adminStore.js';
@@ -131,7 +132,7 @@ router.post('/invites', async (req, res) => {
 router.get('/members', (req, res) => {
   const q = typeof req.query.q === 'string' ? req.query.q : '';
   const sortRaw = typeof req.query.sort === 'string' ? req.query.sort : 'lastActivity';
-  const sort: AdminMemberSort = ['balance', 'creditsSpent', 'lastActivity'].includes(sortRaw)
+  const sort: AdminMemberSort = (ADMIN_MEMBER_SORTS as string[]).includes(sortRaw)
     ? sortRaw as AdminMemberSort
     : 'lastActivity';
   const dir = req.query.dir === 'asc' ? 'asc' : 'desc';

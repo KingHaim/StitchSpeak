@@ -13,6 +13,7 @@ import {
   markBetaInvite,
   wasBetaStarterGranted,
 } from './betaApplicationStore.js';
+import { notifyNewMember } from './memberJoinedEmail.js';
 
 export const BETA_STARTER_CREDITS = 50;
 const STARTER_REASON = 'Beta starter credits';
@@ -76,6 +77,13 @@ export async function inviteBetaUser(params: {
       console.error('[beta-invite] Invite email failed:', error);
     }
     developmentInviteUrl = developmentUrl(inviteUrl(token));
+    // First-time invite path: alert admins that a new member seat exists.
+    void notifyNewMember({
+      sub: account.sub,
+      email: account.email,
+      name: account.name ?? name,
+      source: 'invite',
+    });
   }
 
   return {

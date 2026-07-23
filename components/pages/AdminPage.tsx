@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ADMIN_MEMBER_SORT_OPTIONS,
   adjustAdminCredits,
   deleteAdminUpload,
   getAdminMe,
@@ -18,9 +19,19 @@ import { BetaApplicationsSection } from '../admin/BetaApplicationsSection';
 import { SelectDropdown } from '../SelectDropdown';
 
 const money = (n: number) => new Intl.NumberFormat('en', { style: 'currency', currency: 'EUR' }).format(n / 100);
-const date = (n: number | null) => (n ? new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(n) : 'No activity');
+const date = (n: number | null) => (n ? new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(n) : '—');
 const bytes = (n: number) => (n < 1048576 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`);
 const Icon = ({ name }: { name: string }) => <span className="material-symbols-outlined text-[20px]" aria-hidden>{name}</span>;
+
+const DEFAULT_SORT_DIR: Record<AdminMemberSort, 'asc' | 'desc'> = {
+  lastActivity: 'desc',
+  joinedAt: 'desc',
+  balance: 'desc',
+  creditsSpent: 'desc',
+  revenue: 'desc',
+  uploads: 'desc',
+  email: 'asc',
+};
 
 export const AdminPage: React.FC = () => {
   const [overview, setOverview] = useState<AdminOverview | null>(null);
@@ -31,6 +42,7 @@ export const AdminPage: React.FC = () => {
   const [activityDays, setActivityDays] = useState(7);
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [sort, setSort] = useState<AdminMemberSort>('lastActivity');
   const [dir, setDir] = useState<'asc' | 'desc'>('desc');
   const [betaOnly, setBetaOnly] = useState(false);
@@ -59,13 +71,18 @@ export const AdminPage: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const [o, m] = await Promise.all([
         getAdminOverview(),
-        getAdminMembers({ q: query, sort, dir, beta: betaOnly }),
+        getAdminMembers({ q: debouncedQuery, sort, dir, beta: betaOnly }),
       ]);
       setOverview(o);
       setMembers(m.members);
@@ -75,7 +92,7 @@ export const AdminPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [query, selected, sort, dir, betaOnly]);
+  }, [debouncedQuery, selected, sort, dir, betaOnly]);
 
   useEffect(() => {
     if (authorized === true) void refresh();
@@ -112,11 +129,11 @@ export const AdminPage: React.FC = () => {
     };
   }, [selected, activityDays]);
 
-  const toggleSort = (column: AdminMemberSort) => {
+  const applySort = (column: AdminMemberSort) => {
     if (sort === column) setDir((current) => (current === 'asc' ? 'desc' : 'asc'));
     else {
       setSort(column);
-      setDir(column === 'lastActivity' ? 'desc' : 'asc');
+      setDir(DEFAULT_SORT_DIR[column]);
     }
   };
 
@@ -179,6 +196,19 @@ export const AdminPage: React.FC = () => {
 
   const sortLabel = (column: AdminMemberSort, label: string) =>
     `${label}${sort === column ? (dir === 'asc' ? ' ↑' : ' ↓') : ''}`;
+
+  const dirHint =
+    sort === 'joinedAt'
+      ? dir === 'desc'
+        ? 'Newest first'
+        : 'Oldest first'
+      : sort === 'email'
+        ? dir === 'asc'
+          ? 'A → Z'
+          : 'Z → A'
+        : dir === 'desc'
+          ? 'High → low'
+          : 'Low → high';
 
   if (authorized === null) {
     return <div className="flex min-h-[100dvh] items-center justify-center bg-[#f3f5f4] text-sm text-[#617067]">Checking access…</div>;
@@ -255,44 +285,84 @@ export const AdminPage: React.FC = () => {
 
         <div className="mt-8 grid gap-6 xl:grid-cols-[1.35fr_.65fr]">
           <section className="overflow-hidden rounded-2xl border border-[#1d2b23]/10 bg-white">
-            <div className="flex flex-col gap-4 border-b p-5 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="font-headline text-2xl font-semibold">Members</h2>
-                <p className="text-sm text-[#617067]">Select a row to inspect activity. Sort by balance or credits used.</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-col gap-4 border-b p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="font-headline text-2xl font-semibold">Members</h2>
+                  <p className="text-sm text-[#617067]">Search, filter, and sort the roster. Select a row for the full ledger.</p>
+                </div>
                 <label className="flex items-center gap-2 text-sm font-semibold text-[#425047]">
                   <input type="checkbox" checked={betaOnly} onChange={(e) => setBetaOnly(e.target.checked)} className="accent-[#315e40]" />
                   Beta only
                 </label>
+              </div>
+              <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-end">
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search email or member ID"
-                  className="rounded-lg border border-[#7b887f] px-4 py-2.5 text-sm sm:w-72"
+                  aria-label="Search members"
+                  className="rounded-lg border border-[#7b887f] px-4 py-2.5 text-sm lg:min-w-72 lg:flex-1"
                 />
+                <SelectDropdown
+                  className="lg:w-56"
+                  label="Sort by"
+                  aria-label="Sort members by"
+                  value={sort}
+                  onChange={(value) => {
+                    const next = value as AdminMemberSort;
+                    setSort(next);
+                    setDir(DEFAULT_SORT_DIR[next]);
+                  }}
+                  options={ADMIN_MEMBER_SORT_OPTIONS}
+                />
+                <button
+                  type="button"
+                  onClick={() => setDir((current) => (current === 'asc' ? 'desc' : 'asc'))}
+                  className="rounded-lg border border-[#7b887f] bg-white px-4 py-2.5 text-sm font-semibold text-[#314d3a]"
+                  aria-label={`Toggle sort direction, currently ${dirHint}`}
+                >
+                  {dir === 'asc' ? 'Ascending' : 'Descending'} · {dirHint}
+                </button>
               </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-left text-sm">
+              <table className="w-full min-w-[920px] text-left text-sm">
                 <thead className="bg-[#eef1ef] text-[11px] uppercase tracking-wider text-[#617067]">
                   <tr>
-                    <th className="px-5 py-3">Member</th>
+                    <th className="px-5 py-3">
+                      <button type="button" onClick={() => applySort('email')} className="font-bold uppercase tracking-wider">
+                        {sortLabel('email', 'Member')}
+                      </button>
+                    </th>
                     <th>
-                      <button type="button" onClick={() => toggleSort('balance')} className="font-bold uppercase tracking-wider">
+                      <button type="button" onClick={() => applySort('balance')} className="font-bold uppercase tracking-wider">
                         {sortLabel('balance', 'Balance')}
                       </button>
                     </th>
-                    <th>Uploads</th>
                     <th>
-                      <button type="button" onClick={() => toggleSort('creditsSpent')} className="font-bold uppercase tracking-wider">
+                      <button type="button" onClick={() => applySort('uploads')} className="font-bold uppercase tracking-wider">
+                        {sortLabel('uploads', 'Uploads')}
+                      </button>
+                    </th>
+                    <th>
+                      <button type="button" onClick={() => applySort('creditsSpent')} className="font-bold uppercase tracking-wider">
                         {sortLabel('creditsSpent', 'Used')}
                       </button>
                     </th>
-                    <th>Revenue</th>
                     <th>
-                      <button type="button" onClick={() => toggleSort('lastActivity')} className="font-bold uppercase tracking-wider">
-                        {sortLabel('lastActivity', 'Last activity')}
+                      <button type="button" onClick={() => applySort('revenue')} className="font-bold uppercase tracking-wider">
+                        {sortLabel('revenue', 'Revenue')}
+                      </button>
+                    </th>
+                    <th>
+                      <button type="button" onClick={() => applySort('joinedAt')} className="font-bold uppercase tracking-wider">
+                        {sortLabel('joinedAt', 'Joined')}
+                      </button>
+                    </th>
+                    <th>
+                      <button type="button" onClick={() => applySort('lastActivity')} className="font-bold uppercase tracking-wider">
+                        {sortLabel('lastActivity', 'Last online')}
                       </button>
                     </th>
                   </tr>
@@ -312,6 +382,7 @@ export const AdminPage: React.FC = () => {
                       <td>{m.uploads}</td>
                       <td>{m.creditsSpent.toFixed(1)}</td>
                       <td>{money(m.revenueCents)}</td>
+                      <td className="text-xs text-[#617067]">{date(m.joinedAt)}</td>
                       <td className="pr-5 text-xs text-[#617067]">{date(m.lastActivity)}</td>
                     </tr>
                   ))}

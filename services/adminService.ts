@@ -1,5 +1,5 @@
 import { apiCall } from './api';
-export interface AdminMember { sub:string; email:string|null; balance:number; uploads:number; creditsSpent:number; storageBytes:number; chatMessages:number; orders:number; revenueCents:number; lastActivity:number|null }
+export interface AdminMember { sub:string; email:string|null; balance:number; uploads:number; creditsSpent:number; storageBytes:number; chatMessages:number; orders:number; revenueCents:number; lastActivity:number|null; joinedAt:number|null }
 export interface AdminOverview { members:number; uploads:number; credits:number; revenueCents:number; storageBytes:number }
 export interface AdminUpload { id:string; timestamp:number; fileName:string; sourceLanguage:string|null; targetLanguage:string; cost:number; sourceSize:number|null }
 export interface AdminAdjustment { id:number; delta:number; reason:string; actorEmail:string; createdAt:number }
@@ -15,7 +15,16 @@ export interface AdminMemberActivity {
   recordings?:{ id:string; url:string; startTime:string; durationSeconds:number; activeSeconds:number }[];
 }
 export type BetaApplicationStatus='new'|'approved'|'rejected';
-export type AdminMemberSort='balance'|'creditsSpent'|'lastActivity';
+export type AdminMemberSort='balance'|'creditsSpent'|'lastActivity'|'joinedAt'|'revenue'|'uploads'|'email';
+export const ADMIN_MEMBER_SORT_OPTIONS: { id: AdminMemberSort; label: string }[] = [
+  { id: 'lastActivity', label: 'Last online' },
+  { id: 'joinedAt', label: 'Joined date' },
+  { id: 'balance', label: 'Credits balance' },
+  { id: 'creditsSpent', label: 'Credits used' },
+  { id: 'revenue', label: 'Revenue' },
+  { id: 'uploads', label: 'Uploads' },
+  { id: 'email', label: 'Email A–Z' },
+];
 export interface AdminBetaApplication {
   id:string;
   name:string;
