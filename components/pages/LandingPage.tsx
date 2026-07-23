@@ -22,7 +22,6 @@ const scrollToId = (id: string) => {
 };
 
 const TRUST_ICONS = ['translate', 'verified', 'all_inclusive'] as const;
-const JOURNEY_ICONS = ['upload_file', 'payments', 'check_circle'] as const;
 const FAQ_ICONS = ['payments', 'draft', 'language', 'translate', 'dashboard', 'restart_alt', 'folder_special', 'lock'] as const;
 
 const Icon: React.FC<{ name: string; className?: string }> = ({ name, className }) => (
@@ -100,30 +99,179 @@ const AutoLoopVideo: React.FC<{
   );
 };
 
-const JourneySection: React.FC<{ copy: WebsiteCopy['journey'] }> = ({ copy }) => (
-  <section className="border-b border-outline-variant/10 px-6 py-14 sm:px-8 sm:py-18">
-    <div className="mx-auto max-w-7xl">
-      <div className="mb-10 max-w-2xl sm:mb-12">
-        <h2 className="font-headline text-3xl font-bold sm:text-4xl">{copy.title}</h2>
-        <p className="mt-3 text-on-surface-variant">{copy.body}</p>
-      </div>
-      <div className="grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-10">
-        {copy.steps.map(({ title, description }, index) => (
-          <div key={title} className="relative border-t border-outline-variant/25 pt-6">
-            <div className="mb-5 flex items-center justify-between">
-              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <Icon name={JOURNEY_ICONS[index] ?? 'check_circle'} className="text-2xl" />
-              </span>
-              <span className="font-headline text-3xl font-bold text-outline-variant/55">0{index + 1}</span>
-            </div>
-            <h3 className="font-headline text-xl font-bold">{title}</h3>
-            <p className="mt-2 max-w-sm text-sm leading-relaxed text-on-surface-variant">{description}</p>
-          </div>
+const STORY_ICONS = ['upload_file', 'auto_awesome', 'language', 'compare_arrows', 'download'] as const;
+
+const StoryVisual: React.FC<{
+  activeStage: number;
+  copy: WebsiteCopy['story'];
+}> = ({ activeStage, copy }) => {
+  const stage = copy.stages[activeStage] ?? copy.stages[0];
+
+  return (
+    <div className={`story-visual story-visual--stage-${activeStage + 1}`}>
+      <div className="story-orbit" aria-hidden="true">
+        <span className="story-orbit-ring story-orbit-ring--one" />
+        <span className="story-orbit-ring story-orbit-ring--two" />
+        {copy.visual.languages.map((language, index) => (
+          <span
+            key={language}
+            className={`story-language-node story-language-node--${index + 1}`}
+          >
+            {language}
+          </span>
         ))}
       </div>
+
+      <div className="story-product-card">
+        <div className="story-product-topbar">
+          <span className="story-product-mark">
+            <img src="/logo-optimized.png" alt="" />
+          </span>
+          <span>StitchSpeak</span>
+          <span className="story-product-stage">0{activeStage + 1} / 05</span>
+        </div>
+
+        <div className="story-file-row">
+          <span className="story-file-icon">
+            <Icon name="description" />
+          </span>
+          <span className="story-file-copy">
+            <strong>{copy.visual.filename}</strong>
+            <small>PDF · 12 pages</small>
+          </span>
+          <span className="story-file-check">
+            <Icon name="check" />
+          </span>
+        </div>
+
+        <div className="story-language-route">
+          <span>{copy.visual.source}</span>
+          <span className="story-route-line">
+            <i />
+            <Icon name="arrow_forward" />
+          </span>
+          <span>{copy.visual.target}</span>
+        </div>
+
+        <div className="story-translation-pair">
+          <div>
+            <span>{copy.visual.originalLabel}</span>
+            <p>{copy.visual.originalLine}</p>
+          </div>
+          <div>
+            <span>{copy.visual.translationLabel}</span>
+            <p>{copy.visual.translationLine}</p>
+          </div>
+        </div>
+
+        <div className="story-terms">
+          {['k2tog', 'M1R', 'ssk', 'yo'].map((term) => (
+            <span key={term}>{term}</span>
+          ))}
+        </div>
+
+        <div className="story-formats">
+          <small>{copy.visual.formatsLabel}</small>
+          <div>
+            {copy.visual.formats.map((format) => (
+              <span key={format}>{format}</span>
+            ))}
+          </div>
+        </div>
+
+        <div className="story-status" aria-live="polite">
+          <span>
+            <Icon name={STORY_ICONS[activeStage] ?? 'check_circle'} />
+          </span>
+          <strong>{stage?.status}</strong>
+        </div>
+      </div>
+
+      <div className="story-market-label" aria-hidden="true">
+        <span>{copy.visual.languagesLabel}</span>
+        <strong>14</strong>
+      </div>
     </div>
-  </section>
-);
+  );
+};
+
+const ScrollyStory: React.FC<{ copy: WebsiteCopy['story'] }> = ({ copy }) => {
+  const [activeStage, setActiveStage] = useState(0);
+  const sectionRef = React.useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (!section || typeof IntersectionObserver === 'undefined') return;
+
+    const steps = Array.from(section.querySelectorAll<HTMLElement>('[data-story-stage]'));
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (!visible) return;
+        const nextStage = Number((visible.target as HTMLElement).dataset.storyStage ?? 0);
+        setActiveStage(nextStage);
+      },
+      { rootMargin: '-22% 0px -44% 0px', threshold: [0.2, 0.45, 0.7] },
+    );
+
+    steps.forEach((step) => observer.observe(step));
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <section id="journey" ref={sectionRef} className="story-section scroll-mt-24">
+      <div className="story-heading">
+        <p>{copy.eyebrow}</p>
+        <h2>{copy.title}</h2>
+        <span>{copy.body}</span>
+      </div>
+
+      <div className="story-layout">
+        <div className="story-sticky">
+          <StoryVisual activeStage={activeStage} copy={copy} />
+          <div className="story-progress" aria-label={copy.activeLabel}>
+            {copy.stages.map((stage, index) => (
+              <button
+                key={stage.title}
+                type="button"
+                className={index === activeStage ? 'is-active' : ''}
+                onClick={() =>
+                  sectionRef.current
+                    ?.querySelector<HTMLElement>(`[data-story-stage="${index}"]`)
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                }
+                aria-label={`${index + 1}. ${stage.title}`}
+                aria-current={index === activeStage ? 'step' : undefined}
+              >
+                <span />
+                0{index + 1}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="story-chapters">
+          {copy.stages.map((stage, index) => (
+            <article
+              key={stage.title}
+              className={index === activeStage ? 'story-chapter is-active' : 'story-chapter'}
+              data-story-stage={index}
+            >
+              <span className="story-chapter-number">0{index + 1}</span>
+              <div>
+                <p>{stage.kicker}</p>
+                <h3>{stage.title}</h3>
+                <span>{stage.body}</span>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+};
 
 interface LandingGoogleSignInProps {
   layout: 'header' | 'hero' | 'modal';
@@ -289,10 +437,21 @@ export const LandingPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background text-on-surface font-body selection:bg-primary-fixed selection:text-on-primary-fixed">
-      <header className="sticky top-0 z-50 border-b border-outline-variant/15 bg-background/90 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:gap-4 sm:px-8 sm:py-4">
+      <header className="landing-nav">
+        <div className="mx-auto flex max-w-[90rem] items-center justify-between gap-3 px-4 py-3 sm:gap-5 sm:px-8">
           <BrandLockup />
-          <div className="flex shrink-0 items-center gap-2">
+          <nav className="landing-nav-links" aria-label="Landing page">
+            <button type="button" onClick={() => scrollToId('journey')}>
+              {copy.nav.journey}
+            </button>
+            <button type="button" onClick={() => scrollToId('pricing')}>
+              {copy.nav.pricing}
+            </button>
+            <button type="button" onClick={() => scrollToId('faq')}>
+              {copy.nav.faq}
+            </button>
+          </nav>
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <WebsiteLanguageSelector
               value={websiteLocale}
               onChange={setWebsiteLocale}
@@ -308,32 +467,80 @@ export const LandingPage: React.FC = () => {
       </header>
 
       <main>
-        <section className="hero">
-          <div className="heroOverlay" />
-          <div className="heroContent">
-            <h1>
-              {copy.hero.lead} <span>{copy.hero.accent}</span>
-              <br />
-              {copy.hero.finish}
-            </h1>
-            <p>{copy.hero.body}</p>
-            <div className="heroActions">
-              <button type="button" className="primary" onClick={() => navigateLanding('translate')}>
-                {copy.hero.primaryAction}
-              </button>
-              <button type="button" className="secondary" onClick={() => scrollToId('pricing')}>
-                {copy.hero.secondaryAction}
-              </button>
+        <section className="market-hero">
+          <div className="market-hero-grid" aria-hidden="true" />
+          <div className="market-hero-inner">
+            <div className="market-hero-copy">
+              <p className="market-eyebrow">StitchSpeak · 14 languages</p>
+              <h1>
+                {copy.hero.lead} <em>{copy.hero.accent}</em>
+                <br />
+                {copy.hero.finish}
+              </h1>
+              <p className="market-hero-body">{copy.hero.body}</p>
+              <div className="market-hero-actions">
+                <button type="button" className="market-primary-action" onClick={() => navigateLanding('translate')}>
+                  {copy.hero.primaryAction}
+                  <Icon name="arrow_outward" />
+                </button>
+                <button type="button" className="market-secondary-action" onClick={() => scrollToId('journey')}>
+                  <span>
+                    <Icon name="arrow_downward" />
+                  </span>
+                  {copy.hero.secondaryAction}
+                </button>
+              </div>
+              <dl className="market-hero-stats">
+                <div>
+                  <dt>14</dt>
+                  <dd>{copy.faq.stats[0]?.label}</dd>
+                </div>
+                <div>
+                  <dt>1×</dt>
+                  <dd>{copy.journey.steps[0]?.title}</dd>
+                </div>
+                <div>
+                  <dt>4</dt>
+                  <dd>{copy.faq.stats[3]?.label}</dd>
+                </div>
+              </dl>
             </div>
+
+            <figure className="market-hero-visual">
+              <div className="market-photo-frame">
+                <img src="/images/stitchspeak-hero-bg.png" alt={copy.hero.imageAlt} />
+                <div className="market-photo-wash" aria-hidden="true" />
+              </div>
+              <figcaption>{copy.hero.imageLabel}</figcaption>
+
+              <div className="market-constellation" aria-hidden="true">
+                <span className="market-origin-node">
+                  <Icon name="description" />
+                  PDF
+                </span>
+                {['ES', 'FR', 'DE', 'JA', 'IT', 'KO'].map((language, index) => (
+                  <span
+                    key={language}
+                    className={`market-language-node market-language-node--${index + 1}`}
+                  >
+                    {language}
+                  </span>
+                ))}
+                <i className="market-route market-route--one" />
+                <i className="market-route market-route--two" />
+                <i className="market-route market-route--three" />
+                <i className="market-route market-route--four" />
+              </div>
+            </figure>
           </div>
         </section>
 
-        <section className="border-y border-outline-variant/10 bg-surface-container-low/80">
-          <div className="mx-auto grid max-w-7xl grid-cols-1 px-6 sm:px-8 md:grid-cols-3">
+        <section className="landing-proof-strip">
+          <div className="mx-auto grid max-w-[90rem] grid-cols-1 px-6 sm:px-8 md:grid-cols-3">
             {copy.trustPoints.map(({ title, text }, index) => (
               <div
                 key={title}
-                className={`flex items-center gap-4 py-5 md:px-7 ${index > 0 ? 'border-t border-outline-variant/15 md:border-l md:border-t-0' : ''}`}
+                className={`flex items-center gap-4 py-5 md:px-8 ${index > 0 ? 'border-t border-outline-variant/15 md:border-l md:border-t-0' : ''}`}
               >
                 <Icon name={TRUST_ICONS[index] ?? 'translate'} className="shrink-0 text-2xl text-primary" />
                 <div>
@@ -345,126 +552,131 @@ export const LandingPage: React.FC = () => {
           </div>
         </section>
 
-        <JourneySection copy={copy.journey} />
+        <ScrollyStory copy={copy.story} />
 
-        <section className="bg-surface-container-low px-6 py-14 sm:px-8 sm:py-20">
-          <div className="max-w-7xl mx-auto">
-            <div className="mb-10 max-w-2xl sm:mb-12">
-              <h2 className="text-3xl sm:text-4xl font-headline font-bold mb-4">{copy.craft.title}</h2>
-              <p className="text-on-surface-variant">{copy.craft.body}</p>
+        <section className="craft-section">
+          <div className="mx-auto max-w-[90rem]">
+            <div className="craft-heading">
+              <p>{copy.inside.eyebrow}</p>
+              <h2>{copy.craft.title}</h2>
+              <span>{copy.craft.body}</span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="md:col-span-2 bg-surface p-8 rounded-xl flex flex-col justify-between min-h-[320px] sm:min-h-[400px]">
+
+            <div className="craft-grid">
+              <article className="craft-main-card">
+                <div className="craft-card-index">01</div>
+                <div className="craft-card-copy">
+                  <span className="craft-card-icon">
+                    <Icon name="translate" />
+                  </span>
+                  <h3>{copy.craft.featureTitle}</h3>
+                  <p>{copy.craft.featureBody}</p>
+                </div>
+                <div className="craft-term-board" aria-hidden="true">
+                  <span>
+                    <small>k2tog</small>
+                    <strong>tejer 2 puntos juntos</strong>
+                  </span>
+                  <span>
+                    <small>yo</small>
+                    <strong>hebra</strong>
+                  </span>
+                  <span>
+                    <small>sl st</small>
+                    <strong>punto deslizado</strong>
+                  </span>
+                </div>
+                <div className="craft-tags">
+                  <span>{copy.craft.sampleOne}</span>
+                  <span>{copy.craft.sampleTwo}</span>
+                </div>
+              </article>
+
+              <article className="craft-library-card">
+                <div className="craft-library-image">
+                  <img src="/landing-library-optimized.jpg" alt="" />
+                  <span>
+                    <Icon name="folder_special" />
+                  </span>
+                </div>
                 <div>
-                  <Icon name="translate" className="text-primary text-4xl mb-6" />
-                  <h3 className="text-2xl sm:text-3xl font-headline font-bold mb-4">{copy.craft.featureTitle}</h3>
-                  <p className="text-on-surface-variant max-w-md">{copy.craft.featureBody}</p>
+                  <span className="craft-card-index">02</span>
+                  <h3>{copy.craft.workspaceTitle}</h3>
+                  <p>{copy.craft.workspaceBody}</p>
                 </div>
-                <div className="mt-8 flex flex-wrap gap-2">
-                  <span className="px-4 py-1 bg-tertiary-fixed text-on-tertiary-fixed rounded-full text-xs font-bold uppercase tracking-widest">
-                    {copy.craft.sampleOne}
-                  </span>
-                  <span className="px-4 py-1 bg-tertiary-fixed text-on-tertiary-fixed rounded-full text-xs font-bold uppercase tracking-widest">
-                    {copy.craft.sampleTwo}
-                  </span>
-                </div>
-              </div>
-              <div
-                id="journal"
-                className="bg-primary-container rounded-xl text-on-primary-container flex flex-col overflow-hidden scroll-mt-28"
-              >
-                <div className="relative h-40 overflow-hidden">
-                  <img
-                    className="h-full w-full object-cover opacity-85"
-                    alt=""
-                    src="/landing-library-optimized.jpg"
-                  />
-                  <div className="absolute inset-0 bg-primary/35" aria-hidden />
-                  <div className="absolute bottom-4 left-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-surface/90 text-primary shadow-ambient">
-                    <Icon name="folder_special" className="text-3xl" />
-                  </div>
-                </div>
-                <div className="flex flex-1 flex-col justify-center p-8 text-center">
-                  <h3 className="text-2xl font-headline font-bold mb-2">{copy.craft.workspaceTitle}</h3>
-                  <p className="opacity-85">{copy.craft.workspaceBody}</p>
-                </div>
-              </div>
+              </article>
             </div>
           </div>
         </section>
 
-        <section className="mx-auto max-w-7xl px-6 py-14 sm:px-8 sm:py-20">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
-            <div className="lg:col-span-4">
-              <p className="text-xs font-bold uppercase tracking-[0.28em] text-primary mb-4">{copy.inside.eyebrow}</p>
-              <h2 className="text-3xl sm:text-5xl font-headline font-bold italic leading-tight mb-5">
-                {copy.inside.title}
-              </h2>
-              <p className="text-on-surface-variant leading-relaxed mb-8">{copy.inside.body}</p>
-              <div className="space-y-3">
+        <section className="inside-section">
+          <div className="inside-layout">
+            <div className="inside-copy">
+              <p>{copy.inside.eyebrow}</p>
+              <h2>{copy.inside.title}</h2>
+              <span>{copy.inside.body}</span>
+              <ol>
                 {copy.inside.items.map((item, index) => (
-                  <div key={item.title} className="flex items-start gap-3">
-                    <span className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-fixed text-on-primary-fixed">
-                      <Icon name={['upload_file', 'payments', 'folder_special'][index] ?? 'check_circle'} className="text-xl" />
-                    </span>
-                    <span>
-                      <span className="block text-sm font-bold text-on-surface">{item.title}</span>
-                      <span className="mt-0.5 block text-sm leading-relaxed text-on-surface-variant">{item.body}</span>
-                    </span>
-                  </div>
+                  <li key={item.title}>
+                    <strong>0{index + 1}</strong>
+                    <div>
+                      <h3>{item.title}</h3>
+                      <p>{item.body}</p>
+                    </div>
+                  </li>
                 ))}
-              </div>
+              </ol>
             </div>
 
-            <div className="lg:col-span-8">
-              <div className="overflow-hidden rounded-2xl border border-outline-variant/20 bg-surface-container-lowest shadow-ambient">
-                <AutoLoopVideo
-                  className="aspect-video w-full bg-on-surface object-cover"
-                  src="/demos/openvid-1280x720.mp4"
-                  poster="/demos/openvid-1280x720.jpg"
-                  aria-label={copy.inside.videoLabel}
-                />
+            <div className="inside-video-shell">
+              <div className="inside-video-topbar">
+                <span>
+                  <i />
+                  StitchSpeak
+                </span>
+                <small>{copy.inside.eyebrow}</small>
               </div>
+              <AutoLoopVideo
+                className="inside-video"
+                src="/demos/openvid-1280x720.mp4"
+                poster="/demos/openvid-1280x720.jpg"
+                aria-label={copy.inside.videoLabel}
+              />
             </div>
           </div>
         </section>
 
-        <section id="pricing" className="bg-surface-container-high px-6 py-14 scroll-mt-24 sm:px-8 sm:py-20">
+        <section id="pricing" className="pricing-section scroll-mt-24">
           <div className="max-w-5xl mx-auto">
-            <div className="text-center mb-12 sm:mb-16">
-              <h2 className="text-3xl sm:text-4xl font-headline font-bold mb-4">{copy.pricing.title}</h2>
-              <p className="mx-auto max-w-3xl text-on-surface-variant">{copy.pricing.body}</p>
+            <div className="pricing-heading">
+              <p>Credits · No subscription</p>
+              <h2>{copy.pricing.title}</h2>
+              <span>{copy.pricing.body}</span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="pricing-grid">
               {CREDIT_PACKAGES.map((pack, idx) => {
                 const perCredit = pack.price / pack.credits;
                 const isBest = idx === 1;
                 return (
                   <div
                     key={pack.credits}
-                    className={`relative bg-surface p-8 rounded-xl shadow-ambient flex flex-col justify-between text-center ${
-                      isBest ? 'ring-2 ring-primary lg:scale-105 z-10' : 'border border-outline-variant/20'
-                    }`}
+                    className={isBest ? 'pricing-card is-featured' : 'pricing-card'}
                   >
                     {isBest && (
-                      <div className="absolute top-0 right-0 bg-secondary-container text-on-secondary-container px-4 py-2 rounded-bl-xl text-xs font-bold uppercase tracking-widest">
+                      <div className="pricing-popular">
                         {copy.pricing.mostPopular}
                       </div>
                     )}
                     <div>
-                      <p className="text-3xl font-headline font-bold text-on-surface">{pack.credits}</p>
-                      <p className="text-sm text-on-surface-variant mb-4">{copy.pricing.credits}</p>
-                      <p className="text-2xl font-bold text-primary">€{pack.price.toFixed(2)} EUR</p>
-                      <p className="text-xs text-on-surface-variant mt-2">€{perCredit.toFixed(2)} {copy.pricing.perCredit}</p>
+                      <p className="pricing-credits">{pack.credits}</p>
+                      <p className="pricing-credit-label">{copy.pricing.credits}</p>
+                      <p className="pricing-price">€{pack.price.toFixed(2)}</p>
+                      <p className="pricing-unit">€{perCredit.toFixed(2)} {copy.pricing.perCredit}</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => openCreditPurchaseFlow(idx)}
-                      className={`mt-8 w-full py-3 rounded-xl font-semibold transition-all ${
-                        isBest
-                          ? 'bg-primary text-on-primary hover:opacity-90'
-                          : 'border border-outline-variant/30 hover:bg-surface-container'
-                        }`}
+                      className="pricing-action"
                     >
                       {copy.pricing.buy} {pack.credits} {copy.pricing.credits}
                     </button>
@@ -472,13 +684,13 @@ export const LandingPage: React.FC = () => {
                 );
               })}
             </div>
-            <p className="mx-auto mt-8 max-w-3xl text-center text-sm leading-relaxed text-on-surface-variant">
+            <p className="pricing-note">
               {copy.pricing.note}
             </p>
           </div>
         </section>
 
-        <section id="faq" className="bg-surface-container-low px-6 py-14 scroll-mt-24 sm:px-8 sm:py-20">
+        <section id="faq" className="faq-section scroll-mt-24">
           <div className="mx-auto grid max-w-7xl grid-cols-1 items-start gap-10 lg:grid-cols-[0.82fr_1.18fr] lg:gap-16">
             <div className="lg:sticky lg:top-28">
               <p className="mb-4 text-xs font-bold uppercase tracking-[0.28em] text-primary">{copy.faq.eyebrow}</p>
@@ -553,7 +765,14 @@ export const LandingPage: React.FC = () => {
           </div>
         </section>
 
-        <section className="bg-primary px-6 py-14 text-on-primary sm:px-8 sm:py-18">
+        <section className="closing-section">
+          <div className="closing-orbit" aria-hidden="true">
+            <i />
+            <span>ES</span>
+            <span>FR</span>
+            <span>DE</span>
+            <span>JA</span>
+          </div>
           <div className="mx-auto flex max-w-5xl flex-col items-start justify-between gap-8 md:flex-row md:items-center">
             <div className="max-w-2xl">
               <h2 className="font-headline text-3xl font-bold sm:text-4xl">{copy.closing.title}</h2>
@@ -569,7 +788,7 @@ export const LandingPage: React.FC = () => {
           </div>
         </section>
 
-	      </main>
+      </main>
 
       {showCreditPurchaseModal && (
         <div
