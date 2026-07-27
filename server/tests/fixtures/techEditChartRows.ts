@@ -1,0 +1,58 @@
+export const chartRowCases = [
+  {
+    name: 'light active cells inside gray inactive shaping cells',
+    row: {
+      section: 'Shoulder chart',
+      page: 6,
+      rowLabel: 'Row 11',
+      activeStitchCount: 7,
+      writtenStitchCount: 7,
+      confidence: 'high' as const,
+      activityBasis: 'The legend and repeated shoulder outline mark gray cells as no-stitch cells.',
+    },
+    expectedChecks: 1,
+    expectedFindings: 0,
+  },
+  {
+    name: 'inverse-color chart whose symbol-bearing dark cells are active',
+    row: {
+      section: 'Lace chart',
+      page: 2,
+      rowLabel: 'Round 4',
+      activeStitchCount: 5,
+      writtenStitchCount: 5,
+      confidence: 'high' as const,
+      activityBasis: 'The legend assigns stitches to dark symbol-bearing cells; white margin cells are outside the motif.',
+    },
+    expectedChecks: 1,
+    expectedFindings: 0,
+  },
+  {
+    name: 'low-resolution chart with uncertain cell boundaries',
+    row: {
+      section: 'Cable chart',
+      page: 8,
+      rowLabel: 'Row 3',
+      activeStitchCount: 14,
+      writtenStitchCount: 7,
+      confidence: 'low' as const,
+      activityBasis: 'Compression makes fill shades and grid boundaries indistinguishable.',
+    },
+    expectedChecks: 0,
+    expectedFindings: 0,
+  },
+  {
+    name: 'high-confidence semantic mismatch',
+    row: {
+      section: 'Colorwork chart',
+      page: 5,
+      rowLabel: 'Round 9',
+      activeStitchCount: 8,
+      writtenStitchCount: 7,
+      confidence: 'high' as const,
+      activityBasis: 'The legend marks both colored symbol types as worked stitches and the complete row is visible.',
+    },
+    expectedChecks: 1,
+    expectedFindings: 1,
+  },
+];

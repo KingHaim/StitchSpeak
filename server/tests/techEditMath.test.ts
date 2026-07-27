@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   verifyPatternMath,
   countBySeverity,
+  inferRepeatCountSemantics,
   type ExtractedPattern,
 } from '../src/services/techEditMath';
 import { techEditCostFromMetrics, PRICING } from '../src/services/pricing';
+import { chartRowCases } from './fixtures/techEditChartRows';
+import { repeatSemanticsCases } from './fixtures/techEditRepeatSemantics';
 
 function basePattern(overrides: Partial<ExtractedPattern> = {}): ExtractedPattern {
   return {
@@ -19,12 +22,17 @@ function basePattern(overrides: Partial<ExtractedPattern> = {}): ExtractedPatter
     lengthLinks: [],
     constructionSignals: [],
     assemblyLinks: [],
+    chartRows: [],
     abbreviationsDefined: [],
     ...overrides,
   };
 }
 
 describe('tech edit math audit', () => {
+  it.each(repeatSemanticsCases)('interprets "$quote" as $expected', ({ quote, expected }) => {
+    expect(inferRepeatCountSemantics(quote)).toBe(expected);
+  });
+
   it('confirms correct stitch-count arithmetic without findings', () => {
     const result = verifyPatternMath(
       basePattern({
@@ -104,6 +112,72 @@ describe('tech edit math audit', () => {
     // consistent with the resynced count (98 - 4 = 94).
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0].calculation).toContain('100 − 4 = 96');
+  });
+
+  it('uses a total repeat count as the complete number of executions', () => {
+    const result = verifyPatternMath(
+      basePattern({
+        sizeNames: ['One size'],
+        stitchCountEvents: [
+          { section: 'Shoulder', page: 3, quote: 'Begin with 50 sts', kind: 'cast_on', delta: [null], declaredCount: [50] },
+          {
+            section: 'Shoulder',
+            page: 3,
+            quote: 'Work decrease row, repeating the shaping five times altogether — 40 sts',
+            kind: 'decrease',
+            delta: [-12],
+            changePerExecution: [-2],
+            initialExecutions: [1],
+            statedRepeatCount: [5],
+            repeatCountSemantics: 'total',
+            declaredCount: [40],
+          },
+        ],
+      }),
+    );
+
+    // The structured repeat semantics override the opaque, incorrectly
+    // extracted -12 delta: five executions in all × -2 sts = -10 sts.
+    expect(result.findings).toHaveLength(0);
+  });
+
+  it('adds an additional repeat count to all executions already worked', () => {
+    const result = verifyPatternMath(
+      basePattern({
+        sizeNames: ['One size'],
+        stitchCountEvents: [
+          { section: 'Waist', page: 4, quote: 'Begin with 72 sts', kind: 'cast_on', delta: [null], declaredCount: [72] },
+          {
+            section: 'Waist',
+            page: 4,
+            quote: 'Work the decrease round twice, then work it another 3 times — 62 sts',
+            kind: 'decrease',
+            delta: [-6],
+            changePerExecution: [-2],
+            initialExecutions: [2],
+            statedRepeatCount: [3],
+            repeatCountSemantics: 'unknown',
+            declaredCount: [62],
+          },
+        ],
+      }),
+    );
+
+    // "Another" is recognized from the quote and the two preceding
+    // executions are preserved: (2 + 3) × -2 sts = -10 sts.
+    expect(result.findings).toHaveLength(0);
+  });
+
+  it.each(chartRowCases)('handles $name', ({ row, expectedChecks, expectedFindings }) => {
+    const result = verifyPatternMath(
+      basePattern({
+        sizeNames: ['One size'],
+        chartRows: [row],
+      }),
+    );
+
+    expect(result.checksRun).toBe(expectedChecks);
+    expect(result.findings).toHaveLength(expectedFindings);
   });
 
   it('cross-checks stitch counts against gauge, converting inches', () => {

@@ -40,6 +40,8 @@ export type StitchEventKind =
   | 'declared_count'
   | 'other';
 
+export type RepeatCountSemantics = 'total' | 'additional' | 'unknown';
+
 export interface StitchCountEvent {
   section: string;
   page: number | null;
@@ -48,6 +50,14 @@ export interface StitchCountEvent {
   kind: StitchEventKind;
   /** Net stitch change per size (+ for increases, - for decreases). */
   delta: (number | null)[];
+  /** Net change from one execution of repeated shaping, when decomposable. */
+  changePerExecution?: (number | null)[];
+  /** Executions completed before an "additional" repeat clause. */
+  initialExecutions?: (number | null)[];
+  /** The number stated by the repeat clause, before semantic interpretation. */
+  statedRepeatCount?: (number | null)[];
+  /** Whether the stated count is the grand total or is added to prior work. */
+  repeatCountSemantics?: RepeatCountSemantics;
   /** Stitch count the pattern claims after this step ("= 96 sts"), per size. */
   declaredCount: (number | null)[];
 }
@@ -121,6 +131,21 @@ export interface AssemblyLink {
   unit: 'sts' | 'rows' | 'cm' | 'in';
 }
 
+/** A chart row compared with an explicit written stitch count. */
+export interface ChartRowObservation {
+  section: string;
+  page: number | null;
+  rowLabel: string;
+  /** Cells that the chart's own visual semantics identify as worked stitches. */
+  activeStitchCount: number | null;
+  /** Explicit count stated in nearby written instructions or chart notes. */
+  writtenStitchCount: number | null;
+  /** Low confidence suppresses numeric mismatch findings. */
+  confidence: 'high' | 'low';
+  /** Short explanation of the legend/shape/symbol evidence used. */
+  activityBasis: string;
+}
+
 export interface ExtractedPattern {
   patternTitle: string | null;
   language: string | null;
@@ -133,6 +158,7 @@ export interface ExtractedPattern {
   lengthLinks: LengthLink[];
   constructionSignals: ConstructionSignal[];
   assemblyLinks: AssemblyLink[];
+  chartRows: ChartRowObservation[];
   abbreviationsDefined: string[];
 }
 
@@ -163,6 +189,66 @@ function round1(value: number): number {
 }
 
 /**
+ * Recognize common English scope markers around a stated repeat count. The
+ * structured model value is used as a fallback, so patterns in other
+ * languages and uncommon phrasings still benefit from semantic extraction.
+ */
+export function inferRepeatCountSemantics(
+  quote: string,
+  fallback: RepeatCountSemantics = 'unknown',
+): RepeatCountSemantics {
+  const text = quote.toLocaleLowerCase('en').replace(/[‐‑‒–—]/g, '-').replace(/\s+/g, ' ').trim();
+
+  const totalMarkers = [
+    /\b(?:a\s+|the\s+)?total\s+of\b/,
+    /\btimes?\s+(?:in\s+all|altogether|overall|total)\b/,
+    /\buntil\b.*\b(?:has|have|is|are)\s+been\s+(?:worked|completed|done|repeated)\b.*\btimes?\b/,
+  ];
+  if (totalMarkers.some((marker) => marker.test(text))) return 'total';
+
+  const additionalMarkers = [
+    /\b(?:more|additional|further)\s+(?:times?|rows?|rounds?|occasions?)\b/,
+    /\banother\b.{0,40}\b(?:times?|rows?|rounds?|occasions?)\b/,
+    /\b(?:next|following)\b.{0,40}\b(?:rows?|rounds?|times?|occasions?)\b/,
+    /\b(?:times?|rows?|rounds?|occasions?)\s+again\b/,
+  ];
+  if (additionalMarkers.some((marker) => marker.test(text))) return 'additional';
+
+  return fallback;
+}
+
+/**
+ * Resolve a shaping event's net change from its semantic repeat decomposition.
+ * The opaque extracted delta remains a fallback for ordinary instructions and
+ * genuinely ambiguous wording.
+ */
+export function resolveStitchEventDelta(
+  event: StitchCountEvent,
+  size: number,
+): number | null {
+  const perExecution = event.changePerExecution?.[size] ?? null;
+  const statedCount = event.statedRepeatCount?.[size] ?? null;
+  const semantics = inferRepeatCountSemantics(
+    event.quote,
+    event.repeatCountSemantics ?? 'unknown',
+  );
+
+  if (perExecution !== null && statedCount !== null && statedCount >= 0) {
+    if (semantics === 'total') {
+      return perExecution * statedCount;
+    }
+    if (semantics === 'additional') {
+      const initial = event.initialExecutions?.[size] ?? null;
+      if (initial !== null && initial >= 0) {
+        return perExecution * (initial + statedCount);
+      }
+    }
+  }
+
+  return event.delta[size] ?? null;
+}
+
+/**
  * Walk each section's stitch-count events in document order keeping a running
  * count per size, and flag every declared count that disagrees with the
  * arithmetic. After a mismatch the running count resyncs to the declared
@@ -186,7 +272,7 @@ function auditStitchCounts(
       let runningQuote = '';
 
       for (const event of events) {
-        const delta = event.delta[size] ?? null;
+        const delta = resolveStitchEventDelta(event, size);
         const declared = event.declaredCount[size] ?? null;
 
         if (event.kind === 'cast_on') {
@@ -532,6 +618,48 @@ function auditAssembly(extraction: ExtractedPattern, result: MathAuditResult): v
   }
 }
 
+/**
+ * Compare chart rows only when the visual activity encoding is clear and a
+ * written count is explicit. Ambiguous rasterization, cropped legends, or
+ * uncertain boundaries deliberately produce no numeric finding.
+ */
+function auditChartRows(extraction: ExtractedPattern, result: MathAuditResult): void {
+  for (const row of extraction.chartRows ?? []) {
+    const active = row.activeStitchCount;
+    const written = row.writtenStitchCount;
+    if (
+      row.confidence !== 'high' ||
+      active === null ||
+      written === null ||
+      !Number.isInteger(active) ||
+      !Number.isInteger(written) ||
+      active < 0 ||
+      written < 0 ||
+      !row.activityBasis.trim()
+    ) {
+      continue;
+    }
+
+    result.checksRun++;
+    if (active === written) continue;
+
+    result.findings.push({
+      category: 'consistency',
+      severity: 'critical',
+      // The comparison is deterministic, but the cell classification came
+      // from visual extraction and should remain reviewable by the designer.
+      verified: false,
+      location: locationOf(row),
+      title: `Chart stitch count differs from written instructions${row.rowLabel ? ` (${row.rowLabel})` : ''}`,
+      detail:
+        `The chart has ${active} active ${active === 1 ? 'stitch cell' : 'stitch cells'}, while the written instruction states ${written}. ` +
+        `Activity was inferred from: ${row.activityBasis}`,
+      calculation: `${active} active chart ${active === 1 ? 'cell' : 'cells'} vs. ${written} written ${written === 1 ? 'stitch' : 'stitches'}`,
+      suggestion: 'Confirm the chart legend and row boundaries, then correct either the chart or the written stitch count.',
+    });
+  }
+}
+
 export function verifyPatternMath(extraction: ExtractedPattern): MathAuditResult {
   const result: MathAuditResult = {
     findings: [],
@@ -544,6 +672,7 @@ export function verifyPatternMath(extraction: ExtractedPattern): MathAuditResult
   auditRowGauge(extraction, result);
   auditConstruction(extraction, result);
   auditAssembly(extraction, result);
+  auditChartRows(extraction, result);
   return result;
 }
 

@@ -64,9 +64,26 @@ const extractionSchema: Schema = {
             enum: ['cast_on', 'increase', 'decrease', 'bind_off', 'declared_count', 'other'],
           },
           delta: nullableNumberArray,
+          changePerExecution: nullableNumberArray,
+          initialExecutions: nullableNumberArray,
+          statedRepeatCount: nullableNumberArray,
+          repeatCountSemantics: {
+            type: Type.STRING,
+            enum: ['total', 'additional', 'unknown'],
+          },
           declaredCount: nullableNumberArray,
         },
-        required: ['section', 'quote', 'kind', 'delta', 'declaredCount'],
+        required: [
+          'section',
+          'quote',
+          'kind',
+          'delta',
+          'changePerExecution',
+          'initialExecutions',
+          'statedRepeatCount',
+          'repeatCountSemantics',
+          'declaredCount',
+        ],
       },
     },
     measurementLinks: {
@@ -153,6 +170,29 @@ const extractionSchema: Schema = {
         required: ['section', 'quote', 'pieceA', 'pieceB', 'countA', 'countB', 'unit'],
       },
     },
+    chartRows: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          section: { type: Type.STRING },
+          page: { type: Type.NUMBER, nullable: true },
+          rowLabel: { type: Type.STRING },
+          activeStitchCount: { type: Type.NUMBER, nullable: true },
+          writtenStitchCount: { type: Type.NUMBER, nullable: true },
+          confidence: { type: Type.STRING, enum: ['high', 'low'] },
+          activityBasis: { type: Type.STRING },
+        },
+        required: [
+          'section',
+          'rowLabel',
+          'activeStitchCount',
+          'writtenStitchCount',
+          'confidence',
+          'activityBasis',
+        ],
+      },
+    },
     abbreviationsDefined: { type: Type.ARRAY, items: { type: Type.STRING } },
   },
   required: [
@@ -163,6 +203,7 @@ const extractionSchema: Schema = {
     'lengthLinks',
     'constructionSignals',
     'assemblyLinks',
+    'chartRows',
     'abbreviationsDefined',
   ],
 };
@@ -196,16 +237,31 @@ const editorialSchema: Schema = {
 
 // --- Prompts ---
 
-const EXTRACTION_SYSTEM_INSTRUCTION = `You are a meticulous data extractor for knitting/crochet pattern tech editing. You transcribe the VERIFIABLE STRUCTURE of a pattern into JSON. You never judge, never correct, and never invent numbers: if a value is not explicitly stated in the pattern, output null for it.
+const CHART_CELL_ACTIVITY_INSTRUCTION = `CHART CELL ACTIVITY:
+- A visible rectangle in a chart grid is not automatically a worked stitch. Charts commonly use cells as inactive/no-stitch masks to preserve a rectangular grid around shaping or irregular motifs.
+- Infer the chart's active and inactive visual roles from its own semantics: legend entries such as "no stitch", symbol-bearing cells, the shaped pattern boundary, continuity across neighboring rows, repeated fill roles, and surrounding written notes. Do not infer activity from color alone, fixed coordinates, row width, or a presumed layout.
+- Gray/grey, tinted, hatched, dark, light, or white fills can each mean active or inactive in different chart styles. In the common convention where gray/grey background cells are identified as no-stitch masks and white cells form the worked shape, gray cells are inactive and only the white cells are active stitches. In an inverse or colorwork chart, symbol/legend semantics may establish the opposite.
+- Count only cells supported as active stitches by those combined cues. Grid lines, row-number columns, legends, margins, placeholders, and no-stitch masks are not stitches.
+- Confidence is "high" only when the complete row and cell boundaries are visible and the legend/structure gives a consistent activity mapping. If the image is cropped, blurred, compressed, low-contrast, missing its legend, or has conflicting cues, preserve uncertainty: use confidence "low", set activeStitchCount to null when no reliable count is possible, and do not assert a numeric chart mismatch.`;
+
+export function createTechEditExtractionSystemInstruction(): string {
+  return `You are a meticulous data extractor for knitting/crochet pattern tech editing. You transcribe the VERIFIABLE STRUCTURE of a pattern into JSON. You never judge, never correct, and never invent numbers: if a value is not explicitly stated in the pattern, output null for it.
 
 Rules:
 - sizeNames: the pattern's size labels in order (e.g. ["XS","S","M","L"]). Single-size patterns: ["One size"].
-- Every per-size array (delta, declaredCount, stitchCount, targetWidth) MUST have exactly one entry per size, in the same order as sizeNames. Use null for sizes where the pattern gives no number.
+- Every per-size array (delta, changePerExecution, initialExecutions, statedRepeatCount, declaredCount, stitchCount, targetWidth) MUST have exactly one entry per size, in the same order as sizeNames. Use null for sizes where the pattern gives no number.
 - gauge: the stated gauge. widthCm/heightCm are the swatch dimensions in cm (a 4"/10 cm swatch -> 10).
+- REPEAT EXECUTION SEMANTICS: decompose repeated shaping before calculating its delta; wording determines whether earlier executions are included in the stated number.
+  - For every repeated increase/decrease event, extract changePerExecution, initialExecutions (how many executions the surrounding instruction performs before the repeat clause), statedRepeatCount, and repeatCountSemantics. Use null and "unknown" if any component cannot be supported by the text; never guess.
+  - "repeat a total of N times", "N times in all/altogether/overall", "for a total of N", and "until it has been worked N times" mean N executions altogether; classify these as "total". The initially stated execution is already included in N executions, so delta = changePerExecution × statedRepeatCount.
+  - "repeat N more/additional/further times", "repeat another N times", "on the next/following N rows", and equivalent wording mean N additional executions after the executions already performed by the surrounding instruction; classify these as "additional". Delta = changePerExecution × (initialExecutions + statedRepeatCount).
+  - Count every execution before an additional-count clause, not merely the nearest sentence. For example, "work the decrease round twice, then repeat it 3 more times" has initialExecutions = 2 and 5 executions altogether.
+  - Apply the same semantic distinction to natural variants in the pattern's own language; do not rely only on the exact English examples above.
+  - Arithmetic examples: if one decrease execution changes the count by -2 sts, "repeat a total of 5 times" means 5 total executions × -2 sts = -10 sts, while "work once, then repeat 5 more times" means 1 initial + 5 additional executions = 6 executions × -2 sts = -12 sts.
 - stitchCountEvents: EVERY instruction that establishes or changes a stitch count, in document order, grouped by the section heading it appears under (Body, Sleeve, Yoke, ...). For each event:
   - quote: a short verbatim quote (max ~120 chars) of the instruction line.
   - kind: cast_on / increase / decrease / bind_off / declared_count (a stated count with no change, e.g. "96 sts on needle") / other.
-  - delta: the NET stitch change of the instruction per size. "Inc 8 sts evenly" -> +8. "Repeat dec row 5 times more" and each dec row removes 2 sts -> compute the net total for the whole instruction (-12 including the first row if the quote covers it). If the net change cannot be determined from the text alone, use null.
+  - delta: the NET stitch change of the whole instruction per size. Derive repeated shaping from the semantic fields above. "Inc 8 sts evenly" -> +8. If the net change cannot be determined from the text alone, use null.
   - declaredCount: the resulting count the pattern claims ("... — 96 sts"), or null if the line doesn't state one.
 - measurementLinks: every place the pattern ties a specific stitch count to a physical width/circumference (e.g. "96 sts = 48 cm bust"). Only include links where BOTH numbers are explicit.
 - repeatInstructions: every row/round built from a repeated stitch sequence, e.g. "*k2, k2tog; rep from * to end" or "[3 dc, 2 dc in next st] 6 times". For each:
@@ -218,18 +274,23 @@ Rules:
 - lengthLinks: every place the pattern ties a row/round count to a physical length (e.g. "work 30 rows = 10 cm", "repeat these 4 rows 12 times — piece measures 18 cm"). Only include links where BOTH numbers are explicit.
 - constructionSignals: quotes showing how each section is worked. kind = "flat" (turn, wrong side rows, "work back and forth"), "circular" (join, rounds, "work in the round"), or "switch" (an explicit transition like "join to work in the round" or "divide for front and back and work flat"). Record them in document order per section.
 - assemblyLinks: every place the pattern joins two pieces/edges and states a number for BOTH sides (e.g. "graft the 24 sts of the front shoulder to the 24 sts of the back shoulder", "sew the 45-cm sleeve cap into the 45-cm armhole", picked-up stitch counts vs. available edge stitches). unit = sts, rows, cm or in.
+- ${CHART_CELL_ACTIVITY_INSTRUCTION}
+- chartRows: rows where BOTH the chart and nearby written instructions/notes provide a stitch count worth comparing. activeStitchCount counts only semantically active cells; writtenStitchCount is the explicit nearby count. activityBasis briefly states the legend, symbol, boundary, and fill-role evidence. Emit separate observations for distinct rows or size variants. Do not emit a chartRows item merely because a rectangular grid is visible.
 - abbreviationsDefined: every abbreviation defined in the abbreviations/glossary section, exactly as written.
-- Charts: if a chart legend or written chart notes state stitch counts, treat them like any other event.
 Extract from the whole document. Missing sections are fine; empty arrays are fine.`;
+}
 
-function editorialSystemInstruction(mathFindingsSummary: string, designerPreferences?: string): string {
+export function createTechEditEditorialSystemInstruction(mathFindingsSummary: string, designerPreferences?: string): string {
   const preferencesBlock = designerPreferences
     ? `\n--- DESIGNER FEEDBACK ON PAST TECH EDITS ---\nThis designer has reviewed findings from previous tech edits. Use this to calibrate — do NOT stop checking any area, but avoid the kinds of findings they consistently reject:\n${designerPreferences}\n--- END DESIGNER FEEDBACK ---\n`
     : '';
   return `You are an expert technical editor for knitwear design with 20 years of experience editing knitting and crochet patterns for publication. Perform a comprehensive technical edit of the provided pattern and report your findings as structured JSON.
 ${preferencesBlock}
 
-A deterministic math audit has ALREADY been run on this pattern by software. Its results are below. It covered: running stitch counts vs. declared totals, repeat instructions (whether repeats fit the stitch count and produce the declared total), stitch gauge vs. widths, row gauge vs. lengths, flat/circular construction mixing, and whether joined pieces match. Do NOT re-derive or duplicate these arithmetic checks — they are already covered. Focus your "math" findings only on numerical issues the audit could not see (yardage plausibility, chart row/stitch dimensions vs. written instructions, shaping rates vs. the target silhouette, counts implied but never stated).
+A structured audit has ALREADY been run on this pattern by software. Its results are below. It covered: running stitch counts vs. declared totals, repeat instructions (whether repeats fit the stitch count and produce the declared total), stitch gauge vs. widths, row gauge vs. lengths, flat/circular construction mixing, joined-piece counts, and high-confidence chart-row counts. Do NOT re-derive or duplicate these checks — they are already covered. Focus your "math" findings only on numerical issues the audit could not see (yardage plausibility, shaping rates vs. the target silhouette, counts implied but never stated).
+
+${CHART_CELL_ACTIVITY_INSTRUCTION}
+Numeric chart-row comparisons are already handled by the structured audit using these confidence rules. Do not independently assert a chart stitch-count mismatch when the activity mapping or count is uncertain, and do not duplicate a chart mismatch already listed in the audit results.
 
 --- DETERMINISTIC MATH AUDIT RESULTS ---
 ${mathFindingsSummary}
@@ -305,6 +366,14 @@ function sanitizeExtraction(raw: unknown): ExtractedPattern {
           ? kind
           : 'other') as ExtractedPattern['stitchCountEvents'][number]['kind'],
         delta: asNullableNumberArray(ev.delta, sizeCount),
+        changePerExecution: asNullableNumberArray(ev.changePerExecution, sizeCount),
+        initialExecutions: asNullableNumberArray(ev.initialExecutions, sizeCount),
+        statedRepeatCount: asNullableNumberArray(ev.statedRepeatCount, sizeCount),
+        repeatCountSemantics: (
+          ['total', 'additional'].includes(asString(ev.repeatCountSemantics, 20))
+            ? ev.repeatCountSemantics
+            : 'unknown'
+        ) as ExtractedPattern['stitchCountEvents'][number]['repeatCountSemantics'],
         declaredCount: asNullableNumberArray(ev.declaredCount, sizeCount),
       };
     });
@@ -384,6 +453,21 @@ function sanitizeExtraction(raw: unknown): ExtractedPattern {
       };
     });
 
+  const chartRows = (Array.isArray(obj.chartRows) ? obj.chartRows : [])
+    .slice(0, MAX_EVENTS)
+    .map((r) => {
+      const row = (r ?? {}) as Record<string, unknown>;
+      return {
+        section: asString(row.section, 120) || 'Chart',
+        page: asNullableNumber(row.page),
+        rowLabel: asString(row.rowLabel, 120),
+        activeStitchCount: asNullableNumber(row.activeStitchCount),
+        writtenStitchCount: asNullableNumber(row.writtenStitchCount),
+        confidence: (row.confidence === 'high' ? 'high' : 'low') as 'high' | 'low',
+        activityBasis: asString(row.activityBasis, 500),
+      };
+    });
+
   const craft = asString(obj.craft, 20);
   return {
     patternTitle: asString(obj.patternTitle, 200) || null,
@@ -397,6 +481,7 @@ function sanitizeExtraction(raw: unknown): ExtractedPattern {
     lengthLinks,
     constructionSignals,
     assemblyLinks,
+    chartRows,
     abbreviationsDefined: Array.isArray(obj.abbreviationsDefined)
       ? obj.abbreviationsDefined.map((a) => asString(a, 60)).filter(Boolean).slice(0, 100)
       : [],
@@ -518,13 +603,13 @@ async function generateJson(
 
 function describeMathAudit(findings: TechEditFinding[], checksRun: number): string {
   if (findings.length === 0) {
-    return `${checksRun} arithmetic checks were run against the extracted stitch counts and gauge. No discrepancies were found.`;
+    return `${checksRun} structured checks were run against the extracted counts, gauge, construction, and confident chart observations. No discrepancies were found.`;
   }
   const lines = findings.map(
     (f, i) =>
       `${i + 1}. [${f.severity.toUpperCase()}] ${f.location}: ${f.title}. ${f.calculation ?? ''}`,
   );
-  return `${checksRun} arithmetic checks were run. ${findings.length} verified discrepancies found:\n${lines.join('\n')}`;
+  return `${checksRun} structured checks were run. ${findings.length} discrepancies found:\n${lines.join('\n')}`;
 }
 
 export type TechEditStage = 'extracting' | 'verifying' | 'reviewing' | 'finalizing';
@@ -567,7 +652,7 @@ export async function runTechEdit(
     EXTRACTION_DEADLINE_MS,
     (signal) =>
       generateJson(
-        EXTRACTION_SYSTEM_INSTRUCTION,
+        createTechEditExtractionSystemInstruction(),
         'Extract the verifiable structure of this pattern as JSON. Remember: per-size arrays aligned with sizeNames, null for anything not explicitly stated.',
         document,
         extractionSchema,
@@ -590,7 +675,7 @@ export async function runTechEdit(
     EDITORIAL_DEADLINE_MS,
     (signal) =>
       generateJson(
-        editorialSystemInstruction(
+        createTechEditEditorialSystemInstruction(
           describeMathAudit(mathAudit.findings, mathAudit.checksRun),
           options.designerPreferences,
         ),
