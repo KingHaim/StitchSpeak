@@ -39,7 +39,7 @@ export const PRICING = {
     // Hard cap: unlike translation, a tech edit of a huge document blows the
     // Gemini deadline and degrades report quality, so refuse instead of
     // just charging more.
-    maxPages: 30,
+    maxPages: 40,
   },
   gradingExtract: {
     // One Gemini Pro structured-extraction pass over the pattern document

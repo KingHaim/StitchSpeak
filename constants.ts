@@ -59,7 +59,7 @@ export const PRICING = {
     includedPages: 10,
     pageSurcharge: 1.50,
     pagesPerSurchargeStep: 5,
-    maxPages: 30,
+    maxPages: 40,
   },
   gradingExtract: {
     inputCostPer1MTokens: 2.00,
