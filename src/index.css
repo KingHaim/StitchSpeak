@@ -609,7 +609,7 @@ h1, h2, h3, h4, h5, h6 {
       transparent 100%
     ),
     linear-gradient(0deg, color-mix(in srgb, var(--color-primary) 12%, transparent), transparent 52%),
-    url("/images/stitchspeak-hero-bg.png");
+    url("/images/stitchspeak-knitting-crochet-pattern-translator.jpg");
   background-position: center, center, center;
   background-repeat: no-repeat;
   background-size: cover;
@@ -1800,7 +1800,7 @@ h1, h2, h3, h4, h5, h6 {
         color-mix(in srgb, var(--color-background) 72%, transparent) 58%,
         color-mix(in srgb, var(--color-background) 24%, transparent) 100%
       ),
-      url("/images/stitchspeak-hero-bg.png");
+      url("/images/stitchspeak-knitting-crochet-pattern-translator.jpg");
     background-position: center, 66% center;
   }
 
@@ -1886,7 +1886,7 @@ h1, h2, h3, h4, h5, h6 {
         color-mix(in srgb, var(--color-background) 70%, transparent) 58%,
         color-mix(in srgb, var(--color-background) 42%, transparent) 100%
       ),
-      url("/images/stitchspeak-hero-bg.png");
+      url("/images/stitchspeak-knitting-crochet-pattern-translator.jpg");
     background-position: center, 69% center;
   }
 

@@ -1,5 +1,6 @@
-import React, { useState, type FormEvent } from 'react';
+import React, { useEffect, useState, type FormEvent } from 'react';
 import { submitBetaApplication, type BetaApplicationInput, type BetaAttributionInput } from '../../services/betaCampaignService';
+import { setPageMetadata } from '../../services/pageMetadata';
 
 const DEMOS = [
   {
@@ -94,6 +95,15 @@ export const BetaCampaignPage: React.FC = () => {
   const [attribution] = useState(readBetaAttribution);
   const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    setPageMetadata({
+      title: 'Pattern Translation Beta for Designers | StitchSpeak',
+      description: 'Apply to test knitting and crochet pattern translation on a real release. Selected independent designers receive 50 starter credits for feedback.',
+      path: '/beta',
+      image: '/images/stitchspeak-beta-library.jpg',
+    });
+  }, []);
 
   const update = <K extends keyof BetaApplicationInput>(key: K, value: BetaApplicationInput[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
