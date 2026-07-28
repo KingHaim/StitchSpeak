@@ -7,6 +7,7 @@ import { BetaCampaignPage } from './components/pages/BetaCampaignPage';
 import { AccountActionPage } from './components/pages/AccountActionPage';
 import type { PageId } from './types';
 import { pageFromPath, pathForPage } from './services/navigation';
+import { setPageMetadata } from './services/pageMetadata';
 
 const DashboardPage = lazy(() =>
   import('./components/pages/DashboardPage').then((module) => ({
@@ -46,6 +47,9 @@ const App: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const currentPage = pageFromPath(pathname);
+  const isBetaCampaign =
+    pathname === '/beta' ||
+    new URLSearchParams(window.location.search).get('campaign') === 'beta';
 
   useEffect(() => {
     const handlePopState = () => setPathname(window.location.pathname);
@@ -60,6 +64,19 @@ const App: React.FC = () => {
     setPathname(nextPath);
   }, [isAuthenticated, pathname]);
 
+  useEffect(() => {
+    const isAccountAction = ['/verify-email', '/reset-password', '/accept-invite'].includes(pathname);
+    const isPrivateApp = (isAuthenticated && !isBetaCampaign) || pathname === '/admin';
+    if (!isAccountAction && !isPrivateApp) return;
+
+    setPageMetadata({
+      title: `${isAccountAction ? 'Account' : 'Workspace'} | StitchSpeak`,
+      description: 'Secure StitchSpeak account and pattern translation workspace.',
+      path: pathname,
+      index: false,
+    });
+  }, [isAuthenticated, isBetaCampaign, pathname]);
+
   const navigate = useCallback((page: PageId) => {
     const nextPath = pathForPage(page);
     if (window.location.pathname !== nextPath) {
@@ -67,10 +84,6 @@ const App: React.FC = () => {
     }
     setPathname(nextPath);
   }, []);
-
-  const isBetaCampaign =
-    pathname === '/beta' ||
-    new URLSearchParams(window.location.search).get('campaign') === 'beta';
 
   if (pathname === '/verify-email') return <AccountActionPage mode="verify" />;
   if (pathname === '/reset-password') return <AccountActionPage mode="reset" />;

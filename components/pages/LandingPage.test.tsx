@@ -84,8 +84,10 @@ describe('LandingPage FAQ', () => {
 
     expect(document.documentElement.lang).toBe('es');
     expect(container.querySelector('[aria-label="Idioma de la web"]')).not.toBeNull();
-    expect(container.textContent).toContain('Tus patrones,');
+    expect(container.querySelector('h1')?.textContent).toMatch(/patrones de punto y ganchillo/i);
     expect(container.textContent).toContain('¿Cómo se calcula el precio de una traducción?');
     expect(container.textContent).toContain('Empezar a traducir');
+    expect(document.title).toBe('Traducción de patrones de punto y ganchillo | StitchSpeak');
+    expect(document.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe('https://stitchspeak.com/');
   });
 });

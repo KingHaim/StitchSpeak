@@ -15,8 +15,8 @@ export const WEBSITE_LANGUAGES: WebsiteLanguage[] = [
 export const WEBSITE_LANGUAGE_STORAGE_KEY = 'stitchspeak_website_language';
 
 export const ENGLISH_WEBSITE_COPY = {
-  documentTitle: 'StitchSpeak — Translate your knitting or crochet patterns',
-  documentDescription: 'Translate knitting and crochet patterns into 14 languages with terminology made for independent designers.',
+  documentTitle: 'Knitting & Crochet Pattern Translation | StitchSpeak',
+  documentDescription: 'Translate knitting and crochet patterns into 14 languages. Review abbreviations, repeats, and chart legends in a workspace built for independent designers.',
   languageSelectorLabel: 'Website language',
   signIn: 'Sign in',
   loading: 'Loading...',
@@ -26,10 +26,10 @@ export const ENGLISH_WEBSITE_COPY = {
     faq: 'FAQ',
   },
   hero: {
-    lead: 'Your',
+    lead: 'Knitting & crochet',
     accent: 'patterns,',
     finish: 'ready for more markets.',
-    body: 'Fast, affordable pattern translation for independent knitwear and crochet designers—built by makers, for makers.',
+    body: 'Translate pattern files into 14 languages with craft-aware terminology, side-by-side review, and export tools for independent designers.',
     primaryAction: 'Start translating',
     secondaryAction: 'Follow the journey',
     imageAlt: 'StitchSpeak glossary shown on a laptop and phone in a warm textile studio',
@@ -110,14 +110,15 @@ export const ENGLISH_WEBSITE_COPY = {
     },
   },
   craft: {
-    title: 'Like a translator that speaks knitting',
-    body: 'Purpose-built for independent designers who want to sell beyond one language.',
+    title: 'Pattern translation that speaks knitting and crochet',
+    body: 'Purpose-built for independent designers who want to publish and sell patterns beyond one language.',
     featureTitle: 'Pattern language, not generic prose',
     featureBody: 'StitchSpeak understands rows, repeats, abbreviations, and terms such as “yarn over” and “slip stitch”. Its terminology has been reviewed by knitters.',
     sampleOne: 'Japanese to English',
     sampleTwo: 'German to US',
     workspaceTitle: 'Your translation workspace',
     workspaceBody: 'Keep every translation in one place, reopen it later, and prepare the copy for your next release.',
+    workspaceImageAlt: 'Knitting pattern library open on a tablet beside yarn, needles, a crochet hook, and pattern notes',
   },
   inside: {
     eyebrow: 'Inside the app',
@@ -150,7 +151,7 @@ export const ENGLISH_WEBSITE_COPY = {
   },
   faq: {
     eyebrow: 'Good to know',
-    title: 'Before you hand over a pattern.',
+    title: 'Knitting and crochet pattern translation FAQ',
     body: 'Straight answers about cost, accuracy, files, and privacy—including where translation still needs your eye.',
     cardTitle: 'Built for patterns. Still reviewed by you.',
     cardBody: 'Check sizes, gauge, stitch counts, charts, and unusual notation before publishing—just as you would with any translation draft.',
@@ -234,8 +235,8 @@ type DeepWiden<T> =
 export type WebsiteCopy = DeepWiden<typeof ENGLISH_WEBSITE_COPY>;
 
 export const SPANISH_WEBSITE_COPY: WebsiteCopy = {
-  documentTitle: 'StitchSpeak — Traduce tus patrones de punto o ganchillo',
-  documentDescription: 'Traduce patrones de punto y ganchillo a 14 idiomas con terminología pensada para diseñadores independientes.',
+  documentTitle: 'Traducción de patrones de punto y ganchillo | StitchSpeak',
+  documentDescription: 'Traduce patrones de punto y ganchillo a 14 idiomas. Revisa abreviaturas, repeticiones y leyendas de gráficos en un espacio para diseñadores.',
   languageSelectorLabel: 'Idioma de la web',
   signIn: 'Iniciar sesión',
   loading: 'Cargando...',
@@ -246,9 +247,9 @@ export const SPANISH_WEBSITE_COPY: WebsiteCopy = {
   },
   hero: {
     lead: 'Tus',
-    accent: 'patrones,',
+    accent: 'patrones de punto y ganchillo,',
     finish: 'listos para nuevos mercados.',
-    body: 'Traducción de patrones rápida y asequible para diseñadores independientes de punto y ganchillo: creada por creadores, para creadores.',
+    body: 'Traduce archivos de patrones a 14 idiomas con terminología textil, revisión en paralelo y herramientas de exportación para diseñadores independientes.',
     primaryAction: 'Empezar a traducir',
     secondaryAction: 'Seguir el recorrido',
     imageAlt: 'El glosario de StitchSpeak abierto en un portátil y un móvil dentro de un estudio textil cálido',
@@ -329,14 +330,15 @@ export const SPANISH_WEBSITE_COPY: WebsiteCopy = {
     },
   },
   craft: {
-    title: 'Como un traductor que sabe tejer',
-    body: 'Diseñado específicamente para diseñadores independientes que quieren vender en más de un idioma.',
+    title: 'Traducción que entiende los patrones de punto y ganchillo',
+    body: 'Diseñado específicamente para creadores independientes que quieren publicar y vender patrones en más de un idioma.',
     featureTitle: 'Lenguaje de patrones, no prosa genérica',
     featureBody: 'StitchSpeak entiende de vueltas, repeticiones, abreviaturas y términos como «hebra» o «punto deslizado». Su terminología ha sido revisada por tejedores.',
     sampleOne: 'De japonés a inglés',
     sampleTwo: 'De alemán a inglés (EE. UU.)',
     workspaceTitle: 'Tu espacio de trabajo de traducción',
     workspaceBody: 'Guarda todas tus traducciones en un solo lugar, vuelve a abrirlas más tarde y prepara el texto para tu próximo lanzamiento.',
+    workspaceImageAlt: 'Biblioteca de patrones de punto abierta en una tableta junto a ovillos, agujas, un ganchillo y notas del patrón',
   },
   inside: {
     eyebrow: 'Dentro de la aplicación',
@@ -369,7 +371,7 @@ export const SPANISH_WEBSITE_COPY: WebsiteCopy = {
   },
   faq: {
     eyebrow: 'Información útil',
-    title: 'Antes de enviar un patrón.',
+    title: 'Preguntas sobre la traducción de patrones de punto y ganchillo',
     body: 'Respuestas claras sobre costes, precisión, archivos y privacidad, incluyendo los aspectos en los que la traducción aún necesita tu revisión.',
     cardTitle: 'Creado para patrones. Pero revisado por ti.',
     cardBody: 'Comprueba las tallas, la tensión, el número de puntos, los gráficos y las anotaciones poco comunes antes de publicar, tal como harías con cualquier borrador de traducción.',
