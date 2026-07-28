@@ -451,7 +451,7 @@ describe('tech edit pricing', () => {
     estimatedOutputTokens: Math.ceil((characters / 4) * 1.2),
   });
 
-  it('prices a typical pattern above a translation (two Pro passes)', () => {
+  it('prices a typical pattern above a translation (two quality-first passes)', () => {
     const cost = techEditCostFromMetrics(metricsFor(8));
     expect(cost).toBeGreaterThanOrEqual(PRICING.techEdit.fixedMargin);
     expect(cost % 0.5).toBe(0);

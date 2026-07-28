@@ -1,4 +1,5 @@
 import { Router, type NextFunction, type Request, type Response } from 'express';
+import { createHash } from 'node:crypto';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { isAdminIdentity } from '../middleware/admin.js';
 import { uploadPattern } from '../middleware/upload.js';
@@ -30,8 +31,8 @@ import {
 
 const router = Router();
 
-// Tech editing runs two Gemini Pro passes per request — even more expensive
-// than translation, so cap it tighter.
+// Tech editing runs two quality-first OpenAI passes per request, so cap it
+// tighter than translation.
 const techEditRateLimit = rateLimit({ windowMs: 60_000, max: 10, name: 'tech-edit' });
 
 const NDJSON_CONTENT_TYPE = 'application/x-ndjson';
@@ -184,8 +185,7 @@ router.post('/', requireAuth, techEditRateLimit, uploadPatternSafe, async (req: 
   }
   recordAiProcessingAcknowledgement(userSub);
 
-  // Reuse the translation lease: one heavy Gemini job per account at a time,
-  // whether it's a translation or a tech edit.
+  // Reuse the translation lease: one heavy AI job per account at a time.
   const leaseId = acquireTranslationLease(userSub);
   if (!leaseId) {
     res.status(409).json({
@@ -199,7 +199,7 @@ router.post('/', requireAuth, techEditRateLimit, uploadPatternSafe, async (req: 
 
   try {
     // Server-authoritative billing, mirroring /api/translate: compute the
-    // price from the uploaded bytes and deduct before any Gemini work.
+    // price from the uploaded bytes and deduct before any model work.
     let cost: number;
     let pages: number;
     try {
@@ -262,6 +262,7 @@ router.post('/', requireAuth, techEditRateLimit, uploadPatternSafe, async (req: 
           writeEvent({ type: 'stage', stage, ...(detail ? { detail } : {}) });
         },
         designerPreferences: buildDesignerPreferences(userSub),
+        safetyIdentifier: createHash('sha256').update(userSub).digest('hex'),
       });
 
       let reportId: string | null = null;

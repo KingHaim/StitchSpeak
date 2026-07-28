@@ -167,6 +167,7 @@ app.get('/health/deep', (_req, res) => {
     const checks = {
       config: {
         gemini: Boolean(process.env.GEMINI_API_KEY?.trim()),
+        openai: Boolean(process.env.OPENAI_API_KEY?.trim()),
         googleOAuth: Boolean(process.env.GOOGLE_CLIENT_ID?.trim()),
         lemonSqueezy: isLemonSqueezyConfigured(),
         lemonSqueezyWebhook: isLemonSqueezyWebhookConfigured(),

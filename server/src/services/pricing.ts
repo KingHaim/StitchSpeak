@@ -25,20 +25,18 @@ export const PRICING = {
     freeMessages: 3,
   },
   techEdit: {
-    // Tech editing runs two Gemini Pro passes (structured extraction +
-    // editorial review) with a HIGH thinking budget, so the raw API cost is
-    // roughly double a translation. The margin prices the value: a human tech
-    // edit runs EUR 50-150 per pattern.
-    inputCostPer1MTokens: 2.0,
-    outputCostPer1MTokens: 12.0,
+    // OpenAI GPT-5.6 Sol standard pricing, refreshed July 2026. Tech editing
+    // runs two passes (structured extraction + editorial review). The margin
+    // prices the value: a human tech edit runs EUR 50-150 per pattern.
+    inputCostPer1MTokens: 5.0,
+    outputCostPer1MTokens: 30.0,
     passes: 2,
     fixedMargin: 9.0,
     includedPages: 10,
     pageSurcharge: 1.5,
     pagesPerSurchargeStep: 5,
-    // Hard cap: unlike translation, a tech edit of a huge document blows the
-    // Gemini deadline and degrades report quality, so refuse instead of
-    // just charging more.
+    // Hard cap: very large tech edits increase latency, cost and review noise,
+    // so refuse instead of just charging more.
     maxPages: 40,
   },
   gradingExtract: {

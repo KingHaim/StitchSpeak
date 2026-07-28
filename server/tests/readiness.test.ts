@@ -3,6 +3,7 @@ import { isProductionReady } from '../src/services/readiness';
 
 const healthy = {
   gemini: true,
+  openai: true,
   googleOAuth: true,
   lemonSqueezy: true,
   lemonSqueezyWebhook: true,
@@ -27,5 +28,9 @@ describe('isProductionReady', () => {
 
   it('fails when account recovery cannot send email', () => {
     expect(isProductionReady({ ...healthy, authEmail: false })).toBe(false);
+  });
+
+  it('fails when tech editing cannot reach OpenAI', () => {
+    expect(isProductionReady({ ...healthy, openai: false })).toBe(false);
   });
 });
