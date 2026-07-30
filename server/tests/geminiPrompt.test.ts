@@ -41,4 +41,15 @@ describe('Gemini translation prompts', () => {
     expect(prompt).toMatch(/Leaving English knitting abbreviations untranslated/i);
     expect(prompt).toMatch(/English abbreviations are NOT "international"/i);
   });
+
+  it.each([
+    ['PDF', createSystemInstruction('Danish')],
+    ['document', createDocumentSystemInstruction('Danish')],
+  ])('requires %s cover titles and subtitles to be translated', (_kind, prompt) => {
+    expect(prompt).toContain('TITLE & COVER TEXT');
+    expect(prompt).toContain('Lazos Sweater & Vest');
+    expect(prompt).toContain('Baby & Toddler');
+    expect(prompt).toMatch(/preserve only .*Lazos.*translate .*Sweater & Vest/i);
+    expect(prompt).toMatch(/garment types.*age groups.*audience labels.*conjunctions/i);
+  });
 });

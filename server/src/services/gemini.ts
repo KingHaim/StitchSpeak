@@ -160,6 +160,14 @@ const createSizeFormatPreservationRules = (sectionNumber: number) => `
 - Apply the source's size-format convention consistently everywhere the same size sequence appears. Do not invent a global alternating rule and do not normalize all later sizes into parentheses unless the source does that.
 `;
 
+const createTitleTranslationRules = (sectionNumber: number, language: string) => `
+### ${sectionNumber}. TITLE & COVER TEXT (CRITICAL):
+- Translate every human-language word in the pattern title, subtitle, and other cover headings into ${language}. Cover text is part of the pattern and MUST NOT remain in the source language.
+- Preserve only genuine proper names, designer/brand names, usernames, and product codes. In a mixed title such as "Lazos Sweater & Vest", preserve only "Lazos" and translate "Sweater & Vest" into ${language}.
+- Descriptive words are not protected names: garment types, age groups, audience labels, and conjunctions must be translated. For example, "Baby & Toddler" must be translated into ${language}.
+- Keep the original title hierarchy, styling, and line breaks while translating its wording.
+`;
+
 export const createSystemInstruction = (language: string, sourceLanguage?: string) => {
   const specificRules = getLanguageSpecificRules(language);
 
@@ -204,12 +212,14 @@ The header labels themselves ("Symbol" / "Meaning") must be translated into ${la
 
 ${createSizeFormatPreservationRules(2)}
 
-### 3. LANGUAGE & TECHNICAL RULES:
+${createTitleTranslationRules(3, language)}
+
+### 4. LANGUAGE & TECHNICAL RULES:
 - **NO SOURCE LANGUAGE IN GLOSSARY**: Remove all source-language abbreviations. The glossary must ONLY contain the ${language} abbreviation and its full definition.
 - **100% LOCALIZED**: Use the specific localized abbreviations for ${language} (e.g., MO, Rem, H, 2pjD, ddD, DDC). Never leave English chart/glossary forms such as k2tog, ssk, CDD, knit, or yarn over when the target is not English.
 - **PUNCTUATION**: Maintain the exact punctuation (brackets, colons, slashes) used in the original for sizing.
 
-### 4. OUTPUT FORMAT:
+### 5. OUTPUT FORMAT:
 - Output raw semantic HTML5 wrapped in a single <div>.
 - Use real semantic headings: <h1> for the pattern title, <h2> for major sections (Materials, Gauge, Abbreviations, Pattern, Finishing, etc.), <h3> for sub-sections, and <h4> for sub-sub-sections.
 - THERE MUST BE EXACTLY ONE <h1> IN THE ENTIRE DOCUMENT: the cover/pattern title. Every major section heading (e.g. Sizes, Materials, Gauge, Glossary, Body, Neck, Finishing, Charts) MUST be <h2> — never <h1> — even if it appears large in the source. Do not promote section headings to <h1> just because their font is big.
@@ -218,7 +228,7 @@ ${createSizeFormatPreservationRules(2)}
 - For table cells, use padding and center-alignment where appropriate.
 - DO NOT use markdown code blocks (\`\`\`html).
 
-### 5. IMAGE PLACEMENT (CRITICAL - STRICT FORMAT):
+### 6. IMAGE PLACEMENT (CRITICAL - STRICT FORMAT):
 - You may be given a numbered list of images extracted from the PDF (an "IMAGE CATALOG").
 - Each image has an ID (e.g. IMG_1), a page number, and a description of where it appeared on the page.
 - The catalog may also list "IMAGE ROW GROUPS" with IDs like ROW_1. A row group means those images sat side-by-side on the same horizontal row in the original document.
@@ -234,7 +244,7 @@ ${createSizeFormatPreservationRules(2)}
 - Do NOT invent IDs that are not in the catalog. The server will inject the actual images for every valid marker.
 - If no IMAGE CATALOG is provided, ignore this section.
 
-### 6. HEADING STYLING (STANDARD TEXT STYLE):
+### 7. HEADING STYLING (STANDARD TEXT STYLE):
 - A TYPOGRAPHY HINTS list may be provided.
 - Pattern text must use the app standard typography: Arial and black. Do NOT emit inline font-family or color styles for any text.
 - For each hint, when you emit the equivalent translated heading text, use the suggested tag (h1/h2/h3/h4) and, when useful, add only the suggested size in this exact pattern: style="font-size: <ratio>em;"
@@ -244,7 +254,7 @@ ${createSizeFormatPreservationRules(2)}
 - If no hint matches a section, still choose the correct semantic heading tag from the rules above, but omit the inline style.
 - If a BODY font hint is provided, ignore its font family and color; use it only as a guide for structure, spacing, or relative sizing.
 
-### 7. BILINGUAL ALIGNMENT (CRITICAL):
+### 8. BILINGUAL ALIGNMENT (CRITICAL):
 - On EVERY block-level text element you output — specifically <h1>, <h2>, <h3>, <h4>, <p>, and <li> — add TWO attributes:
   1. data-seg="N": a sequential integer starting at 1 and increasing by exactly 1 for each such block in document order. Never skip or repeat a number.
   2. data-o="...": the ORIGINAL, UNTRANSLATED source-language text of that exact block, as PLAIN TEXT (no HTML tags inside). HTML-escape it by replacing & with &amp;, " with &quot;, < with &lt;, and > with &gt;.
@@ -320,7 +330,7 @@ async function translatePdf(
         {
           parts: [
             {
-              text: `${sourcePromptClause} and visually reconstruct this knitting pattern into ${language}. Pay special attention to TABLES and STITCH CHARTS; convert all of them into HTML <table> structures. Preserve the source pattern's exact multi-size formatting, including each size list's parentheses, commas, spacing, and bold/plain size markers. Ensure every technical term is correctly localized and all source language text is removed. Return raw HTML.`,
+              text: `${sourcePromptClause} and visually reconstruct this knitting pattern into ${language}. Translate every title and subtitle descriptor into ${language}; preserve only genuine proper names or brand names. Pay special attention to TABLES and STITCH CHARTS; convert all of them into HTML <table> structures. Preserve the source pattern's exact multi-size formatting, including each size list's parentheses, commas, spacing, and bold/plain size markers. Ensure every technical term is correctly localized and all source language text is removed. Return raw HTML.`,
             },
             ...(catalogInstruction ? [{ text: catalogInstruction }] : []),
             ...(typographyInstruction ? [{ text: typographyInstruction }] : []),
@@ -387,19 +397,21 @@ export const createDocumentSystemInstruction = (language: string, sourceLanguage
 
 ${createSizeFormatPreservationRules(3)}
 
-### 4. LANGUAGE & TECHNICAL RULES:
+${createTitleTranslationRules(4, language)}
+
+### 5. LANGUAGE & TECHNICAL RULES:
 - **NO SOURCE LANGUAGE**: Remove all source-language abbreviations and text. The output must be fully ${language}.
 - **100% LOCALIZED**: Use the specific localized abbreviations for ${language}.
 - **PUNCTUATION**: Maintain the exact punctuation (brackets, colons, slashes) used in the original for sizing.
 
-### 5. OUTPUT FORMAT:
+### 6. OUTPUT FORMAT:
 - Output raw semantic HTML5 wrapped in a single <div>. DO NOT use markdown code blocks (\`\`\`html).
 - Use real semantic headings: <h1> for the pattern title, <h2> for major sections (Materials, Gauge, Abbreviations, Pattern, Finishing, etc.), <h3> for sub-sections, <h4> for sub-sub-sections.
 - THERE MUST BE EXACTLY ONE <h1> (the pattern title). Never promote ordinary section headings to <h1>; major sections are always <h2>.
 - Use <strong> ONLY where the source uses bold for inline emphasis or size markers, and for true inline emphasis in translated text — never as a section header.
 - For tables, use <table style="width: 100%; border-collapse: collapse; margin: 1em 0; border: 1px solid #ccc;"> with padded cells.
 
-### 6. BILINGUAL ALIGNMENT (CRITICAL):
+### 7. BILINGUAL ALIGNMENT (CRITICAL):
 - On EVERY block-level text element you output — specifically <h1>, <h2>, <h3>, <h4>, <p>, and <li> — add TWO attributes:
   1. data-seg="N": a sequential integer starting at 1 and increasing by exactly 1 for each such block in document order. Never skip or repeat a number.
   2. data-o="...": the ORIGINAL, UNTRANSLATED source-language text of that exact block, as PLAIN TEXT (no HTML tags inside). HTML-escape it by replacing & with &amp;, " with &quot;, < with &lt;, and > with &gt;.
@@ -468,7 +480,7 @@ async function translateDocumentHtml(
         {
           parts: [
             {
-              text: `${sourcePromptClause} and faithfully reconstruct the following knitting pattern into ${language}. The pattern is provided as HTML extracted from a word-processor document. Preserve all structure and TABLES, keep every [IMG_n] marker exactly in place, preserve the source pattern's exact multi-size formatting including each size list's parentheses, commas, spacing, and bold/plain size markers, localize every technical term, and remove all source-language text. Return raw HTML.\n\n--- SOURCE PATTERN (HTML) ---\n${marked}\n--- END SOURCE PATTERN ---`,
+              text: `${sourcePromptClause} and faithfully reconstruct the following knitting pattern into ${language}. The pattern is provided as HTML extracted from a word-processor document. Translate every title and subtitle descriptor into ${language}; preserve only genuine proper names or brand names. Preserve all structure and TABLES, keep every [IMG_n] marker exactly in place, preserve the source pattern's exact multi-size formatting including each size list's parentheses, commas, spacing, and bold/plain size markers, localize every technical term, and remove all source-language text. Return raw HTML.\n\n--- SOURCE PATTERN (HTML) ---\n${marked}\n--- END SOURCE PATTERN ---`,
             },
           ],
         },
