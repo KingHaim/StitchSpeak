@@ -15,6 +15,7 @@ import {
   deleteAllPatterns,
 } from '../services/patternStore.js';
 import { deleteAllTechEdits } from '../services/techEditStore.js';
+import { deleteTranslationMemory, listTranslationMemory } from '../services/translationMemoryStore.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -43,6 +44,9 @@ router.get('/export', rateLimit({ windowMs: 60 * 60 * 1000, max: 3, name: 'accou
     legalAcknowledgements: listLegalAcknowledgements(userSub),
     patternCount: patterns.length,
   }, null, 2), { name: 'account.json' });
+  archive.append(JSON.stringify(listTranslationMemory(userSub), null, 2), {
+    name: 'translation-memory.json',
+  });
 
   for (const pattern of patterns) {
     const full = getPattern(userSub, pattern.id);
@@ -76,11 +80,12 @@ router.delete('/', rateLimit({ windowMs: 60 * 60 * 1000, max: 5, name: 'account-
   const financial = deleteCreditAccount(userSub);
   const patternsDeleted = deleteAllPatterns(userSub);
   deleteAllTechEdits(userSub);
+  const translationMemoryDeleted = deleteTranslationMemory(userSub);
   revokeAllSessionsForSub(userSub);
   deleteLegalAcknowledgements(userSub);
   const credentialsDeleted = deleteEmailAccount(userSub);
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ ok: true, patternsDeleted, credentialsDeleted, ...financial });
+  res.json({ ok: true, patternsDeleted, translationMemoryDeleted, credentialsDeleted, ...financial });
 });
 
 export default router;

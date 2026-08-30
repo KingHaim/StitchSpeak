@@ -1,6 +1,5 @@
 import type { CreditPackage } from '../types';
 import { apiUrl, authHeaders } from './apiBase';
-import { captureEvent } from './analytics';
 
 async function apiFetch(
   path: string,
@@ -81,7 +80,6 @@ export async function getPackages(idToken: string): Promise<CreditPackagesRespon
  * Squeezy confirms payment — the client can no longer mutate its own balance.
  */
 export async function createCheckoutSession(idToken: string, packId: string): Promise<string> {
-  captureEvent('checkout_started', { pack_id: packId });
   const data = await apiFetch('/checkout', idToken, 'POST', { packId });
   if (typeof data.url !== 'string') {
     throw new Error('Checkout could not be started. Please try again.');

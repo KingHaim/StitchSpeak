@@ -109,7 +109,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     nl: { abbreviation: 'VK', full: 'voorkant' },
     sv: { abbreviation: 'RS', full: 'rätsida' },
     no: { abbreviation: 'rs', full: 'rettside' },
-    da: { abbreviation: 'rs', full: 'retside' },
+    da: { abbreviation: 'rs', full: 'retsiden' },
     fi: { abbreviation: 'op', full: 'oikea puoli' },
     ja: { abbreviation: '表', full: '表側' },
     ko: { abbreviation: '겉면', full: '겉면' },
@@ -125,7 +125,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     nl: { abbreviation: 'AK', full: 'achterkant' },
     sv: { abbreviation: 'AS', full: 'avigsida' },
     no: { abbreviation: 'vrs', full: 'vrangside' },
-    da: { abbreviation: 'vs', full: 'vrangside' },
+    da: { abbreviation: 'vs', full: 'vrangsiden' },
     fi: { abbreviation: 'np', full: 'nurja puoli' },
     ja: { abbreviation: '裏', full: '裏側' },
     ko: { abbreviation: '안면', full: '안면' },
@@ -471,7 +471,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
   } },
   { id: 'm1l', category: 'stitch', terms: {
     en: { abbreviation: 'M1L', full: 'make one left' },
-    es: { abbreviation: 'Aum1I', full: 'aumentar 1 izquierda' },
+    es: { abbreviation: 'A1I', full: 'aumentar 1 hacia la izquierda' },
     de: { abbreviation: '1 M li zun', full: '1 Masche links zunehmen' },
     fr: { abbreviation: 'aug 1 G', full: 'augmenter 1 gauche' },
     pt: { abbreviation: 'Aum1E', full: 'aumentar 1 esquerda' },
@@ -487,7 +487,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
   } },
   { id: 'm1r', category: 'stitch', terms: {
     en: { abbreviation: 'M1R', full: 'make one right' },
-    es: { abbreviation: 'Aum1D', full: 'aumentar 1 derecha' },
+    es: { abbreviation: 'A1D', full: 'aumentar 1 hacia la derecha' },
     de: { abbreviation: '1 M re zun', full: '1 Masche rechts zunehmen' },
     fr: { abbreviation: 'aug 1 D', full: 'augmenter 1 droite' },
     pt: { abbreviation: 'Aum1D', full: 'aumentar 1 direita' },
@@ -1032,6 +1032,16 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     ja: { abbreviation: '輪針', full: '輪針' },
     ko: { abbreviation: '줄바늘', full: '줄바늘 / 원형바늘' },
     ru: { abbreviation: 'круг.сп', full: 'круговые спицы' },
+  } },
+  { id: 'pm', category: 'tool', terms: {
+    en: { abbreviation: 'pm', full: 'place marker' },
+    es: { abbreviation: 'pm', full: 'poner marcador' },
+    da: { abbreviation: 'pm', full: 'Placer markør' },
+  } },
+  { id: 'slm', category: 'tool', terms: {
+    en: { abbreviation: 'sm', full: 'slip marker' },
+    es: { abbreviation: 'dm', full: 'deslizar marcador' },
+    da: { abbreviation: 'fm', full: 'Flyt markør' },
   } },
   { id: 'sm', category: 'tool', terms: {
     en: { abbreviation: 'SM', full: 'stitch marker' },

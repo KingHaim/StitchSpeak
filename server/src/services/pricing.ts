@@ -41,6 +41,11 @@ export const PRICING = {
     // just charging more.
     maxPages: 40,
   },
+  techEditQuestion: {
+    // A focused follow-up only sends the selected finding, report summary,
+    // and that finding's short conversation history to a Flash model.
+    cost: 0.1,
+  },
   gradingExtract: {
     // One Gemini Pro structured-extraction pass over the pattern document
     // (half a tech edit's API work), pulling gauge, sizes, the measurement

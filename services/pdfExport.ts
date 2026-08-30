@@ -1,7 +1,11 @@
 const EXPORT_WIDTH_PX = 816;
 const PAGE_MARGIN_PT = 36;
 const EMU_PER_PIXEL = 9525;
-const MAX_DOCX_IMAGE_WIDTH_PX = 520;
+// US Letter with 1-inch margins has a 6.5 × 9-inch content area at 96 CSS px/in.
+// Leave some vertical breathing room so an inline image and its paragraph mark
+// cannot cross the printable boundary in Word/LibreOffice.
+export const MAX_DOCX_IMAGE_WIDTH_PX = 624;
+export const MAX_DOCX_IMAGE_HEIGHT_PX = 792;
 
 const PATTERN_EXPORT_CSS = `
   .pdf-pattern {
@@ -93,11 +97,37 @@ export interface PatternExportOptions {
   languageCode?: string;
 }
 
-function getExportBaseFileName(html: string, options: PatternExportOptions = {}): string {
+// Export filenames follow the market abbreviations commonly used by pattern
+// designers. Keep these separate from the ISO 639-1 codes used internally for
+// translation and glossary lookup (for example da → DK, sv → SE).
+export const EXPORT_FILE_LANGUAGE_CODES: Readonly<Record<string, string>> = {
+  en: 'EN',
+  de: 'DE',
+  fr: 'FR',
+  es: 'ES',
+  it: 'IT',
+  nl: 'NL',
+  sv: 'SE',
+  no: 'NO',
+  da: 'DK',
+  fi: 'FI',
+  pt: 'PT',
+  ja: 'JP',
+  ko: 'KR',
+  ru: 'RU',
+};
+
+export function getExportLanguageCode(languageCode?: string): string | undefined {
+  const normalized = languageCode?.trim().toLowerCase();
+  if (!normalized) return undefined;
+  return EXPORT_FILE_LANGUAGE_CODES[normalized] ?? normalized.toUpperCase();
+}
+
+export function getExportBaseFileName(html: string, options: PatternExportOptions = {}): string {
   const sourceBaseName = options.sourceFileName
     ? sanitizeDownloadFileName(stripFileExtension(options.sourceFileName))
     : getBaseFileName(html);
-  const languageSuffix = options.languageCode?.trim().toUpperCase();
+  const languageSuffix = getExportLanguageCode(options.languageCode);
 
   return languageSuffix ? `${sourceBaseName} ${languageSuffix}` : sourceBaseName;
 }
@@ -118,6 +148,8 @@ interface DocxImage {
 
 interface DocxBuildContext {
   imageMap: WeakMap<HTMLImageElement, DocxImage>;
+  titleSeen: boolean;
+  previousBlockWasCoverHeading: boolean;
 }
 
 function triggerDownload(blob: Blob, fileName: string): void {
@@ -184,9 +216,14 @@ function textRun(text: string, options: TextRunOptions = {}): string {
   return `<w:r>${properties ? `<w:rPr>${properties}</w:rPr>` : ''}${body}</w:r>`;
 }
 
-function paragraph(runs: string, styleId?: string): string {
-  const style = styleId ? `<w:pPr><w:pStyle w:val="${styleId}"/></w:pPr>` : '';
-  return `<w:p>${style}${runs}</w:p>`;
+type ParagraphAlignment = 'left' | 'center' | 'right' | 'both';
+
+function paragraph(runs: string, styleId?: string, alignment?: ParagraphAlignment): string {
+  const properties = [
+    styleId ? `<w:pStyle w:val="${styleId}"/>` : '',
+    alignment ? `<w:jc w:val="${alignment}"/>` : '',
+  ].filter(Boolean).join('');
+  return `<w:p>${properties ? `<w:pPr>${properties}</w:pPr>` : ''}${runs}</w:p>`;
 }
 
 function isBlockElement(element: Element): boolean {
@@ -272,33 +309,52 @@ function parseStylePixelValue(style: string, property: string): number | null {
   return Number.isFinite(value) && value > 0 ? value : null;
 }
 
-function getDocxImageSize(
+function parseDimensionAttribute(image: HTMLImageElement, attribute: string): number | null {
+  const raw = image.getAttribute(attribute)?.trim();
+  if (!raw || !/^\d+(?:\.\d+)?(?:px)?$/i.test(raw)) return null;
+  const value = Number.parseFloat(raw);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+export function getDocxImageSize(
   image: HTMLImageElement,
   measured: { width: number; height: number },
 ): { width: number; height: number } {
   const style = image.getAttribute('style') ?? '';
-  const styledWidth = parseStylePixelValue(style, 'width');
-  const styledHeight = parseStylePixelValue(style, 'height');
+  const styledWidth = parseStylePixelValue(style, 'width') ?? parseDimensionAttribute(image, 'width');
+  const styledHeight = parseStylePixelValue(style, 'height') ?? parseDimensionAttribute(image, 'height');
   const maxWidth = parseStylePixelValue(style, 'max-width');
   const maxHeight = parseStylePixelValue(style, 'max-height');
 
-  let width = styledWidth ?? measured.width;
-  let height = styledHeight ?? Math.max(1, Math.round(measured.height * (width / measured.width)));
+  const naturalWidth = Math.max(1, measured.width);
+  const naturalHeight = Math.max(1, measured.height);
+  const requestedScales = [
+    styledWidth ? styledWidth / naturalWidth : null,
+    styledHeight ? styledHeight / naturalHeight : null,
+  ].filter((scale): scale is number => scale !== null);
+  let scale = requestedScales.length > 0 ? Math.min(...requestedScales) : 1;
 
-  if (maxWidth && width > maxWidth) {
-    width = maxWidth;
-    height = Math.max(1, Math.round(measured.height * (width / measured.width)));
-  }
-  if (maxHeight && height > maxHeight) {
-    height = maxHeight;
-    width = Math.max(1, Math.round(measured.width * (height / measured.height)));
-  }
-  if (width > MAX_DOCX_IMAGE_WIDTH_PX) {
-    width = MAX_DOCX_IMAGE_WIDTH_PX;
-    height = Math.max(1, Math.round(measured.height * (width / measured.width)));
-  }
+  const limitingScales = [
+    maxWidth ? maxWidth / naturalWidth : null,
+    maxHeight ? maxHeight / naturalHeight : null,
+    MAX_DOCX_IMAGE_WIDTH_PX / naturalWidth,
+    MAX_DOCX_IMAGE_HEIGHT_PX / naturalHeight,
+  ].filter((candidate): candidate is number => candidate !== null);
+  scale = Math.min(scale, ...limitingScales);
+
+  const width = naturalWidth * scale;
+  const height = naturalHeight * scale;
 
   return { width: Math.max(1, Math.round(width)), height: Math.max(1, Math.round(height)) };
+}
+
+function elementAlignment(element: Element): ParagraphAlignment | undefined {
+  const explicit = element.getAttribute('align')?.toLowerCase();
+  const style = element.getAttribute('style') ?? '';
+  const styled = style.match(/(?:^|;)\s*text-align\s*:\s*(left|center|right|justify)\b/i)?.[1]?.toLowerCase();
+  const value = styled ?? explicit;
+  if (value === 'justify') return 'both';
+  return value === 'left' || value === 'center' || value === 'right' ? value : undefined;
 }
 
 function imageRun(image: DocxImage): string {
@@ -376,24 +432,39 @@ function inlineRuns(node: Node, context: DocxBuildContext, options: TextRunOptio
 function blockToDocx(node: Element, context: DocxBuildContext, listPrefix?: string): string {
   const tagName = node.tagName.toLowerCase();
   if (tagName === 'img') {
+    if (context.titleSeen) context.previousBlockWasCoverHeading = false;
     return paragraph(inlineRuns(node, context));
   }
 
   const runs = Array.from(node.childNodes).map((child) => inlineRuns(child, context)).join('');
 
   switch (tagName) {
-    case 'h1':
-      return paragraph(runs, 'Heading1');
-    case 'h2':
-      return paragraph(runs, 'Heading2');
+    case 'h1': {
+      const isTitle = !context.titleSeen;
+      const isCoverSubtitle = context.titleSeen && context.previousBlockWasCoverHeading;
+      const style = isTitle ? 'PatternTitle' : isCoverSubtitle ? 'PatternSubtitle' : 'Heading1';
+      context.titleSeen = true;
+      context.previousBlockWasCoverHeading = isTitle;
+      return paragraph(runs, style, elementAlignment(node));
+    }
+    case 'h2': {
+      const isCoverSubtitle = context.titleSeen && context.previousBlockWasCoverHeading;
+      context.previousBlockWasCoverHeading = false;
+      return paragraph(runs, isCoverSubtitle ? 'PatternSubtitle' : 'Heading2', elementAlignment(node));
+    }
     case 'h3':
     case 'h4':
     case 'h5':
-    case 'h6':
-      return paragraph(runs, 'Heading3');
+    case 'h6': {
+      const isCoverSubtitle = context.titleSeen && context.previousBlockWasCoverHeading;
+      context.previousBlockWasCoverHeading = false;
+      return paragraph(runs, isCoverSubtitle ? 'PatternSubtitle' : 'Heading3', elementAlignment(node));
+    }
     case 'li':
+      context.previousBlockWasCoverHeading = false;
       return paragraph(textRun(`${listPrefix ?? '•'} `) + runs);
     case 'tr': {
+      context.previousBlockWasCoverHeading = false;
       const cellText = Array.from(node.querySelectorAll('th, td'))
         .map((cell) => cell.textContent?.trim())
         .filter(Boolean)
@@ -404,8 +475,10 @@ function blockToDocx(node: Element, context: DocxBuildContext, listPrefix?: stri
     case 'div':
     case 'section':
     case 'article':
+      context.previousBlockWasCoverHeading = false;
       return runs.trim() ? paragraph(runs) : '';
     default:
+      context.previousBlockWasCoverHeading = false;
       return runs.trim() ? paragraph(runs) : '';
   }
 }
@@ -545,7 +618,11 @@ async function htmlToDocxBody(html: string): Promise<{ bodyXml: string; images: 
     const embeddedImage = images.find((candidate) => candidate.fileName === `image${index + 1}.${getImageExtension(candidate.contentType)}`);
     if (embeddedImage) imageMap.set(image, embeddedImage);
   });
-  const context: DocxBuildContext = { imageMap };
+  const context: DocxBuildContext = {
+    imageMap,
+    titleSeen: false,
+    previousBlockWasCoverHeading: false,
+  };
 
   const walk = (element: Element, listType?: 'ol' | 'ul') => {
     const tagName = element.tagName.toLowerCase();
@@ -593,7 +670,7 @@ async function htmlToDocxBody(html: string): Promise<{ bodyXml: string; images: 
   };
 }
 
-async function buildDocxDocumentXml(html: string): Promise<{ documentXml: string; images: DocxImage[] }> {
+export async function buildDocxDocumentXml(html: string): Promise<{ documentXml: string; images: DocxImage[] }> {
   const { bodyXml, images } = await htmlToDocxBody(html);
   const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document
@@ -735,6 +812,41 @@ export function exportPatternText(html: string, options?: PatternExportOptions):
   triggerDownload(new Blob([text], { type: 'text/plain;charset=utf-8' }), fileName);
 }
 
+export function buildDocxStylesXml(): string {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:default="1" w:styleId="Normal">
+    <w:name w:val="Normal"/>
+    <w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:color w:val="000000"/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr>
+  </w:style>
+  <w:style w:type="paragraph" w:styleId="PatternTitle">
+    <w:name w:val="Pattern Title"/><w:basedOn w:val="Normal"/><w:next w:val="PatternSubtitle"/><w:qFormat/>
+    <w:pPr><w:spacing w:before="0" w:after="80"/></w:pPr>
+    <w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:color w:val="000000"/><w:b/><w:sz w:val="56"/><w:szCs w:val="56"/></w:rPr>
+  </w:style>
+  <w:style w:type="paragraph" w:styleId="PatternSubtitle">
+    <w:name w:val="Pattern Subtitle"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>
+    <w:pPr><w:spacing w:before="0" w:after="240"/></w:pPr>
+    <w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:color w:val="000000"/><w:b/><w:sz w:val="40"/><w:szCs w:val="40"/></w:rPr>
+  </w:style>
+  <w:style w:type="paragraph" w:styleId="Heading1">
+    <w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>
+    <w:pPr><w:keepNext/><w:spacing w:before="320" w:after="120"/><w:outlineLvl w:val="0"/></w:pPr>
+    <w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:color w:val="000000"/><w:b/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr>
+  </w:style>
+  <w:style w:type="paragraph" w:styleId="Heading2">
+    <w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>
+    <w:pPr><w:keepNext/><w:spacing w:before="280" w:after="100"/><w:outlineLvl w:val="1"/></w:pPr>
+    <w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:color w:val="000000"/><w:b/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr>
+  </w:style>
+  <w:style w:type="paragraph" w:styleId="Heading3">
+    <w:name w:val="heading 3"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>
+    <w:pPr><w:keepNext/><w:spacing w:before="220" w:after="80"/><w:outlineLvl w:val="2"/></w:pPr>
+    <w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:color w:val="000000"/><w:b/><w:sz w:val="26"/><w:szCs w:val="26"/></w:rPr>
+  </w:style>
+</w:styles>`;
+}
+
 export async function exportPatternDoc(html: string, options?: PatternExportOptions): Promise<void> {
   const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
@@ -763,25 +875,7 @@ ${imageContentTypes ? `${imageContentTypes}\n` : ''}
 </Relationships>`);
   const wordFolder = zip.folder('word');
   wordFolder?.file('document.xml', documentXml);
-  wordFolder?.file('styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:style w:type="paragraph" w:default="1" w:styleId="Normal">
-    <w:name w:val="Normal"/>
-    <w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:color w:val="000000"/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr>
-  </w:style>
-  <w:style w:type="paragraph" w:styleId="Heading1">
-    <w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>
-    <w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:color w:val="000000"/><w:b/><w:sz w:val="36"/></w:rPr>
-  </w:style>
-  <w:style w:type="paragraph" w:styleId="Heading2">
-    <w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>
-    <w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:color w:val="000000"/><w:b/><w:sz w:val="28"/></w:rPr>
-  </w:style>
-  <w:style w:type="paragraph" w:styleId="Heading3">
-    <w:name w:val="heading 3"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>
-    <w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:color w:val="000000"/><w:b/><w:sz w:val="24"/></w:rPr>
-  </w:style>
-</w:styles>`);
+  wordFolder?.file('styles.xml', buildDocxStylesXml());
   wordFolder?.folder('_rels')?.file('document.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 ${images.map((image) => `  <Relationship Id="${image.relationshipId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${image.fileName}"/>`).join('\n')}

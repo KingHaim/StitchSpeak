@@ -4,6 +4,9 @@ export interface CheckoutExpectation {
   packId: string;
   baselineBalance: number;
   credits: number;
+  amountEur?: number;
+  analyticsFlowId?: string;
+  analyticsPlacement?: string;
   startedAt: number;
 }
 

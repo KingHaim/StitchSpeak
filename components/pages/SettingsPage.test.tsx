@@ -12,6 +12,12 @@ const creditServiceMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../services/creditService', () => creditServiceMocks);
+vi.mock('../../services/translationMemoryService', () => ({
+  getTranslationMemory: vi.fn().mockResolvedValue({ entries: [], total: 0 }),
+  importTranslationMemory: vi.fn(),
+  clearTranslationMemory: vi.fn(),
+  parseTranslationMemoryFile: vi.fn(),
+}));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

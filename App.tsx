@@ -7,6 +7,7 @@ import { BetaCampaignPage } from './components/pages/BetaCampaignPage';
 import { AccountActionPage } from './components/pages/AccountActionPage';
 import type { PageId } from './types';
 import { pageFromPath, pathForPage } from './services/navigation';
+import { capturePageView } from './services/analytics';
 
 const DashboardPage = lazy(() =>
   import('./components/pages/DashboardPage').then((module) => ({
@@ -52,6 +53,10 @@ const App: React.FC = () => {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  useEffect(() => {
+    capturePageView(pathname);
+  }, [pathname]);
 
   useEffect(() => {
     if (!isAuthenticated || pathname !== '/') return;

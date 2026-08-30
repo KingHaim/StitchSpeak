@@ -462,4 +462,8 @@ describe('tech edit pricing', () => {
     const extra = techEditCostFromMetrics(metricsFor(PRICING.techEdit.includedPages + 5));
     expect(extra - base).toBeCloseTo(PRICING.techEdit.pageSurcharge, 5);
   });
+
+  it('charges a small fixed amount for one focused finding question', () => {
+    expect(PRICING.techEditQuestion.cost).toBe(0.1);
+  });
 });

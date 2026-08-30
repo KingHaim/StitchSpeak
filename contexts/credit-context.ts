@@ -8,7 +8,10 @@ export type CreditContextValue = {
   isLoading: boolean;
   applyBalance: (balance: number) => void;
   refreshBalance: () => Promise<void>;
-  startCheckout: (packId: string) => Promise<void>;
+  startCheckout: (
+    packId: string,
+    analytics?: { flowId?: string; placement?: string },
+  ) => Promise<void>;
   checkoutReturnStatus: CheckoutReturnStatus;
   retryCheckoutReconciliation: () => Promise<void>;
   dismissCheckoutReturn: () => void;

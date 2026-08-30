@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { acceptInvite, confirmPasswordReset, verifyEmail } from '../../services/api';
+import { analyticsErrorCode, captureEvent } from '../../services/analytics';
 
 interface AccountActionPageProps {
   mode: 'verify' | 'reset' | 'invite';
@@ -20,10 +21,12 @@ export const AccountActionPage: React.FC<AccountActionPageProps> = ({ mode }) =>
     }
     void verifyEmail(token)
       .then(() => {
+        captureEvent('signup_completed', { method: 'email' });
         setStatus('success');
         setMessage('Your email is verified and your account is ready.');
       })
       .catch((err) => {
+        captureEvent('signup_failed', { method: 'email', error_code: analyticsErrorCode(err) });
         setStatus('error');
         setMessage(err instanceof Error ? err.message : 'This verification link is invalid or expired.');
       });
@@ -39,7 +42,9 @@ export const AccountActionPage: React.FC<AccountActionPageProps> = ({ mode }) =>
     setStatus('working');
     try {
       if (mode === 'invite') {
+        captureEvent('signup_started', { method: 'invite' });
         await acceptInvite(token, password);
+        captureEvent('signup_completed', { method: 'invite' });
         setStatus('success');
         setMessage('Your password is set and your account is ready.');
       } else {
@@ -48,6 +53,9 @@ export const AccountActionPage: React.FC<AccountActionPageProps> = ({ mode }) =>
         setMessage('Your password has been changed. Sign in with the new password.');
       }
     } catch (err) {
+      if (mode === 'invite') {
+        captureEvent('signup_failed', { method: 'invite', error_code: analyticsErrorCode(err) });
+      }
       setStatus('error');
       setMessage(
         err instanceof Error

@@ -537,6 +537,13 @@ export function buildImageCatalog(images: ExtractedImage[]): string {
     );
   }
 
+  sections.push(
+    '',
+    '--- DECORATIVE HEADING EXCEPTION ---',
+    'If an image is primarily stylized words used as a section heading (for example, "Materials Needed"), translate those words into a semantic <h2>/<h3> at the same position and omit that image marker.',
+    'If the same image also contains meaningful illustration, keep the marker and add the translated semantic heading beside or below it.',
+  );
+
   sections.push('--- END IMAGE CATALOG ---');
   return `\n${sections.join('\n')}`;
 }

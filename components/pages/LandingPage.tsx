@@ -10,6 +10,7 @@ import {
 import { CloseIcon } from '../icons/CloseIcon';
 import { AuthDialog } from '../AuthDialog';
 import { WebsiteLanguageSelector } from '../WebsiteLanguageSelector';
+import { captureEvent } from '../../services/analytics';
 
 const DashboardPage = lazy(() =>
   import('./DashboardPage').then((module) => ({ default: module.DashboardPage })),
@@ -386,10 +387,16 @@ export const LandingPage: React.FC = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  const navigateLanding = useCallback((nextView: LandingView) => {
+  const navigateLanding = useCallback((nextView: LandingView, ctaId = 'brand_navigation', placement = 'navigation') => {
     const nextPath = nextView === 'translate' ? '/translate' : '/';
+    captureEvent('landing_cta_clicked', {
+      cta_id: ctaId,
+      placement,
+      destination: nextPath,
+    });
     if (window.location.pathname !== nextPath) {
       window.history.pushState({}, '', nextPath);
+      window.dispatchEvent(new PopStateEvent('popstate'));
     }
     setView(nextView);
   }, []);
@@ -408,6 +415,20 @@ export const LandingPage: React.FC = () => {
   };
 
   const openCreditPurchaseFlow = (packIndex: number) => {
+    const pack = CREDIT_PACKAGES[packIndex];
+    if (pack) {
+      captureEvent('credit_pack_selected', {
+        pack_id: pack.id,
+        placement: 'landing_pricing',
+        credits: pack.credits,
+        amount_eur: pack.price,
+      });
+      captureEvent('landing_cta_clicked', {
+        cta_id: `buy_${pack.id}`,
+        placement: 'landing_pricing',
+        destination: '/translate',
+      });
+    }
     try {
       sessionStorage.setItem(PENDING_BUY_CREDITS_PACK_INDEX_KEY, String(packIndex));
     } catch {
@@ -421,7 +442,7 @@ export const LandingPage: React.FC = () => {
       <div className="min-h-screen bg-background text-on-surface font-body">
         <header className="bg-background/95 dark:bg-on-surface/95 backdrop-blur-xl sticky top-0 z-50 shadow-sm dark:shadow-none border-b border-outline-variant/20">
           <div className="flex justify-between items-center px-6 sm:px-8 py-4 max-w-7xl mx-auto">
-            <BrandLockup asButton onClick={() => navigateLanding('home')} />
+            <BrandLockup asButton onClick={() => navigateLanding('home', 'brand_logo', 'translate_header')} />
             <div className="flex items-center shrink-0">
               <LandingGoogleSignIn
                 layout="header"
@@ -445,6 +466,7 @@ export const LandingPage: React.FC = () => {
         <AuthDialog
           isOpen={showAuthDialog}
           locale={websiteLocale}
+          source="translate_header"
           onClose={() => setShowAuthDialog(false)}
         />
       </div>
@@ -496,7 +518,7 @@ export const LandingPage: React.FC = () => {
               </h1>
               <p className="market-hero-body">{copy.hero.body}</p>
               <div className="market-hero-actions">
-                <button type="button" className="market-primary-action" onClick={() => navigateLanding('translate')}>
+                <button type="button" className="market-primary-action" onClick={() => navigateLanding('translate', 'start_translating', 'hero')}>
                   {copy.hero.primaryAction}
                   <Icon name="arrow_outward" />
                 </button>
@@ -769,7 +791,7 @@ export const LandingPage: React.FC = () => {
             </div>
             <button
               type="button"
-              onClick={() => navigateLanding('translate')}
+              onClick={() => navigateLanding('translate', 'start_translating', 'closing')}
               className="shrink-0 rounded-xl bg-background px-6 py-3.5 font-bold text-primary transition-transform hover:-translate-y-0.5 active:translate-y-0"
             >
               {copy.closing.action}
@@ -821,6 +843,7 @@ export const LandingPage: React.FC = () => {
       <AuthDialog
         isOpen={showAuthDialog}
         locale={websiteLocale}
+        source={showCreditPurchaseModal ? 'landing_pricing' : 'landing_header'}
         onClose={() => setShowAuthDialog(false)}
       />
 

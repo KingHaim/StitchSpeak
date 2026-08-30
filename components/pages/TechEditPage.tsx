@@ -10,6 +10,8 @@ import { loadHistory, loadPatternSource } from '../../services/historyService';
 import {
   listTechEdits,
   getTechEdit,
+  getFindingQuestions,
+  askFindingQuestion,
   deleteTechEdit,
   setFindingResolution,
   TechEditError,
@@ -21,6 +23,7 @@ import { PRICING } from '../../constants';
 import type {
   CreditPackage,
   PdfMetrics,
+  TechEditFindingMessage,
   TechEditRecord,
   TechEditReport,
   TechEditResolution,
@@ -313,6 +316,46 @@ export const TechEditPage: React.FC = () => {
     [savedReportView, job, jobResolutions, idToken],
   );
 
+  const activeReportId = savedReportView?.reportId
+    ?? (job?.status === 'complete' ? job.reportId : null)
+    ?? null;
+
+  const handleLoadFindingQuestions = useCallback(
+    async (findingIndex: number): Promise<TechEditFindingMessage[]> => {
+      if (!activeReportId) throw new Error('This report was not saved, so questions are unavailable.');
+      const result = await getFindingQuestions(idToken, activeReportId, findingIndex);
+      return result.messages;
+    },
+    [activeReportId, idToken],
+  );
+
+  const handleAskFinding = useCallback(
+    async (findingIndex: number, question: string): Promise<TechEditFindingMessage[]> => {
+      if (!activeReportId) throw new Error('This report was not saved, so questions are unavailable.');
+      try {
+        const result = await askFindingQuestion(
+          idToken,
+          activeReportId,
+          findingIndex,
+          question,
+        );
+        void refreshBalance();
+        return result.messages;
+      } catch (err) {
+        void refreshBalance();
+        if (err instanceof TechEditError && err.status === 402) {
+          setIsBuyCreditsOpen(true);
+          throw new Error(
+            "You don't have enough credits for this question. Add credits and try again.",
+            { cause: err },
+          );
+        }
+        throw err;
+      }
+    },
+    [activeReportId, idToken, refreshBalance],
+  );
+
   const handleCreditPurchase = useCallback(
     async (pack: CreditPackage) => {
       await startCheckout(pack.id);
@@ -389,6 +432,9 @@ export const TechEditPage: React.FC = () => {
               fileName={reportView.fileName}
               resolutions={reportView.resolutions}
               onResolveFinding={handleResolveFinding}
+              onLoadFindingQuestions={activeReportId ? handleLoadFindingQuestions : undefined}
+              onAskFinding={activeReportId ? handleAskFinding : undefined}
+              questionCost={PRICING.techEditQuestion.cost}
             />
           </div>
         )}

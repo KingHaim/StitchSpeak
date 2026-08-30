@@ -4,12 +4,14 @@ import { useAuth } from '../contexts/auth-context';
 import { CloseIcon } from './icons/CloseIcon';
 import { requestPasswordReset, resendVerification } from '../services/api';
 import type { WebsiteLocale } from '../utils/websiteLocalization';
+import { analyticsErrorCode, captureEvent } from '../services/analytics';
 
 interface AuthDialogProps {
   isOpen: boolean;
   onClose: () => void;
   title?: string;
   locale?: WebsiteLocale;
+  source?: string;
 }
 
 const AUTH_COPY = {
@@ -70,6 +72,7 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
   onClose,
   title,
   locale = 'en',
+  source = 'unknown',
 }) => {
   const copy = AUTH_COPY[locale];
   const { googleIdentityReady, signInWithEmail, isAuthenticated } = useAuth();
@@ -83,6 +86,10 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
   const [notice, setNotice] = useState<string | null>(null);
   const [developmentUrl, setDevelopmentUrl] = useState<string | null>(null);
   const [canResendVerification, setCanResendVerification] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) captureEvent('auth_dialog_opened', { source });
+  }, [isOpen, source]);
 
   useEffect(() => {
     if (!isOpen || !googleIdentityReady || !googleHost.current) return;
@@ -102,6 +109,7 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
     event.preventDefault();
     setBusy(true);
     setError(null);
+    captureEvent(createAccount ? 'signup_started' : 'sign_in_started', { method: 'email' });
     try {
       const result = await signInWithEmail(email, password, createAccount, name);
       if (result.verificationRequired) {
@@ -111,6 +119,10 @@ export const AuthDialog: React.FC<AuthDialogProps> = ({
       }
       onClose();
     } catch (err) {
+      captureEvent(createAccount ? 'signup_failed' : 'sign_in_failed', {
+        method: 'email',
+        error_code: analyticsErrorCode(err),
+      });
       setError(err instanceof Error ? err.message : copy.signInError);
       setCanResendVerification((err as { code?: string }).code === 'EMAIL_NOT_VERIFIED');
     } finally {

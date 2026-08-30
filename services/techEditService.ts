@@ -1,4 +1,5 @@
 import type {
+  TechEditFindingMessage,
   TechEditRecord,
   TechEditReport,
   TechEditResolution,
@@ -6,7 +7,7 @@ import type {
   TechEditStage,
 } from '../types';
 import { apiUrl, authHeaders } from './apiBase';
-import { captureEvent } from './analytics';
+import { analyticsErrorCode, captureEvent } from './analytics';
 
 export class TechEditError extends Error {
   constructor(
@@ -87,6 +88,63 @@ export async function setFindingResolution(
   if (!response.ok) await throwFromResponse(response, 'Saving your decision');
 }
 
+export async function getFindingQuestions(
+  idToken: string | null,
+  reportId: string,
+  findingIndex: number,
+): Promise<{ messages: TechEditFindingMessage[]; costPerQuestion: number }> {
+  const response = await fetch(
+    apiUrl(`/tech-edit/${encodeURIComponent(reportId)}/findings/${findingIndex}/questions`),
+    {
+      headers: authHeaders(idToken),
+      credentials: 'include',
+    },
+  );
+  if (!response.ok) await throwFromResponse(response, 'Loading this conversation');
+  const data = await response.json();
+  return {
+    messages: Array.isArray(data.messages) ? data.messages : [],
+    costPerQuestion: typeof data.costPerQuestion === 'number' ? data.costPerQuestion : 0.1,
+  };
+}
+
+export async function askFindingQuestion(
+  idToken: string | null,
+  reportId: string,
+  findingIndex: number,
+  question: string,
+): Promise<{
+  answer: string;
+  messages: TechEditFindingMessage[];
+  cost: number;
+  balance: number;
+}> {
+  try {
+    const response = await fetch(
+      apiUrl(`/tech-edit/${encodeURIComponent(reportId)}/findings/${findingIndex}/questions`),
+      {
+        method: 'POST',
+        headers: { ...authHeaders(idToken), 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ question }),
+      },
+    );
+    if (!response.ok) await throwFromResponse(response, 'Asking about this issue');
+    const data = await response.json();
+    captureEvent('tech_edit_question_asked', {
+      finding_index: findingIndex,
+      cost: typeof data.cost === 'number' ? data.cost : 0.1,
+    });
+    return data;
+  } catch (err) {
+    captureEvent('tech_edit_question_failed', {
+      finding_index: findingIndex,
+      error_code: analyticsErrorCode(err),
+    });
+    throw err;
+  }
+}
+
 export async function deleteTechEdit(idToken: string | null, id: string): Promise<void> {
   const response = await fetch(apiUrl(`/tech-edit/${encodeURIComponent(id)}`), {
     method: 'DELETE',
@@ -134,7 +192,7 @@ export async function runTechEdit(
     captureEvent('tech_edit_completed', { cost: result.cost });
     return result;
   } catch (err) {
-    captureEvent('tech_edit_failed', { error: err instanceof Error ? err.message : 'unknown' });
+    captureEvent('tech_edit_failed', { error_code: analyticsErrorCode(err) });
     throw err;
   }
 }

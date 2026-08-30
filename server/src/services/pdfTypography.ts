@@ -1,6 +1,7 @@
 import { PDFExtract, type PDFExtractPage } from 'pdf.js-extract';
 
 const MAX_HINTS = 25;
+const MAX_EMPHASIS_HINTS = 300;
 
 type HeadingTag = 'h1' | 'h2' | 'h3' | 'h4';
 
@@ -28,9 +29,16 @@ export interface TypographyHint {
   tag: HeadingTag;
 }
 
+export interface PdfInlineEmphasisHint {
+  originalText: string;
+  boldTexts: string[];
+  page: number;
+}
+
 export interface TypographyExtractionResult {
   bodyFamily: string | null;
   hints: TypographyHint[];
+  emphasisHints: PdfInlineEmphasisHint[];
 }
 
 function median(values: number[]): number {
@@ -308,6 +316,27 @@ function lineToHint(
   };
 }
 
+function lineToEmphasisHint(line: LineGroup, pageNumber: number): PdfInlineEmphasisHint | null {
+  const sortedRuns = [...line.runs].sort((a, b) => a.x - b.x);
+  if (!sortedRuns.some((run) => run.isBold)) return null;
+
+  const boldGroups: LineRun[][] = [];
+  for (const run of sortedRuns) {
+    if (!run.isBold || !run.text.trim()) continue;
+    const previousRun = sortedRuns[sortedRuns.indexOf(run) - 1];
+    if (previousRun?.isBold && boldGroups.length > 0) {
+      boldGroups.at(-1)?.push(run);
+    } else {
+      boldGroups.push([run]);
+    }
+  }
+
+  const originalText = buildLineText(sortedRuns);
+  const boldTexts = boldGroups.map(buildLineText).filter(Boolean);
+  if (!originalText || boldTexts.length === 0) return null;
+  return { originalText, boldTexts, page: pageNumber };
+}
+
 export async function extractTypographyHints(
   pdfBuffer: Buffer,
 ): Promise<TypographyExtractionResult> {
@@ -318,7 +347,7 @@ export async function extractTypographyHints(
     result = await extractor.extractBuffer(pdfBuffer);
   } catch (err) {
     console.error('[pdfTypography] Extraction failed, continuing without typography hints:', err);
-    return { bodyFamily: null, hints: [] };
+    return { bodyFamily: null, hints: [], emphasisHints: [] };
   }
 
   const fontSizes = result.pages
@@ -328,17 +357,30 @@ export async function extractTypographyHints(
 
   const bodyFontSize = median(fontSizes);
   if (!bodyFontSize) {
-    return { bodyFamily: getDominantBodyFamily(result.pages), hints: [] };
+    return { bodyFamily: getDominantBodyFamily(result.pages), hints: [], emphasisHints: [] };
   }
 
   const seen = new Set<string>();
   const hints: TypographyHint[] = [];
+  const emphasisSeen = new Set<string>();
+  const emphasisHints: PdfInlineEmphasisHint[] = [];
 
   for (const page of result.pages) {
     const lines = groupLines(page);
 
     for (const line of lines) {
-      if (hints.length >= MAX_HINTS) break;
+      if (emphasisHints.length < MAX_EMPHASIS_HINTS) {
+        const emphasisHint = lineToEmphasisHint(line, page.info.num);
+        if (emphasisHint) {
+          const key = `${emphasisHint.page}:${emphasisHint.originalText}:${emphasisHint.boldTexts.join('|')}`;
+          if (!emphasisSeen.has(key)) {
+            emphasisSeen.add(key);
+            emphasisHints.push(emphasisHint);
+          }
+        }
+      }
+
+      if (hints.length >= MAX_HINTS) continue;
 
       const hint = lineToHint(line, page.info.num, bodyFontSize);
       if (!hint) continue;
@@ -350,7 +392,7 @@ export async function extractTypographyHints(
       hints.push(hint);
     }
 
-    if (hints.length >= MAX_HINTS) break;
+    if (hints.length >= MAX_HINTS && emphasisHints.length >= MAX_EMPHASIS_HINTS) break;
   }
 
   normalizeHeadingTiers(hints);
@@ -358,11 +400,12 @@ export async function extractTypographyHints(
   return {
     bodyFamily: getDominantBodyFamily(result.pages),
     hints,
+    emphasisHints,
   };
 }
 
 export function buildTypographyCatalog(result: TypographyExtractionResult): string {
-  if (!result.bodyFamily && result.hints.length === 0) return '';
+  if (!result.bodyFamily && result.hints.length === 0 && result.emphasisHints.length === 0) return '';
 
   const lines = ['--- TYPOGRAPHY HINTS ---'];
 
@@ -375,6 +418,15 @@ export function buildTypographyCatalog(result: TypographyExtractionResult): stri
     lines.push(
       `${hint.tag.toUpperCase()}: "${safeText}" font="${hint.fontFamily}" size=${hint.sizeRatio.toFixed(2)}x page=${hint.page}`,
     );
+  }
+
+  if (result.emphasisHints.length > 0) {
+    lines.push('INLINE EMPHASIS (preserve these exact bold source fragments after translation):');
+    for (const hint of result.emphasisHints) {
+      const safeContext = hint.originalText.replace(/"/g, '\\"');
+      const safeBold = hint.boldTexts.map((text) => `"${text.replace(/"/g, '\\"')}"`).join(', ');
+      lines.push(`BOLD: ${safeBold} context="${safeContext}" page=${hint.page}`);
+    }
   }
 
   lines.push('--- END TYPOGRAPHY HINTS ---');

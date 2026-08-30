@@ -15,7 +15,7 @@ import {
 } from '../services/patternStore.js';
 import { PRICING } from '../services/pricing.js';
 import { boundedString } from '../services/requestValidation.js';
-import { externalErrorStatus } from '../services/externalDeadline.js';
+import { externalErrorDetails } from '../services/externalDeadline.js';
 
 const router = Router();
 
@@ -106,8 +106,12 @@ router.post('/message', async (req: Request, res: Response) => {
     }
   } catch (err: any) {
     console.error('[chat/message] Error:', err);
-    const status = err.message?.includes('not found') ? 404 : externalErrorStatus(err);
-    res.status(status).json({ error: err.message || 'Failed to send message.' });
+    if (err.message?.includes('not found')) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    const details = externalErrorDetails(err);
+    res.status(details.status).json({ error: details.message, code: details.code });
   }
 });
 

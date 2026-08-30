@@ -3,14 +3,14 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { isAdminIdentity } from '../middleware/admin.js';
 import { uploadPattern } from '../middleware/upload.js';
 import { rateLimit } from '../middleware/rateLimit.js';
-import { runTechEdit } from '../services/techEdit.js';
+import { answerTechEditFindingQuestion, runTechEdit } from '../services/techEdit.js';
 import { chargeCreditsForJob, refundPendingCharge, settlePendingCharge } from '../services/creditStore.js';
 import {
   computeDocumentMetrics,
   techEditCostFromMetrics,
   PRICING,
 } from '../services/pricing.js';
-import { externalErrorStatus } from '../services/externalDeadline.js';
+import { externalErrorDetails } from '../services/externalDeadline.js';
 import {
   acquireTranslationLease,
   releaseTranslationLease,
@@ -20,19 +20,27 @@ import { recordAiProcessingAcknowledgement } from '../services/legalAcknowledgem
 import { hasActiveBetaAccess } from '../services/betaApplicationStore.js';
 import {
   deleteTechEdit,
+  appendTechEditFindingExchange,
   getTechEdit,
   getTechEditFeedbackStats,
+  getTechEditFindingMessages,
   listTechEdits,
   saveTechEdit,
   setTechEditResolution,
   type TechEditResolution,
 } from '../services/techEditStore.js';
+import { boundedString } from '../services/requestValidation.js';
 
 const router = Router();
 
 // Tech editing runs two Gemini Pro passes per request — even more expensive
 // than translation, so cap it tighter.
 const techEditRateLimit = rateLimit({ windowMs: 60_000, max: 10, name: 'tech-edit' });
+const techEditQuestionRateLimit = rateLimit({
+  windowMs: 60_000,
+  max: 20,
+  name: 'tech-edit-question',
+});
 
 const NDJSON_CONTENT_TYPE = 'application/x-ndjson';
 
@@ -143,6 +151,102 @@ router.patch('/:id/findings/:index', requireAuth, (req, res: Response) => {
     res.status(500).json({ error: 'Could not save your decision.' });
   }
 });
+
+router.get('/:id/findings/:index/questions', requireAuth, (req, res: Response) => {
+  try {
+    const { userSub } = req as unknown as AuthenticatedRequest;
+    const findingIdx = Number.parseInt(String(req.params.index), 10);
+    if (!Number.isInteger(findingIdx) || findingIdx < 0) {
+      res.status(400).json({ error: 'Invalid finding index.' });
+      return;
+    }
+    const messages = getTechEditFindingMessages(userSub, String(req.params.id), findingIdx);
+    if (!messages) {
+      res.status(404).json({ error: 'Report or finding not found.' });
+      return;
+    }
+    res.json({ messages, costPerQuestion: PRICING.techEditQuestion.cost });
+  } catch (err) {
+    console.error('[tech-edit] finding questions load failed:', err);
+    res.status(500).json({ error: 'Could not load this finding conversation.' });
+  }
+});
+
+router.post(
+  '/:id/findings/:index/questions',
+  requireAuth,
+  techEditQuestionRateLimit,
+  async (req, res: Response) => {
+    const { userSub } = req as unknown as AuthenticatedRequest;
+    const reportId = String(req.params.id);
+    const findingIdx = Number.parseInt(String(req.params.index), 10);
+    if (!Number.isInteger(findingIdx) || findingIdx < 0) {
+      res.status(400).json({ error: 'Invalid finding index.' });
+      return;
+    }
+    const question = boundedString(req.body?.question, 2_000);
+    if (!question) {
+      res.status(400).json({ error: 'question must be between 1 and 2,000 characters.' });
+      return;
+    }
+
+    const record = getTechEdit(userSub, reportId);
+    const finding = record?.report.findings[findingIdx];
+    const priorMessages = getTechEditFindingMessages(userSub, reportId, findingIdx);
+    if (!record || !finding || !priorMessages) {
+      res.status(404).json({ error: 'Report or finding not found.' });
+      return;
+    }
+
+    const cost = PRICING.techEditQuestion.cost;
+    const { ok, balance, chargeId } = chargeCreditsForJob(
+      userSub,
+      cost,
+      'tech-edit-question',
+    );
+    if (!ok) {
+      res.status(402).json({
+        error: 'Insufficient credits.',
+        code: 'INSUFFICIENT_CREDITS',
+        balance,
+        cost,
+      });
+      return;
+    }
+
+    try {
+      const answer = await answerTechEditFindingQuestion({
+        reportSummary: record.report.summary,
+        finding,
+        priorMessages,
+        question,
+      });
+      const messages = appendTechEditFindingExchange(
+        userSub,
+        reportId,
+        findingIdx,
+        question,
+        answer,
+      );
+      if (!messages) {
+        if (chargeId) refundPendingCharge(chargeId, userSub);
+        res.status(404).json({ error: 'Report or finding not found.' });
+        return;
+      }
+      if (chargeId) settlePendingCharge(chargeId);
+      res.json({ answer, messages, cost, balance });
+    } catch (err) {
+      const newBalance = chargeId ? refundPendingCharge(chargeId, userSub) : balance;
+      console.error('[tech-edit] finding question failed:', err);
+      const details = externalErrorDetails(err);
+      res.status(details.status).json({
+        error: `${details.message} Your StitchSpeak credits were refunded.`,
+        code: details.code,
+        balance: newBalance,
+      });
+    }
+  },
+);
 
 router.delete('/:id', requireAuth, (req, res: Response) => {
   try {
@@ -284,16 +388,20 @@ router.post('/', requireAuth, techEditRateLimit, uploadPatternSafe, async (req: 
     } catch (err: any) {
       console.error('[tech-edit] Error:', err);
       const newBalance = refund();
+      const details = externalErrorDetails(err);
       if (!res.headersSent) {
-        res.status(externalErrorStatus(err)).json({
-          error: err.message || 'Tech edit failed.',
+        res.status(details.status).json({
+          error: `${details.message} Your StitchSpeak credits were refunded.`,
+          code: details.code,
           balance: newBalance,
         });
         return;
       }
       writeEvent({
         type: 'error',
-        message: err?.message || 'Tech edit failed.',
+        message: `${details.message} Your StitchSpeak credits were refunded.`,
+        code: details.code,
+        status: details.status,
         balance: newBalance,
       });
       res.end();

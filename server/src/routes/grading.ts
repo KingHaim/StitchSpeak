@@ -3,7 +3,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { isAdminIdentity } from '../middleware/admin.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 import { hasActiveBetaAccess } from '../services/betaApplicationStore.js';
-import { externalErrorStatus } from '../services/externalDeadline.js';
+import { externalErrorDetails, externalErrorStatus } from '../services/externalDeadline.js';
 import {
   gradePattern,
   type GradingGauge,
@@ -313,16 +313,20 @@ router.post('/extract', extractRateLimit, async (req: Request, res: Response) =>
     } catch (err: any) {
       console.error('[grading/extract] Error:', err);
       const newBalance = refund();
+      const details = externalErrorDetails(err);
       if (!res.headersSent) {
-        res.status(externalErrorStatus(err)).json({
-          error: err.message || 'Grading extraction failed.',
+        res.status(details.status).json({
+          error: `${details.message} Your StitchSpeak credits were refunded.`,
+          code: details.code,
           balance: newBalance,
         });
         return;
       }
       writeEvent({
         type: 'error',
-        message: err?.message || 'Grading extraction failed.',
+        message: `${details.message} Your StitchSpeak credits were refunded.`,
+        code: details.code,
+        status: details.status,
         balance: newBalance,
       });
       res.end();

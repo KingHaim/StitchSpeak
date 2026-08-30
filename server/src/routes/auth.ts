@@ -18,7 +18,7 @@ import {
 } from '../services/authEmail.js';
 import { SESSION_COOKIE, requestSessionToken, requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { createSession, revokeSession, type SessionIdentity } from '../services/sessionStore.js';
-import { notifyNewMember } from '../services/memberJoinedEmail.js';
+import { isKnownMember, notifyNewMember } from '../services/memberJoinedEmail.js';
 
 const router = Router();
 const oauthClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID || '');
@@ -72,6 +72,7 @@ router.post('/google', loginRateLimit, async (req, res) => {
       identityProvider: 'google',
       emailVerified: payload.email_verified === true,
     };
+    const isNewUser = !isKnownMember(identity.sub);
     setSessionCookie(res, identity);
     void notifyNewMember({
       sub: identity.sub,
@@ -79,7 +80,7 @@ router.post('/google', loginRateLimit, async (req, res) => {
       name: identity.name,
       source: 'google',
     });
-    res.json({ user: publicUser(identity) });
+    res.json({ user: publicUser(identity), isNewUser });
   } catch {
     res.status(401).json({ error: 'Invalid Google credential.' });
   }

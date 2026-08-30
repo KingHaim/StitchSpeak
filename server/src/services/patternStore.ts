@@ -60,6 +60,7 @@ db.exec(`
     target_language TEXT NOT NULL,
     pdf_metrics     TEXT,
     cost            REAL NOT NULL DEFAULT 0,
+    review_warnings TEXT,
     html            TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_patterns_sub_ts ON patterns(sub, timestamp DESC);
@@ -93,6 +94,7 @@ function ensurePatternsColumns(): void {
   add('source_language', 'ALTER TABLE patterns ADD COLUMN source_language TEXT');
   add('pdf_metrics', 'ALTER TABLE patterns ADD COLUMN pdf_metrics TEXT');
   add('cost', 'ALTER TABLE patterns ADD COLUMN cost REAL NOT NULL DEFAULT 0');
+  add('review_warnings', 'ALTER TABLE patterns ADD COLUMN review_warnings TEXT');
   add('source_mime', 'ALTER TABLE patterns ADD COLUMN source_mime TEXT');
   add('source_size', 'ALTER TABLE patterns ADD COLUMN source_size INTEGER');
   add('source_ext', 'ALTER TABLE patterns ADD COLUMN source_ext TEXT');
@@ -114,6 +116,7 @@ export interface PatternRow {
   targetLanguage: string;
   pdfMetrics: unknown | null;
   cost: number;
+  reviewWarnings: unknown[];
   hasSource: boolean;
   sourceMime: string | null;
   sourceSize: number | null;
@@ -135,6 +138,7 @@ interface RawRow {
   target_language: string;
   pdf_metrics: string | null;
   cost: number;
+  review_warnings: string | null;
   source_mime: string | null;
   source_size: number | null;
   source_ext: string | null;
@@ -145,14 +149,14 @@ interface RawRow {
 const stmts = {
   list: db.prepare<[string]>(`
     SELECT id, timestamp, file_name, file_type, source_language, target_language,
-           pdf_metrics, cost, source_mime, source_size, source_ext, thumb_size
+           pdf_metrics, cost, review_warnings, source_mime, source_size, source_ext, thumb_size
     FROM patterns
     WHERE sub = ?
     ORDER BY timestamp DESC
   `),
   getOne: db.prepare<[string, string]>(`
     SELECT id, timestamp, file_name, file_type, source_language, target_language,
-           pdf_metrics, cost, source_mime, source_size, source_ext, thumb_size, html
+           pdf_metrics, cost, review_warnings, source_mime, source_size, source_ext, thumb_size, html
     FROM patterns
     WHERE sub = ? AND id = ?
   `),
@@ -206,12 +210,12 @@ const stmts = {
     DELETE FROM chat_messages WHERE sub = ?
   `),
   insert: db.prepare<
-    [string, string, number, string, string | null, string | null, string, string | null, number, string]
+    [string, string, number, string, string | null, string | null, string, string | null, number, string | null, string]
   >(`
     INSERT INTO patterns (
-      id, sub, timestamp, file_name, file_type, source_language, target_language, pdf_metrics, cost, html
+      id, sub, timestamp, file_name, file_type, source_language, target_language, pdf_metrics, cost, review_warnings, html
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `),
   countForUser: db.prepare<[string]>('SELECT COUNT(*) as count FROM patterns WHERE sub = ?'),
   evictOldest: db.prepare<[string, number]>(`
@@ -236,6 +240,16 @@ function parseMetrics(raw: string | null): unknown | null {
   }
 }
 
+function parseReviewWarnings(raw: string | null): unknown[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function rowToPattern(row: RawRow): PatternRow {
   return {
     id: row.id,
@@ -246,6 +260,7 @@ function rowToPattern(row: RawRow): PatternRow {
     targetLanguage: row.target_language,
     pdfMetrics: parseMetrics(row.pdf_metrics),
     cost: row.cost,
+    reviewWarnings: parseReviewWarnings(row.review_warnings),
     hasSource: row.source_size != null && row.source_size > 0,
     sourceMime: row.source_mime,
     sourceSize: row.source_size,
@@ -284,6 +299,7 @@ export interface SavePatternInput {
   targetLanguage: string;
   pdfMetrics?: unknown | null;
   cost?: number;
+  reviewWarnings?: unknown[];
   html: string;
 }
 
@@ -311,6 +327,7 @@ const saveTx = db.transaction((sub: string, input: SavePatternInput): PatternRow
     input.targetLanguage,
     metricsJson,
     typeof input.cost === 'number' ? input.cost : 0,
+    input.reviewWarnings?.length ? JSON.stringify(input.reviewWarnings) : null,
     html,
   );
 
@@ -328,6 +345,7 @@ const saveTx = db.transaction((sub: string, input: SavePatternInput): PatternRow
     targetLanguage: input.targetLanguage,
     pdfMetrics: input.pdfMetrics ?? null,
     cost: typeof input.cost === 'number' ? input.cost : 0,
+    reviewWarnings: input.reviewWarnings ?? [],
     html,
     hasSource: false,
     sourceMime: null,

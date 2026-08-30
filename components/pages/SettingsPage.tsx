@@ -1,9 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/auth-context';
 import { useCredits } from '../../contexts/credit-context';
 import { deleteAccount, downloadAccountExport } from '../../services/accountService';
 import { requestPasswordReset } from '../../services/api';
 import { loadHistory } from '../../services/historyService';
+import {
+  clearTranslationMemory,
+  getTranslationMemory,
+  importTranslationMemory,
+  parseTranslationMemoryFile,
+} from '../../services/translationMemoryService';
 import type { CreditPackage, TranslationRecord } from '../../types';
 import { BillingHistoryModal } from '../BillingHistoryModal';
 import { BuyCreditsModal } from '../BuyCreditsModal';
@@ -31,6 +37,11 @@ export const SettingsPage: React.FC = () => {
   const [resettingPassword, setResettingPassword] = useState(false);
   const [passwordResetNotice, setPasswordResetNotice] = useState<string | null>(null);
   const [passwordResetError, setPasswordResetError] = useState<string | null>(null);
+  const memoryFileRef = useRef<HTMLInputElement>(null);
+  const [memoryCount, setMemoryCount] = useState<number | null>(null);
+  const [importingMemory, setImportingMemory] = useState(false);
+  const [memoryNotice, setMemoryNotice] = useState<string | null>(null);
+  const [memoryError, setMemoryError] = useState<string | null>(null);
 
   const displayName = user?.name?.trim() || 'Maker';
   const avatarInitial = (displayName[0] ?? user?.email?.[0] ?? '?').toUpperCase();
@@ -56,6 +67,14 @@ export const SettingsPage: React.FC = () => {
       cancelled = true;
     };
   }, [showCreditsOverview, idToken]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getTranslationMemory()
+      .then(({ total }) => { if (!cancelled) setMemoryCount(total); })
+      .catch(() => { if (!cancelled) setMemoryCount(null); });
+    return () => { cancelled = true; };
+  }, []);
 
   const handlePurchase = async (pack: CreditPackage) => {
     await startCheckout(pack.id);
@@ -103,6 +122,40 @@ export const SettingsPage: React.FC = () => {
       setPasswordResetError(err instanceof Error ? err.message : 'Could not send a password-reset email.');
     } finally {
       setResettingPassword(false);
+    }
+  };
+
+  const handleMemoryFile = async (file: File | undefined) => {
+    if (!file || importingMemory) return;
+    setImportingMemory(true);
+    setMemoryError(null);
+    setMemoryNotice(null);
+    try {
+      const entries = parseTranslationMemoryFile(await file.text(), file.name);
+      const result = await importTranslationMemory(entries);
+      setMemoryCount(result.total);
+      setMemoryNotice(`Imported ${result.imported} approved correction${result.imported === 1 ? '' : 's'}.`);
+    } catch (err) {
+      setMemoryError(err instanceof Error ? err.message : 'Could not import translation memory.');
+    } finally {
+      setImportingMemory(false);
+      if (memoryFileRef.current) memoryFileRef.current.value = '';
+    }
+  };
+
+  const handleClearMemory = async () => {
+    if (!memoryCount || importingMemory) return;
+    if (!window.confirm('Remove all approved translation-memory corrections from your account?')) return;
+    setImportingMemory(true);
+    setMemoryError(null);
+    try {
+      const { deleted } = await clearTranslationMemory();
+      setMemoryCount(0);
+      setMemoryNotice(`Removed ${deleted} correction${deleted === 1 ? '' : 's'}.`);
+    } catch (err) {
+      setMemoryError(err instanceof Error ? err.message : 'Could not clear translation memory.');
+    } finally {
+      setImportingMemory(false);
     }
   };
 
@@ -214,6 +267,44 @@ export const SettingsPage: React.FC = () => {
           )}
         </section>
       )}
+
+      <section aria-labelledby="settings-memory-heading">
+        <h2 id="settings-memory-heading" className="font-headline text-2xl text-on-surface">
+          Translation memory
+        </h2>
+        <p className="mt-1 text-sm text-on-surface-variant">
+          Reuse approved human corrections in future translations for the same language pair.
+        </p>
+        <input
+          ref={memoryFileRef}
+          type="file"
+          accept=".json,.csv,application/json,text/csv"
+          className="sr-only"
+          onChange={(event) => void handleMemoryFile(event.target.files?.[0])}
+        />
+        <div className="mt-5 divide-y divide-outline-variant/30 border-y border-outline-variant/30">
+          <SettingsRow
+            icon="upload_file"
+            title="Import approved corrections"
+            description="JSON or CSV with source/target language and text columns"
+            onClick={() => memoryFileRef.current?.click()}
+            busy={importingMemory}
+            busyLabel="Importing…"
+          />
+          <SettingsRow
+            icon="delete_sweep"
+            title="Clear translation memory"
+            description={`${memoryCount ?? '—'} saved correction${memoryCount === 1 ? '' : 's'}`}
+            onClick={() => void handleClearMemory()}
+            busy={importingMemory}
+          />
+        </div>
+        <p className="mt-2 text-xs text-on-surface-variant">
+          Required columns: sourceLanguage, targetLanguage, sourceText, targetText. Imports are private to your account.
+        </p>
+        {memoryNotice && <p className="mt-3 text-sm text-primary" role="status">{memoryNotice}</p>}
+        {memoryError && <p className="mt-3 text-sm text-red-700" role="alert">{memoryError}</p>}
+      </section>
 
       <section aria-labelledby="settings-data-heading">
         <h2 id="settings-data-heading" className="font-headline text-2xl text-on-surface">

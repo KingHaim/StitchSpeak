@@ -133,6 +133,7 @@ export interface SaveTranslationParams {
   translatedHtml: string;
   pdfMetrics: PdfMetrics | null;
   cost: number;
+  reviewWarnings?: TranslationRecord['reviewWarnings'];
   /**
    * Optional original source file. When provided alongside an idToken, the
    * server keeps a copy on the persistent volume so future "Add translation"
@@ -194,6 +195,7 @@ export async function migrateGuestHistoryToServerIfRemoteEmpty(
         html,
         pdfMetrics: record.pdfMetrics,
         cost: record.cost,
+        reviewWarnings: record.reviewWarnings,
       });
     } catch {
       return false;
@@ -253,6 +255,7 @@ export async function saveTranslation(
       html: params.translatedHtml,
       pdfMetrics: params.pdfMetrics,
       cost: params.cost,
+      reviewWarnings: params.reviewWarnings,
     });
     if (params.sourceFile) {
       try {

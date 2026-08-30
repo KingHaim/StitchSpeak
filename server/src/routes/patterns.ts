@@ -68,6 +68,7 @@ router.post('/', (req, res: Response) => {
       targetLanguage,
       pdfMetrics,
       cost,
+      reviewWarnings,
       html,
     } = req.body ?? {};
 
@@ -93,6 +94,18 @@ router.post('/', (req, res: Response) => {
       targetLanguage: cleanTargetLanguage,
       pdfMetrics: pdfMetrics ?? null,
       cost: typeof cost === 'number' ? cost : 0,
+      reviewWarnings: Array.isArray(reviewWarnings)
+        ? reviewWarnings.slice(0, 100).flatMap((warning: unknown) => {
+            if (!warning || typeof warning !== 'object') return [];
+            const item = warning as Record<string, unknown>;
+            if (typeof item.code !== 'string' || typeof item.message !== 'string') return [];
+            return [{
+              code: item.code.slice(0, 80),
+              message: item.message.slice(0, 500),
+              ...(typeof item.sourceId === 'string' ? { sourceId: item.sourceId.slice(0, 120) } : {}),
+            }];
+          })
+        : [],
       html,
     });
 

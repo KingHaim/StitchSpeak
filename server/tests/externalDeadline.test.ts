@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ExternalServiceTimeoutError,
+  externalErrorDetails,
   externalErrorStatus,
   withExternalDeadline,
 } from '../src/services/externalDeadline';
@@ -29,5 +30,17 @@ describe('external service deadlines', () => {
       throw failure;
     })).rejects.toBe(failure);
     expect(externalErrorStatus(failure)).toBe(500);
+  });
+
+  it('turns nested Gemini depleted-prepayment JSON into a safe actionable error', () => {
+    const raw = new Error(`{"error":{"message":"{\\n \\"error\\": {\\n \\"code\\": 429,\\n \\"message\\": \\"Your prepayment credits are depleted. Please go to AI Studio at https://ai.studio/projects to manage your project and billing.\\",\\n \\"status\\": \\"RESOURCE_EXHAUSTED\\"\\n }\\n}","code":429,"status":"Too Many Requests"}}`);
+    const details = externalErrorDetails(raw);
+
+    expect(details).toEqual({
+      status: 503,
+      code: 'PROVIDER_QUOTA_EXHAUSTED',
+      message: 'The AI service is temporarily unavailable because its provider quota has been exhausted. Please try again later.',
+    });
+    expect(details.message).not.toMatch(/ai\.studio|prepayment|RESOURCE_EXHAUSTED|\{\\?"error/i);
   });
 });

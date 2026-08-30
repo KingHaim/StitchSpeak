@@ -1,16 +1,32 @@
 import type { TranslationResult } from '../types';
 import { apiUrl, authHeaders } from './apiBase';
-import { captureEvent } from './analytics';
+import { analyticsErrorCode, captureEvent } from './analytics';
 
 class TranslationError extends Error {
   constructor(
     message: string,
     public readonly kind: 'network' | 'timeout' | 'server' | 'unknown',
     public readonly status?: number,
+    public readonly code?: string,
+    public readonly balance?: number,
   ) {
     super(message);
     this.name = 'TranslationError';
   }
+}
+
+export function normalizeTranslationErrorMessage(message: string): string {
+  if (
+    /prepayment credits? (?:are )?depleted/i.test(message)
+    || /RESOURCE_EXHAUSTED/i.test(message)
+    || /quota (?:has been )?exceeded/i.test(message)
+  ) {
+    return 'The AI translation service is temporarily unavailable because its provider quota has been exhausted. Your StitchSpeak credits were refunded. Please try again later.';
+  }
+  if (/^\s*(?:\{|\[)/.test(message) || /"error"\s*:/.test(message)) {
+    return 'The AI translation service returned an unexpected error. Your StitchSpeak credits were refunded. Please try again later.';
+  }
+  return message;
 }
 
 async function checkedFetch(
@@ -43,6 +59,8 @@ async function checkedFetch(
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     const serverMsg = typeof body?.error === 'string' ? body.error : null;
+    const serverCode = typeof body?.code === 'string' ? body.code : undefined;
+    const serverBalance = typeof body?.balance === 'number' ? body.balance : undefined;
 
     if (response.status === 401) {
       throw new TranslationError(
@@ -74,15 +92,19 @@ async function checkedFetch(
     }
     if (response.status >= 500) {
       throw new TranslationError(
-        serverMsg || 'The server encountered an error. Please try again later.',
+        normalizeTranslationErrorMessage(serverMsg || 'The server encountered an error. Please try again later.'),
         'server',
         response.status,
+        serverCode,
+        serverBalance,
       );
     }
     throw new TranslationError(
-      serverMsg || `${label} failed (${response.status}).`,
+      normalizeTranslationErrorMessage(serverMsg || `${label} failed (${response.status}).`),
       'server',
       response.status,
+      serverCode,
+      serverBalance,
     );
   }
 
@@ -122,7 +144,7 @@ export const translatePattern = async (
   } catch (err) {
     captureEvent('translation_failed', {
       target_language: language,
-      error: err instanceof Error ? err.message : 'unknown',
+      error_code: analyticsErrorCode(err),
     });
     throw err;
   }
@@ -135,6 +157,8 @@ export interface TranslatePatternStreamCallbacks {
    * `[IMG_5]` will be visible until the final result arrives.
    */
   onDelta?: (delta: string, accumulated: string) => void;
+  /** Anonymous flow id joining estimate, translation, save, and export analytics. */
+  analyticsFlowId?: string;
 }
 
 interface NdjsonDeltaEvent {
@@ -148,11 +172,15 @@ interface NdjsonDoneEvent {
   usage: TranslationResult['usage'];
   cost?: number;
   balance?: number;
+  reviewWarnings?: TranslationResult['reviewWarnings'];
 }
 
 interface NdjsonErrorEvent {
   type: 'error';
   message: string;
+  code?: string;
+  status?: number;
+  balance?: number;
 }
 
 type NdjsonEvent = NdjsonDeltaEvent | NdjsonDoneEvent | NdjsonErrorEvent;
@@ -173,15 +201,21 @@ export const translatePatternStream = async (
     target_language: language,
     source_language: sourceLanguage ?? 'auto',
     file_type: file.type,
+    flow_id: callbacks.analyticsFlowId,
   });
   try {
     const result = await translatePatternStreamInner(file, language, idToken, sourceLanguage, callbacks);
-    captureEvent('translation_completed', { target_language: language, cost: result.cost });
+    captureEvent('translation_completed', {
+      target_language: language,
+      cost: result.cost,
+      flow_id: callbacks.analyticsFlowId,
+    });
     return result;
   } catch (err) {
     captureEvent('translation_failed', {
       target_language: language,
-      error: err instanceof Error ? err.message : 'unknown',
+      error_code: analyticsErrorCode(err),
+      flow_id: callbacks.analyticsFlowId,
     });
     throw err;
   }
@@ -238,7 +272,7 @@ const translatePatternStreamInner = async (
   let buffer = '';
   let accumulated = '';
   let finalResult: TranslationResult | null = null;
-  let streamError: string | null = null;
+  let streamError: NdjsonErrorEvent | null = null;
 
   const handleEvent = (event: NdjsonEvent): void => {
     switch (event.type) {
@@ -255,11 +289,12 @@ const translatePatternStreamInner = async (
           usage: event.usage ?? null,
           cost: event.cost,
           balance: event.balance,
+          reviewWarnings: event.reviewWarnings ?? [],
         };
         return;
       }
       case 'error': {
-        streamError = event.message || 'Translation failed.';
+        streamError = event;
         return;
       }
     }
@@ -313,13 +348,20 @@ const translatePatternStreamInner = async (
   }
 
   if (streamError) {
-    throw new TranslationError(streamError, 'server');
+    const failure = streamError as NdjsonErrorEvent;
+    throw new TranslationError(
+      normalizeTranslationErrorMessage(failure.message || 'Translation failed.'),
+      'server',
+      failure.status,
+      failure.code,
+      failure.balance,
+    );
   }
 
   if (!finalResult) {
     // Server closed without a `done` event. Salvage what we have if anything.
     if (accumulated.length > 0) {
-      return { html: accumulated, usage: null };
+      return { html: accumulated, usage: null, reviewWarnings: [] };
     }
     throw new TranslationError(
       'Translation ended unexpectedly. Please try again.',

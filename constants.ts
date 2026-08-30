@@ -61,6 +61,9 @@ export const PRICING = {
     pagesPerSurchargeStep: 5,
     maxPages: 40,
   },
+  techEditQuestion: {
+    cost: 0.10,
+  },
   gradingExtract: {
     inputCostPer1MTokens: 2.00,
     outputCostPer1MTokens: 12.00,

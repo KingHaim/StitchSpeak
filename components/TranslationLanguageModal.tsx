@@ -36,7 +36,7 @@ const ModalGoogleSignInAction: React.FC<{ isReady: boolean }> = ({ isReady }) =>
   return (
     <>
       <button type="button" onClick={() => setOpen(true)} className="min-h-[48px] rounded-xl bg-primary px-8 py-3.5 font-bold text-on-primary shadow-lg shadow-primary/20">Sign in to continue</button>
-      {open && <AuthDialog isOpen onClose={() => setOpen(false)} />}
+      {open && <AuthDialog isOpen source="translation_estimate" onClose={() => setOpen(false)} />}
     </>
   );
 };

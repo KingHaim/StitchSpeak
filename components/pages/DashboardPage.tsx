@@ -46,6 +46,14 @@ import {
   PENDING_BUY_CREDITS_PACK_INDEX_KEY,
 } from '../../constants';
 import { estimatedTranslationProgress } from '../../services/progressEstimate';
+import {
+  analyticsBucket,
+  analyticsErrorCode,
+  analyticsFileType,
+  captureEvent,
+  claimFirstExport,
+  claimFirstPattern,
+} from '../../services/analytics';
 import type {
   ChatMessage,
   Language,
@@ -125,6 +133,7 @@ export const DashboardPage: React.FC = () => {
   const [modalFilePriceEstimates, setModalFilePriceEstimates] = useState<PriceEstimate[]>([]);
   const [isModalAnalyzing, setIsModalAnalyzing] = useState(false);
   const [modalAnalyzeError, setModalAnalyzeError] = useState<string | null>(null);
+  const [modalFlowId, setModalFlowId] = useState('');
 
   const [isBuyCreditsOpen, setIsBuyCreditsOpen] = useState(false);
   const [buyCreditsInitialIdx, setBuyCreditsInitialIdx] = useState<number | undefined>(undefined);
@@ -230,7 +239,8 @@ export const DashboardPage: React.FC = () => {
     }
   }, [jobs, selectedJobId]);
 
-  const runModalAnalysis = useCallback(async (files: File[]) => {
+  const runModalAnalysis = useCallback(async (files: File[], flowId: string, targetLanguage: string) => {
+    const startedAt = performance.now();
     setIsModalAnalyzing(true);
     setModalAnalyzeError(null);
     setModalPdfMetrics(null);
@@ -246,20 +256,42 @@ export const DashboardPage: React.FC = () => {
       }
 
       const metricsList = results.map((result) => (result as PromiseFulfilledResult<PdfMetrics>).value);
+      const aggregate = aggregatePdfMetrics(metricsList);
+      const estimate = estimateBatchTranslationCost(metricsList);
       setModalFileMetrics(metricsList);
-      setModalPdfMetrics(aggregatePdfMetrics(metricsList));
+      setModalPdfMetrics(aggregate);
       setModalFilePriceEstimates(metricsList.map(estimateTranslationCost));
-      setModalPriceEstimate(estimateBatchTranslationCost(metricsList));
+      setModalPriceEstimate(estimate);
+      captureEvent('pattern_analysis_completed', {
+        flow_id: flowId,
+        file_count: files.length,
+        page_bucket: analyticsBucket(aggregate?.pages ?? 0, [1, 5, 10, 20, 40], ' pages'),
+        duration_ms: Math.round(performance.now() - startedAt),
+      });
+      captureEvent('estimate_viewed', {
+        flow_id: flowId,
+        file_count: files.length,
+        target_language: targetLanguage,
+        cost_bucket: analyticsBucket(estimate.translationCost, [1, 5, 10, 25, 50], ' credits'),
+        balance_sufficient: balance >= estimate.translationCost - 0.001,
+      });
     } catch (err) {
       console.error('Error analyzing file:', err);
+      captureEvent('pattern_analysis_failed', {
+        flow_id: flowId,
+        error_code: analyticsErrorCode(err),
+        duration_ms: Math.round(performance.now() - startedAt),
+      });
       setModalAnalyzeError(err instanceof Error ? err.message : 'Could not analyze the files. Please try different files.');
     } finally {
       setIsModalAnalyzing(false);
     }
-  }, []);
+  }, [balance]);
 
   const openLanguageModalWithFiles = useCallback(
-    (files: File[], existingLanguages?: string[]) => {
+    (files: File[], existingLanguages?: string[], sourceOrigin: 'upload' | 'saved_pattern' = 'upload') => {
+      const flowId = crypto.randomUUID();
+      setModalFlowId(flowId);
       setModalFiles(files);
       setModalSourceLanguage(AUTO_DETECT_LANGUAGE);
 
@@ -278,7 +310,15 @@ export const DashboardPage: React.FC = () => {
       setModalFilePriceEstimates([]);
       setModalAnalyzeError(null);
       setIsLanguageModalOpen(true);
-      void runModalAnalysis(files);
+      const totalMegabytes = files.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024);
+      captureEvent('pattern_file_selected', {
+        flow_id: flowId,
+        file_count: files.length,
+        file_type: files.length === 1 ? analyticsFileType(files[0]) : 'batch',
+        size_bucket: analyticsBucket(totalMegabytes, [1, 5, 10, 25], ' MB'),
+        source_origin: sourceOrigin,
+      });
+      void runModalAnalysis(files, flowId, nextLanguage.name);
     },
     [runModalAnalysis, addTranslationHint],
   );
@@ -320,7 +360,7 @@ export const DashboardPage: React.FC = () => {
             )
           : [];
 
-        openLanguageModalWithFiles([file], existingLanguages);
+        openLanguageModalWithFiles([file], existingLanguages, 'saved_pattern');
         setSelectedPatternId('');
       } catch (err) {
         console.error('[translate] Could not load pattern source:', err);
@@ -343,9 +383,9 @@ export const DashboardPage: React.FC = () => {
     if (isLanguageModalOpen) return;
     const pending = takePendingSourceFile();
     if (!pending) return;
-    handleNewTranslationFile([pending]);
+    openLanguageModalWithFiles([pending], addTranslationHint.existingLanguages, 'saved_pattern');
     newTranslationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [addTranslationHint, isLanguageModalOpen, handleNewTranslationFile]);
+  }, [addTranslationHint, isLanguageModalOpen, openLanguageModalWithFiles]);
 
   /**
    * "Open in studio" handoff from My Patterns: rebuild a TranslationJob from a
@@ -406,6 +446,7 @@ export const DashboardPage: React.FC = () => {
       priceEstimate: null,
       status: 'complete',
       translatedHtml,
+      reviewWarnings: record.reviewWarnings ?? [],
       error: null,
       chatSessionId,
       chatHistory,
@@ -442,6 +483,7 @@ export const DashboardPage: React.FC = () => {
     async (payload: PendingTranslationStart) => {
       const {
         file,
+        analyticsFlowId,
         sourceLanguage,
         targetLanguage,
         pdfMetrics,
@@ -450,6 +492,7 @@ export const DashboardPage: React.FC = () => {
       const id = createJobId();
       const newJob: TranslationJob = {
         id,
+        analyticsFlowId,
         startedAt: Date.now(),
         file,
         fileName: file.name,
@@ -459,6 +502,7 @@ export const DashboardPage: React.FC = () => {
         priceEstimate,
         status: 'translating',
         translatedHtml: '',
+        reviewWarnings: [],
         error: null,
         chatSessionId: null,
         chatHistory: [],
@@ -477,6 +521,7 @@ export const DashboardPage: React.FC = () => {
           idToken,
           sourceLangParam,
           {
+            analyticsFlowId,
             onDelta: (_delta, accumulated) => {
               setJobs((prev) =>
                 prev.map((j) =>
@@ -490,7 +535,13 @@ export const DashboardPage: React.FC = () => {
         setJobs((prev) =>
           prev.map((j) =>
             j.id === id
-              ? { ...j, translatedHtml: result.html, status: 'complete' as const, error: null }
+              ? {
+                  ...j,
+                  translatedHtml: result.html,
+                  reviewWarnings: result.reviewWarnings ?? [],
+                  status: 'complete' as const,
+                  error: null,
+                }
               : j,
           ),
         );
@@ -511,6 +562,7 @@ export const DashboardPage: React.FC = () => {
               translatedHtml: stripCodeFences(result.html),
               pdfMetrics,
               cost: result.cost ?? priceEstimate.translationCost,
+              reviewWarnings: result.reviewWarnings ?? [],
               sourceFile: file,
             },
             idToken,
@@ -518,6 +570,12 @@ export const DashboardPage: React.FC = () => {
           if (idToken) {
             serverPatternId = savedRecord.id;
           }
+          captureEvent('pattern_saved', {
+            flow_id: analyticsFlowId,
+            pattern_id: savedRecord.id,
+            target_language: targetLanguage.name,
+            first_pattern: claimFirstPattern(),
+          });
           setJobs((prev) =>
             prev.map((j) => (j.id === id ? { ...j, serverPatternId } : j)),
           );
@@ -528,6 +586,11 @@ export const DashboardPage: React.FC = () => {
           refreshSavedPatterns();
         } catch (saveErr) {
           console.error('Failed to save translated pattern to My Patterns:', saveErr);
+          captureEvent('pattern_save_failed', {
+            flow_id: analyticsFlowId,
+            target_language: targetLanguage.name,
+            error_code: analyticsErrorCode(saveErr),
+          });
         }
 
         if (idToken && serverPatternId) {
@@ -542,12 +605,14 @@ export const DashboardPage: React.FC = () => {
         }
       } catch (err) {
         const status = (err as { status?: number }).status;
+        const refundedBalance = (err as { balance?: number }).balance;
         const baseMessage = err instanceof Error ? err.message : 'An unexpected error occurred.';
         console.error(err);
 
         // The server deducts credits and automatically refunds them if the
         // translation fails, so we just re-sync the balance here.
-        void refreshBalance();
+        if (typeof refundedBalance === 'number') applyBalance(refundedBalance);
+        else void refreshBalance();
 
         if (status === 402) {
           // Server-computed cost exceeded the balance — prompt a top-up.
@@ -590,6 +655,7 @@ export const DashboardPage: React.FC = () => {
 
     const payloads: PendingTranslationStart[] = modalFiles.map((file, index) => ({
       file,
+      analyticsFlowId: modalFlowId,
       sourceLanguage: modalSourceLanguage,
       targetLanguage: modalTargetLanguage,
       pdfMetrics: modalFileMetrics[index] ?? null,
@@ -613,6 +679,14 @@ export const DashboardPage: React.FC = () => {
         return;
       }
 
+      captureEvent('translation_confirmed', {
+        flow_id: modalFlowId,
+        file_count: modalFiles.length,
+        source_language: modalSourceLanguage.name,
+        target_language: modalTargetLanguage.name,
+        cost_bucket: analyticsBucket(cost, [1, 5, 10, 25, 50], ' credits'),
+      });
+
       closeLanguageModal();
       beginTranslationBatch(payloads);
     } catch (err) {
@@ -630,6 +704,7 @@ export const DashboardPage: React.FC = () => {
     }
   }, [
     modalFiles,
+    modalFlowId,
     modalPriceEstimate,
     modalFileMetrics,
     modalFilePriceEstimates,
@@ -647,9 +722,12 @@ export const DashboardPage: React.FC = () => {
     async (pack: CreditPackage) => {
       // Redirects to hosted checkout. Credits are granted by the server webhook
       // after payment; on return the user can re-initiate their translation.
-      await startCheckout(pack.id);
+      await startCheckout(pack.id, {
+        flowId: modalFlowId || undefined,
+        placement: modalFlowId ? 'translation_top_up' : 'buy_credits_modal',
+      });
     },
-    [startCheckout],
+    [startCheckout, modalFlowId],
   );
 
   const handleSendMessage = useCallback(
@@ -794,6 +872,22 @@ export const DashboardPage: React.FC = () => {
           exportPatternText(html, exportOptions);
           break;
       }
+      captureEvent('pattern_exported', {
+        format,
+        surface: 'studio',
+        target_language: selectedJob.targetLanguage.name,
+        flow_id: selectedJob.analyticsFlowId,
+        pattern_id: selectedJob.serverPatternId ?? undefined,
+        first_export: claimFirstExport(),
+        seconds_since_translation: Math.max(0, Math.round((Date.now() - selectedJob.startedAt) / 1000)),
+      });
+    } catch (error) {
+      captureEvent('pattern_export_failed', {
+        format,
+        surface: 'studio',
+        error_code: analyticsErrorCode(error),
+      });
+      throw error;
     } finally {
       setStudioExportBusy(false);
     }
@@ -1001,6 +1095,25 @@ export const DashboardPage: React.FC = () => {
               selectedJob.status === 'translating' ||
               selectedJob.status === 'error') && (
               <>
+                {selectedJob.status === 'complete' && selectedJob.reviewWarnings.length > 0 && (
+                  <div
+                    role="status"
+                    className="rounded-xl border border-amber-500/30 bg-amber-50 px-5 py-4 text-amber-950"
+                  >
+                    <p className="font-semibold">Manual review recommended</p>
+                    <p className="mt-1 text-sm">
+                      StitchSpeak preserved the translation but found {selectedJob.reviewWarnings.length}{' '}
+                      structural or terminology {selectedJob.reviewWarnings.length === 1 ? 'item' : 'items'} it could not safely repair.
+                    </p>
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+                      {selectedJob.reviewWarnings.slice(0, 5).map((warning, index) => (
+                        <li key={`${warning.code}-${warning.sourceId ?? index}`}>
+                          {warning.sourceId ? `${warning.sourceId}: ` : ''}{warning.message}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {showBilingual ? (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between px-2 gap-3 flex-wrap">

@@ -126,11 +126,11 @@ export async function login(
 
 export async function googleLogin(
   payload: string | Record<string, unknown>,
-): Promise<{ token?: string; user?: unknown }> {
+): Promise<{ token?: string; user?: unknown; isNewUser?: boolean }> {
   const body: Record<string, unknown> =
     typeof payload === 'string' ? { credential: payload } : { ...payload };
   body.deviceFingerprint = getDeviceFingerprint();
-  const data = await apiCall<{ token?: string; user?: unknown }>(
+  const data = await apiCall<{ token?: string; user?: unknown; isNewUser?: boolean }>(
     '/auth/google',
     'POST',
     body,

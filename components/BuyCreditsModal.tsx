@@ -4,6 +4,7 @@ import { LockIcon } from './icons/LockIcon';
 import { CREDIT_PACKAGES } from '../constants';
 import type { CreditPackage } from '../types';
 import { useModalA11y } from '../hooks/useModalA11y';
+import { captureEvent } from '../services/analytics';
 
 interface BuyCreditsModalProps {
   isOpen: boolean;
@@ -30,6 +31,7 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
+      captureEvent('credit_pack_viewed', { placement: 'buy_credits_modal' });
       let nextIdx = 1;
       const initialIdx = initialIdxRef.current;
       if (initialIdx !== undefined && initialIdx >= 0 && initialIdx < CREDIT_PACKAGES.length) {
@@ -50,6 +52,12 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({
     e.preventDefault();
     setError(null);
     setIsProcessing(true);
+    captureEvent('credit_pack_selected', {
+      pack_id: selectedPack.id,
+      placement: 'buy_credits_modal',
+      credits: selectedPack.credits,
+      amount_eur: selectedPack.price,
+    });
     try {
       await onPurchase(selectedPack);
       // On success the browser is redirected to checkout, so we leave the

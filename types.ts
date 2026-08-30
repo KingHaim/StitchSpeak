@@ -43,6 +43,14 @@ export interface TranslationResult {
   cost?: number;
   /** Remaining credit balance after this translation, returned by the server. */
   balance?: number;
+  /** Structural or terminology items that could not be repaired safely. */
+  reviewWarnings?: TranslationReviewWarning[];
+}
+
+export interface TranslationReviewWarning {
+  code: string;
+  sourceId?: string;
+  message: string;
 }
 
 export type PageId = 'dashboard' | 'glossary' | 'history' | 'techedit' | 'grading' | 'settings';
@@ -192,6 +200,13 @@ export type TechEditResolution = 'applied' | 'dismissed';
 /** Finding index (as string) → resolution, for one report. */
 export type TechEditResolutionMap = Record<string, TechEditResolution>;
 
+export interface TechEditFindingMessage {
+  id: number;
+  role: 'user' | 'model';
+  content: string;
+  createdAt: number;
+}
+
 export interface TechEditRecord {
   id: string;
   timestamp: number;
@@ -221,6 +236,7 @@ export interface TranslationRecord {
   translatedHtml?: string;
   pdfMetrics: PdfMetrics | null;
   cost: number;
+  reviewWarnings?: TranslationReviewWarning[];
   /** True when the original source file is stored server-side and can be re-fetched. */
   hasSource?: boolean;
   /** True when a page-1 thumbnail has been generated and stored server-side. */
@@ -239,6 +255,8 @@ export type TranslationJobStatus = 'translating' | 'complete' | 'error';
 
 export interface TranslationJob {
   id: string;
+  /** Anonymous client flow id used to join estimate, translation, save, and export events. */
+  analyticsFlowId?: string;
   /** Client timestamp used only for an explicitly estimated progress display. */
   startedAt: number;
   file: File;
@@ -249,6 +267,7 @@ export interface TranslationJob {
   priceEstimate: PriceEstimate | null;
   status: TranslationJobStatus;
   translatedHtml: string;
+  reviewWarnings: TranslationReviewWarning[];
   error: string | null;
   chatSessionId: string | null;
   chatHistory: ChatMessage[];
@@ -263,6 +282,7 @@ export interface TranslationJob {
 
 export interface PendingTranslationStart {
   file: File;
+  analyticsFlowId: string;
   sourceLanguage: Language;
   targetLanguage: Language;
   pdfMetrics: PdfMetrics | null;

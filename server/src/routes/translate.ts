@@ -5,13 +5,14 @@ import { rateLimit } from '../middleware/rateLimit.js';
 import { translatePattern } from '../services/gemini.js';
 import { chargeCreditsForJob, refundPendingCharge, settlePendingCharge } from '../services/creditStore.js';
 import { computeDocumentMetrics, translationCostFromMetrics } from '../services/pricing.js';
-import { externalErrorStatus } from '../services/externalDeadline.js';
+import { externalErrorDetails } from '../services/externalDeadline.js';
 import {
   acquireTranslationLease,
   releaseTranslationLease,
   renewTranslationLease,
 } from '../services/translationLeaseStore.js';
 import { recordAiProcessingAcknowledgement } from '../services/legalAcknowledgementStore.js';
+import { getTranslationMemoryForPrompt } from '../services/translationMemoryStore.js';
 
 const router = Router();
 
@@ -62,6 +63,7 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
     return;
   }
   recordAiProcessingAcknowledgement(userSub);
+  const translationMemory = getTranslationMemoryForPrompt(userSub, sourceLanguage, language);
 
   const leaseId = acquireTranslationLease(userSub);
   if (!leaseId) {
@@ -105,7 +107,7 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
         file.mimetype,
         language,
         sourceLanguage,
-        {},
+        { translationMemory },
         file.originalname,
       );
       if (chargeId) settlePendingCharge(chargeId);
@@ -113,7 +115,12 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
     } catch (err: any) {
       console.error('[translate] Error:', err);
       const newBalance = refund();
-      res.status(externalErrorStatus(err)).json({ error: err.message || 'Translation failed.', balance: newBalance });
+      const details = externalErrorDetails(err);
+      res.status(details.status).json({
+        error: `${details.message} Your StitchSpeak credits were refunded.`,
+        code: details.code,
+        balance: newBalance,
+      });
     }
     return;
   }
@@ -165,6 +172,7 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
       language,
       sourceLanguage,
       {
+        translationMemory,
         onDelta: (text) => {
           if (clientGone) return;
           writeEvent({ type: 'delta', text });
@@ -174,21 +182,35 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
     );
     if (chargeId) settlePendingCharge(chargeId);
     if (!clientGone) {
-      writeEvent({ type: 'done', html: result.html, usage: result.usage, cost, balance });
+      writeEvent({
+        type: 'done',
+        html: result.html,
+        usage: result.usage,
+        reviewWarnings: result.reviewWarnings,
+        cost,
+        balance,
+      });
     }
     res.end();
   } catch (err: any) {
     console.error('[translate] Error:', err);
     const newBalance = refund();
+    const details = externalErrorDetails(err);
     if (!res.headersSent) {
       // Headers weren't flushed yet (rare — flushHeaders above runs before
       // translatePattern). Fall back to a regular JSON error.
-      res.status(externalErrorStatus(err)).json({ error: err.message || 'Translation failed.', balance: newBalance });
+      res.status(details.status).json({
+        error: `${details.message} Your StitchSpeak credits were refunded.`,
+        code: details.code,
+        balance: newBalance,
+      });
       return;
     }
     writeEvent({
       type: 'error',
-      message: err?.message || 'Translation failed.',
+      message: `${details.message} Your StitchSpeak credits were refunded.`,
+      code: details.code,
+      status: details.status,
       balance: newBalance,
     });
     res.end();

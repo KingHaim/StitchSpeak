@@ -11,6 +11,7 @@ interface ServerPattern {
   targetLanguage: string;
   pdfMetrics: TranslationRecord['pdfMetrics'] | null;
   cost: number;
+  reviewWarnings?: TranslationRecord['reviewWarnings'];
   hasSource?: boolean;
   sourceMime?: string | null;
   sourceSize?: number | null;
@@ -76,6 +77,7 @@ function toRecord(server: ServerPattern): TranslationRecord {
     targetLanguage: server.targetLanguage,
     pdfMetrics: server.pdfMetrics ?? null,
     cost: server.cost,
+    reviewWarnings: server.reviewWarnings ?? [],
     hasSource: server.hasSource ?? false,
     hasThumbnail: server.hasThumbnail ?? false,
   };
@@ -107,6 +109,7 @@ export interface SavePatternRequest {
   html: string;
   pdfMetrics: TranslationRecord['pdfMetrics'] | null;
   cost: number;
+  reviewWarnings?: TranslationRecord['reviewWarnings'];
 }
 
 export async function savePattern(
@@ -120,6 +123,7 @@ export async function savePattern(
     targetLanguage: input.targetLanguage,
     pdfMetrics: input.pdfMetrics,
     cost: input.cost,
+    reviewWarnings: input.reviewWarnings ?? [],
     html: input.html,
   });
   return toRecord(data.pattern);

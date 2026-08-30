@@ -27,6 +27,11 @@ import { extractOriginalHtml, isTextExtractableFile } from '../../services/origi
 import { setAddTranslationHint } from '../../services/addTranslationHint';
 import { setOpenPatternHint } from '../../services/openPatternHint';
 import { languageFlagEmoji, sortedUniqueLanguageLabels } from '../../utils/languageFlags';
+import {
+  analyticsErrorCode,
+  captureEvent,
+  claimFirstExport,
+} from '../../services/analytics';
 
 type DownloadFormat = 'pdf' | 'doc' | 'html' | 'txt';
 
@@ -380,8 +385,20 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
           exportPatternText(htmlContent, exportOptions);
           break;
       }
+      captureEvent('pattern_exported', {
+        format,
+        surface: 'history',
+        target_language: record.targetLanguage,
+        pattern_id: record.id,
+        first_export: claimFirstExport(),
+      });
     } catch (err) {
       console.error('Failed to export pattern:', err);
+      captureEvent('pattern_export_failed', {
+        format,
+        surface: 'history',
+        error_code: analyticsErrorCode(err),
+      });
       setActionError(err instanceof Error ? err.message : 'Could not export this pattern.');
     } finally {
       setDownloadingRecordId(null);

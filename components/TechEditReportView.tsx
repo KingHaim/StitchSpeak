@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type {
   TechEditFinding,
+  TechEditFindingMessage,
   TechEditReport,
   TechEditResolution,
   TechEditResolutionMap,
@@ -14,6 +15,11 @@ interface TechEditReportViewProps {
   resolutions?: TechEditResolutionMap;
   /** Called when the user ticks (applied), discards (dismissed) or undoes a finding. */
   onResolveFinding?: (findingIndex: number, resolution: TechEditResolution | null) => void;
+  /** Loads the persisted focused conversation for one finding. */
+  onLoadFindingQuestions?: (findingIndex: number) => Promise<TechEditFindingMessage[]>;
+  /** Sends one paid question and returns the authoritative saved thread. */
+  onAskFinding?: (findingIndex: number, question: string) => Promise<TechEditFindingMessage[]>;
+  questionCost?: number;
 }
 
 const AI_FINDING_TIP =
@@ -50,12 +56,56 @@ const SEVERITY_GROUPS: Array<{
 ];
 
 const FindingCard: React.FC<{
+  findingIndex: number;
   finding: TechEditFinding;
   resolution: TechEditResolution | undefined;
   onResolve?: (resolution: TechEditResolution | null) => void;
-}> = ({ finding, resolution, onResolve }) => {
+  onLoadQuestions?: () => Promise<TechEditFindingMessage[]>;
+  onAsk?: (question: string) => Promise<TechEditFindingMessage[]>;
+  questionCost: number;
+}> = ({ findingIndex, finding, resolution, onResolve, onLoadQuestions, onAsk, questionCost }) => {
   const isApplied = resolution === 'applied';
   const isDismissed = resolution === 'dismissed';
+  const [isQuestionOpen, setIsQuestionOpen] = useState(false);
+  const [hasLoadedQuestions, setHasLoadedQuestions] = useState(false);
+  const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
+  const [isSendingQuestion, setIsSendingQuestion] = useState(false);
+  const [messages, setMessages] = useState<TechEditFindingMessage[]>([]);
+  const [question, setQuestion] = useState('');
+  const [questionError, setQuestionError] = useState<string | null>(null);
+
+  const toggleQuestions = async (): Promise<void> => {
+    const willOpen = !isQuestionOpen;
+    setIsQuestionOpen(willOpen);
+    setQuestionError(null);
+    if (!willOpen || hasLoadedQuestions || !onLoadQuestions) return;
+    setIsLoadingQuestions(true);
+    try {
+      setMessages(await onLoadQuestions());
+      setHasLoadedQuestions(true);
+    } catch (err) {
+      setQuestionError(err instanceof Error ? err.message : 'Could not load this conversation.');
+    } finally {
+      setIsLoadingQuestions(false);
+    }
+  };
+
+  const submitQuestion = async (event: React.FormEvent): Promise<void> => {
+    event.preventDefault();
+    const trimmed = question.trim();
+    if (!trimmed || !onAsk || isSendingQuestion) return;
+    setIsSendingQuestion(true);
+    setQuestionError(null);
+    try {
+      setMessages(await onAsk(trimmed));
+      setHasLoadedQuestions(true);
+      setQuestion('');
+    } catch (err) {
+      setQuestionError(err instanceof Error ? err.message : 'Could not answer this question.');
+    } finally {
+      setIsSendingQuestion(false);
+    }
+  };
 
   return (
     <div
@@ -133,42 +183,130 @@ const FindingCard: React.FC<{
         </div>
       </div>
 
-      {onResolve && (
-        <div className="mt-3 flex items-center gap-2">
-          {resolution ? (
+      {(onResolve || onAsk) && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {onResolve && (
+            resolution ? (
+              <button
+                type="button"
+                onClick={() => onResolve(null)}
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors"
+              >
+                <span className="material-symbols-outlined text-sm" aria-hidden>
+                  undo
+                </span>
+                Undo
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onResolve('applied')}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300/70 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 transition-all duration-200 hover:bg-emerald-100 hover:scale-[1.03] active:scale-95"
+                >
+                  <span className="material-symbols-outlined text-sm" aria-hidden>
+                    check
+                  </span>
+                  I fixed this
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onResolve('dismissed')}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-outline-variant/40 px-3 py-1.5 text-xs font-medium text-on-surface-variant transition-all duration-200 hover:bg-surface-container-high hover:text-on-surface hover:scale-[1.03] active:scale-95"
+                >
+                  <span className="material-symbols-outlined text-sm" aria-hidden>
+                    close
+                  </span>
+                  Not an issue
+                </button>
+              </>
+            )
+          )}
+          {onAsk && (
             <button
               type="button"
-              onClick={() => onResolve(null)}
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors"
+              onClick={() => void toggleQuestions()}
+              aria-expanded={isQuestionOpen}
+              aria-controls={`finding-questions-${findingIndex}`}
+              className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/10"
             >
               <span className="material-symbols-outlined text-sm" aria-hidden>
-                undo
+                forum
               </span>
-              Undo
+              {isQuestionOpen ? 'Hide questions' : `Ask about this · ${questionCost.toFixed(1)} credit`}
             </button>
+          )}
+        </div>
+      )}
+
+      {onAsk && isQuestionOpen && (
+        <div
+          id={`finding-questions-${findingIndex}`}
+          className="mt-4 rounded-xl border border-primary/15 bg-surface-container-low p-3 sm:p-4"
+        >
+          <div className="mb-3">
+            <p className="text-sm font-semibold text-on-surface">Ask about this issue</p>
+            <p className="mt-0.5 text-xs text-on-surface-variant">
+              Each answer costs {questionCost.toFixed(1)} credit. Failed answers are automatically refunded.
+            </p>
+          </div>
+
+          {isLoadingQuestions ? (
+            <p className="text-sm text-on-surface-variant">Loading conversation…</p>
           ) : (
-            <>
+            messages.length > 0 && (
+              <div className="mb-3 max-h-80 space-y-2 overflow-y-auto pr-1" aria-live="polite">
+                {messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`whitespace-pre-wrap break-words rounded-lg px-3 py-2 text-sm leading-relaxed ${
+                      message.role === 'user'
+                        ? 'ml-6 bg-primary text-on-primary'
+                        : 'mr-6 border border-outline-variant/20 bg-surface-container-lowest text-on-surface'
+                    }`}
+                  >
+                    {message.content}
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+
+          <form onSubmit={(event) => void submitQuestion(event)} className="space-y-2">
+            <label htmlFor={`finding-question-input-${findingIndex}`} className="sr-only">
+              Question about {finding.title}
+            </label>
+            <textarea
+              id={`finding-question-input-${findingIndex}`}
+              value={question}
+              onChange={(event) => setQuestion(event.target.value)}
+              maxLength={2_000}
+              rows={2}
+              disabled={isSendingQuestion}
+              placeholder="For example: Why is ‘round’ wrong here, and should every instance become ‘row’?"
+              className="w-full resize-y rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-2 text-sm text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/60 focus:border-primary disabled:opacity-60"
+            />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11px] text-on-surface-variant">
+                Focused on this finding; it does not rerun the whole pattern.
+              </p>
               <button
-                type="button"
-                onClick={() => onResolve('applied')}
-                className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300/70 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 transition-all duration-200 hover:bg-emerald-100 hover:scale-[1.03] active:scale-95"
+                type="submit"
+                disabled={!question.trim() || isSendingQuestion}
+                className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-40"
               >
-                <span className="material-symbols-outlined text-sm" aria-hidden>
-                  check
+                <span className={`material-symbols-outlined text-sm ${isSendingQuestion ? 'animate-spin' : ''}`} aria-hidden>
+                  {isSendingQuestion ? 'progress_activity' : 'send'}
                 </span>
-                I fixed this
+                {isSendingQuestion ? 'Answering…' : `Ask · ${questionCost.toFixed(1)} credit`}
               </button>
-              <button
-                type="button"
-                onClick={() => onResolve('dismissed')}
-                className="inline-flex items-center gap-1.5 rounded-full border border-outline-variant/40 px-3 py-1.5 text-xs font-medium text-on-surface-variant transition-all duration-200 hover:bg-surface-container-high hover:text-on-surface hover:scale-[1.03] active:scale-95"
-              >
-                <span className="material-symbols-outlined text-sm" aria-hidden>
-                  close
-                </span>
-                Not an issue
-              </button>
-            </>
+            </div>
+          </form>
+
+          {questionError && (
+            <p className="mt-2 rounded-lg bg-error-container/50 px-3 py-2 text-xs font-medium text-on-error-container" role="alert">
+              {questionError}
+            </p>
           )}
         </div>
       )}
@@ -181,6 +319,9 @@ export const TechEditReportView: React.FC<TechEditReportViewProps> = ({
   fileName,
   resolutions = {},
   onResolveFinding,
+  onLoadFindingQuestions,
+  onAskFinding,
+  questionCost = 0.1,
 }) => {
   const counts = report.stats.findingCounts;
   const indexedFindings = report.findings.map((finding, index) => ({ finding, index }));
@@ -307,11 +448,17 @@ export const TechEditReportView: React.FC<TechEditReportViewProps> = ({
                 {findings.map(({ finding, index }) => (
                   <FindingCard
                     key={index}
+                    findingIndex={index}
                     finding={finding}
                     resolution={resolutions[String(index)]}
                     onResolve={
                       onResolveFinding ? (resolution) => onResolveFinding(index, resolution) : undefined
                     }
+                    onLoadQuestions={
+                      onLoadFindingQuestions ? () => onLoadFindingQuestions(index) : undefined
+                    }
+                    onAsk={onAskFinding ? (question) => onAskFinding(index, question) : undefined}
+                    questionCost={questionCost}
                   />
                 ))}
               </div>

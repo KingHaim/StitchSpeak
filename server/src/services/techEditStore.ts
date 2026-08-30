@@ -37,6 +37,19 @@ db.exec(`
     PRIMARY KEY (sub, report_id, finding_idx)
   );
   CREATE INDEX IF NOT EXISTS idx_tech_edit_feedback_sub ON tech_edit_feedback(sub, timestamp DESC);
+
+  -- A focused conversation attached to one finding in one saved report.
+  CREATE TABLE IF NOT EXISTS tech_edit_finding_messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    sub         TEXT NOT NULL,
+    report_id   TEXT NOT NULL,
+    finding_idx INTEGER NOT NULL,
+    role        TEXT NOT NULL CHECK (role IN ('user', 'model')),
+    content     TEXT NOT NULL,
+    created_at  INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_tech_edit_finding_messages_thread
+    ON tech_edit_finding_messages(sub, report_id, finding_idx, id);
 `);
 
 // Migration: per-report resolution map (finding index -> 'applied' | 'dismissed').
@@ -85,15 +98,37 @@ const stmts = {
     WHERE sub = ? AND resolution = 'dismissed' AND category = ?
     ORDER BY timestamp DESC LIMIT 3
   `),
+  listFindingMessages: db.prepare<[string, string, number]>(`
+    SELECT id, role, content, created_at
+    FROM tech_edit_finding_messages
+    WHERE sub = ? AND report_id = ? AND finding_idx = ?
+    ORDER BY id ASC
+  `),
+  insertFindingMessage: db.prepare<[string, string, number, string, string, number]>(`
+    INSERT INTO tech_edit_finding_messages (sub, report_id, finding_idx, role, content, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `),
+  deleteOldFindingMessages: db.prepare<[string, string, number, string, string, number]>(`
+    DELETE FROM tech_edit_finding_messages
+    WHERE sub = ? AND report_id = ? AND finding_idx = ? AND id NOT IN (
+      SELECT id FROM tech_edit_finding_messages
+      WHERE sub = ? AND report_id = ? AND finding_idx = ?
+      ORDER BY id DESC LIMIT 40
+    )
+  `),
+  deleteFindingMessagesForReport: db.prepare<[string, string]>(`
+    DELETE FROM tech_edit_finding_messages WHERE sub = ? AND report_id = ?
+  `),
+  deleteFindingMessagesForUser: db.prepare<[string]>(`
+    DELETE FROM tech_edit_finding_messages WHERE sub = ?
+  `),
   insert: db.prepare<[string, string, number, string, number, number, string]>(`
     INSERT INTO tech_edits (id, sub, timestamp, file_name, pages, cost, report)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `),
   countForUser: db.prepare<[string]>('SELECT COUNT(*) AS count FROM tech_edits WHERE sub = ?'),
-  evictOldest: db.prepare<[string, number]>(`
-    DELETE FROM tech_edits WHERE id IN (
-      SELECT id FROM tech_edits WHERE sub = ? ORDER BY timestamp ASC LIMIT ?
-    )
+  listOldestIds: db.prepare<[string, number]>(`
+    SELECT id FROM tech_edits WHERE sub = ? ORDER BY timestamp ASC LIMIT ?
   `),
   deleteOne: db.prepare<[string, string]>('DELETE FROM tech_edits WHERE sub = ? AND id = ?'),
   deleteAllForUser: db.prepare<[string]>('DELETE FROM tech_edits WHERE sub = ?'),
@@ -113,6 +148,13 @@ export type TechEditResolutionMap = Record<string, TechEditResolution>;
 export interface TechEditRecordWithReport extends TechEditRecord {
   report: TechEditReport;
   resolutions: TechEditResolutionMap;
+}
+
+export interface TechEditFindingMessage {
+  id: number;
+  role: 'user' | 'model';
+  content: string;
+  createdAt: number;
 }
 
 interface RawRow {
@@ -176,7 +218,15 @@ const saveTx = db.transaction(
 
     const countRow = stmts.countForUser.get(sub) as { count: number };
     if (countRow.count > MAX_RECORDS_PER_USER) {
-      stmts.evictOldest.run(sub, countRow.count - MAX_RECORDS_PER_USER);
+      const oldest = stmts.listOldestIds.all(
+        sub,
+        countRow.count - MAX_RECORDS_PER_USER,
+      ) as Array<{ id: string }>;
+      for (const row of oldest) {
+        stmts.deleteFeedbackForReport.run(sub, row.id);
+        stmts.deleteFindingMessagesForReport.run(sub, row.id);
+        stmts.deleteOne.run(sub, row.id);
+      }
     }
     return { id, timestamp, fileName, pages, cost };
   },
@@ -195,12 +245,81 @@ export function saveTechEdit(
 
 export function deleteTechEdit(sub: string, id: string): boolean {
   stmts.deleteFeedbackForReport.run(sub, id);
+  stmts.deleteFindingMessagesForReport.run(sub, id);
   return stmts.deleteOne.run(sub, id).changes > 0;
 }
 
 export function deleteAllTechEdits(sub: string): number {
   stmts.deleteFeedbackForUser.run(sub);
+  stmts.deleteFindingMessagesForUser.run(sub);
   return stmts.deleteAllForUser.run(sub).changes;
+}
+
+function findingMessageFromRow(row: {
+  id: number;
+  role: string;
+  content: string;
+  created_at: number;
+}): TechEditFindingMessage {
+  return {
+    id: row.id,
+    role: row.role === 'user' ? 'user' : 'model',
+    content: row.content,
+    createdAt: row.created_at,
+  };
+}
+
+/** Return a finding's saved conversation, or null if the owned finding does not exist. */
+export function getTechEditFindingMessages(
+  sub: string,
+  reportId: string,
+  findingIdx: number,
+): TechEditFindingMessage[] | null {
+  const record = getTechEdit(sub, reportId);
+  if (!record?.report.findings[findingIdx]) return null;
+  const rows = stmts.listFindingMessages.all(sub, reportId, findingIdx) as Array<{
+    id: number;
+    role: string;
+    content: string;
+    created_at: number;
+  }>;
+  return rows.map(findingMessageFromRow);
+}
+
+const appendFindingExchangeTx = db.transaction(
+  (
+    sub: string,
+    reportId: string,
+    findingIdx: number,
+    question: string,
+    answer: string,
+  ): TechEditFindingMessage[] | null => {
+    const record = getTechEdit(sub, reportId);
+    if (!record?.report.findings[findingIdx]) return null;
+    const now = Date.now();
+    stmts.insertFindingMessage.run(sub, reportId, findingIdx, 'user', question, now);
+    stmts.insertFindingMessage.run(sub, reportId, findingIdx, 'model', answer, now + 1);
+    stmts.deleteOldFindingMessages.run(
+      sub,
+      reportId,
+      findingIdx,
+      sub,
+      reportId,
+      findingIdx,
+    );
+    return getTechEditFindingMessages(sub, reportId, findingIdx);
+  },
+);
+
+/** Persist one paid question/answer atomically and retain the latest 20 exchanges. */
+export function appendTechEditFindingExchange(
+  sub: string,
+  reportId: string,
+  findingIdx: number,
+  question: string,
+  answer: string,
+): TechEditFindingMessage[] | null {
+  return appendFindingExchangeTx(sub, reportId, findingIdx, question, answer);
 }
 
 // --- Finding resolutions & learning signal ---

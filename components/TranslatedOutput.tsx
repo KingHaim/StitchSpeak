@@ -10,6 +10,11 @@ import {
   exportPatternHtml,
   exportPatternText,
 } from '../services/pdfExport';
+import {
+  analyticsErrorCode,
+  captureEvent,
+  claimFirstExport,
+} from '../services/analytics';
 import { sanitizePatternHtml } from '../services/sanitizePatternHtml';
 
 type DownloadFormat = 'pdf' | 'doc' | 'html' | 'txt';
@@ -144,6 +149,19 @@ export const TranslatedOutput: React.FC<TranslatedOutputProps> = ({
           exportPatternText(cleanHtml, exportOptions);
           break;
       }
+      captureEvent('pattern_exported', {
+        format,
+        surface: 'translation_output',
+        target_language: languageCode,
+        first_export: claimFirstExport(),
+      });
+    } catch (error) {
+      captureEvent('pattern_export_failed', {
+        format,
+        surface: 'translation_output',
+        error_code: analyticsErrorCode(error),
+      });
+      throw error;
     } finally {
       setIsDownloading(false);
     }

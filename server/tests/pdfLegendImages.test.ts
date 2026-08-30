@@ -81,6 +81,8 @@ describe('stitch-chart legend image handling', () => {
     expect(catalog).toContain('likely stitch-chart LEGEND SYMBOL');
     expect(catalog).toContain('k2tog');
     expect(catalog).toContain('yarn over');
+    expect(catalog).toContain('DECORATIVE HEADING EXCEPTION');
+    expect(catalog).toMatch(/Materials Needed.*semantic <h2>/i);
   });
 
   it('prefers legend <td> markers over ROW groups when both appear', () => {

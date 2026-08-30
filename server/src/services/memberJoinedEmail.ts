@@ -162,6 +162,12 @@ function hasPreexistingMemberFootprint(sub: string): boolean {
   }
 }
 
+/** True when this identity was seen before, including before join emails existed. */
+export function isKnownMember(sub: string): boolean {
+  const recorded = db.prepare('SELECT 1 AS ok FROM member_join_events WHERE sub = ? LIMIT 1').get(sub);
+  return Boolean(recorded) || hasPreexistingMemberFootprint(sub);
+}
+
 /**
  * Notify admins the first time this member is seen. Never throws; safe to fire-and-forget from auth.
  */
