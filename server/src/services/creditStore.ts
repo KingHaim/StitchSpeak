@@ -65,8 +65,8 @@ db.exec(`
   )
 `);
 
-// In-flight job charges. A row exists while a paid Gemini job (translation /
-// tech edit) is running and is settled on success or refunded on failure. If
+// In-flight job charges. A row exists while a paid AI job (translation / tech
+// edit) is running and is settled on success or refunded on failure. If
 // the process dies mid-job (redeploy, crash), the row survives on the volume
 // and is refunded on the next startup so users never lose credits silently.
 db.exec(`

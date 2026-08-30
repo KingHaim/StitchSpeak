@@ -1,5 +1,6 @@
 export interface ProductionChecks {
   gemini: boolean;
+  openai: boolean;
   googleOAuth: boolean;
   lemonSqueezy: boolean;
   lemonSqueezyWebhook: boolean;

@@ -2,7 +2,7 @@
 
 ## Cursor Cloud specific instructions
 
-StitchSpeak is a React 19 + TypeScript + Tailwind CSS v4 frontend (Vite) with an Express backend (`server/`). Translation, chat, and glossary lookup all go through the server, which calls the Gemini API server-side.
+StitchSpeak is a React 19 + TypeScript + Tailwind CSS v4 frontend (Vite) with an Express backend (`server/`). Translation, chat, glossary lookup, and grading call Gemini server-side; tech editing calls OpenAI server-side.
 
 ### Commands
 
@@ -23,6 +23,7 @@ StitchSpeak is a React 19 + TypeScript + Tailwind CSS v4 frontend (Vite) with an
 | Variable | Where | Purpose |
 |----------|-------|---------|
 | `GEMINI_API_KEY` | `server/.env` | Server-side Gemini key for translation, chat & glossary |
+| `OPENAI_API_KEY` | `server/.env` | Server-side OpenAI key for assisted tech editing |
 | `GOOGLE_CLIENT_ID` | `server/.env` | Same Google OAuth client ID as `VITE_GOOGLE_CLIENT_ID` — used server-side to verify ID tokens |
 | `AUTH_SESSION_SECRET` | `server/.env` | Long stable secret used to sign StitchSpeak email/password session tokens |
 | `LEMON_SQUEEZY_API_KEY` | `server/.env` | Lemon Squeezy API key for credit-pack checkout sessions (payments disabled if unset) |

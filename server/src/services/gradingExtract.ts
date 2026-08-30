@@ -1,7 +1,7 @@
 import { ThinkingLevel, Type, type Schema } from '@google/genai';
 import { getAI, withRetry } from './gemini.js';
 import { withExternalDeadline } from './externalDeadline.js';
-import { buildDocumentPayload } from './techEdit.js';
+import { detectSourceKind, extractDocumentHtml } from './documentExtract.js';
 import type {
   GradingMeasurementInput,
   GradingRequestInput,
@@ -18,6 +18,37 @@ import type {
 
 const EXTRACT_MODEL = 'gemini-3.1-pro-preview';
 const EXTRACT_DEADLINE_MS = 4 * 60 * 1000;
+const MAX_SOURCE_CHARS = 300_000;
+
+interface GeminiDocumentPayload {
+  parts: Array<Record<string, unknown>>;
+}
+
+/** Keep grading on Gemini even though tech editing now uses OpenAI. */
+async function buildGeminiDocumentPayload(
+  fileBuffer: Buffer,
+  mimeType: string,
+  fileName?: string,
+): Promise<GeminiDocumentPayload> {
+  const kind = detectSourceKind(fileBuffer, mimeType, fileName);
+  if (kind === 'pdf') {
+    return {
+      parts: [
+        { inlineData: { data: fileBuffer.toString('base64'), mimeType: 'application/pdf' } },
+      ],
+    };
+  }
+  const html = await extractDocumentHtml(fileBuffer, kind);
+  const text = html.replace(/<img\b[^>]*>/gi, '').slice(0, MAX_SOURCE_CHARS);
+  if (!text.replace(/<[^>]+>/g, '').trim()) {
+    throw new Error('Could not read any text from this document. Please try exporting it as a PDF.');
+  }
+  return {
+    parts: [
+      { text: `--- PATTERN DOCUMENT (HTML extracted from ${kind}) ---\n${text}\n--- END PATTERN DOCUMENT ---` },
+    ],
+  };
+}
 
 export interface GradingExtraction {
   /** Prefill for the grading form; sizes/measurements aligned and sanitized. */
@@ -242,7 +273,7 @@ export async function extractGradingInput(
   mimeType: string,
   fileName?: string,
 ): Promise<{ extraction: GradingExtraction; usage: GradingExtractUsage }> {
-  const document = await buildDocumentPayload(fileBuffer, mimeType, fileName);
+  const document = await buildGeminiDocumentPayload(fileBuffer, mimeType, fileName);
   const usage: GradingExtractUsage = { promptTokens: 0, candidateTokens: 0, totalTokens: 0 };
 
   const response = await withExternalDeadline('Grading extraction', EXTRACT_DEADLINE_MS, (signal) =>

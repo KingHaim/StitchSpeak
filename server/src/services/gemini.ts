@@ -1186,7 +1186,6 @@ const localizedQaRepairSchema = {
   },
   required: ['repairs', 'manualReview'],
 };
-
 export const createSystemInstruction = (language: string, sourceLanguage?: string) => {
   const specificRules = getLanguageSpecificRules(language);
 
@@ -1247,7 +1246,6 @@ ${createTitleTranslationRules(3, language)}
 - Replace any text-only heading graphic with a translated semantic heading instead of preserving source-language words as an image. This is an explicit exception to the rule that every IMAGE CATALOG item needs a marker.
 - If the graphic contains meaningful illustration in addition to its heading text, keep its image marker and also add the translated semantic heading immediately beside or below it. Do not duplicate the source wording as visible text.
 - Every TYPOGRAPHY HINT that represents a real heading must have one equivalent translated heading in the output. Before responding, compare every visible section boundary in the PDF against the emitted <h2>/<h3>/<h4> sequence and restore anything missing.
-
 ### 5. OUTPUT FORMAT:
 - Output raw semantic HTML5 wrapped in a single <div>.
 - Use real semantic headings: <h1> for the pattern title, <h2> for major sections (Materials, Gauge, Abbreviations, Pattern, Finishing, etc.), <h3> for sub-sections, and <h4> for sub-sub-sections.
@@ -1998,7 +1996,6 @@ ${createTitleTranslationRules(4, language)}
 - **100% LOCALIZED**: Use the specific localized abbreviations for ${language}, including any explicit preserve/rename exceptions in the language-specific rules.
 - **PUNCTUATION**: Maintain the exact punctuation (brackets, colons, slashes) used in the original for sizing.
 - **INLINE BOLD IS SOURCE DATA**: Preserve every source <strong>/<b> fragment in its translated equivalent. In glossary entries, keep the abbreviation/prefix bold when it is bold in the source. In size lists, keep exactly the same size slots bold and do not infer a different pattern.
-
 ### 6. OUTPUT FORMAT:
 - Output raw semantic HTML5 wrapped in a single <div>. DO NOT use markdown code blocks (\`\`\`html).
 - Never emit literal Markdown emphasis or heading syntax such as **, __, backticks, or # headings. Use native <strong>/<em> only for the equivalent source text range.

@@ -81,7 +81,6 @@ describe('Gemini translation prompts', () => {
     expect(prompt).toMatch(/replace.*text-only heading graphic.*translated semantic heading/i);
     expect(prompt).toMatch(/every TYPOGRAPHY HINT.*must have.*translated heading/i);
   });
-
   it.each([
     ['PDF', createSystemInstruction('Danish')],
     ['document', createDocumentSystemInstruction('Danish')],
@@ -92,7 +91,6 @@ describe('Gemini translation prompts', () => {
     expect(prompt).toMatch(/preserve only .*Lazos.*translate .*Sweater & Vest/i);
     expect(prompt).toMatch(/garment types.*age groups.*audience labels.*conjunctions/i);
   });
-
   it('extracts only the cover title sequence for final verification', () => {
     const html = `<div>
       <p>[IMG_1]</p>

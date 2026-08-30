@@ -11,6 +11,7 @@ import { CloseIcon } from '../icons/CloseIcon';
 import { AuthDialog } from '../AuthDialog';
 import { WebsiteLanguageSelector } from '../WebsiteLanguageSelector';
 import { captureEvent } from '../../services/analytics';
+import { setPageMetadata } from '../../services/pageMetadata';
 
 const DashboardPage = lazy(() =>
   import('./DashboardPage').then((module) => ({ default: module.DashboardPage })),
@@ -367,17 +368,19 @@ export const LandingPage: React.FC = () => {
   const copy = WEBSITE_COPY[websiteLocale];
 
   useEffect(() => {
-    document.documentElement.lang = websiteLocale;
-    document.title = copy.documentTitle;
-    document
-      .querySelector<HTMLMetaElement>('meta[name="description"]')
-      ?.setAttribute('content', copy.documentDescription);
+    setPageMetadata({
+      title: copy.documentTitle,
+      description: copy.documentDescription,
+      path: view === 'home' ? '/' : '/translate',
+      locale: websiteLocale,
+      index: view === 'home' && window.location.pathname === '/',
+    });
     try {
       localStorage.setItem(WEBSITE_LANGUAGE_STORAGE_KEY, websiteLocale);
     } catch {
       /* The selection still applies for this visit when storage is unavailable. */
     }
-  }, [copy.documentDescription, copy.documentTitle, websiteLocale]);
+  }, [copy.documentDescription, copy.documentTitle, view, websiteLocale]);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -606,7 +609,13 @@ export const LandingPage: React.FC = () => {
 
               <article className="craft-library-card">
                 <div className="craft-library-image">
-                  <img src="/landing-library-optimized.jpg" alt="" />
+                  <img
+                    src="/images/knitting-pattern-translation-library.jpg"
+                    alt={copy.craft.workspaceImageAlt}
+                    loading="lazy"
+                    width="980"
+                    height="653"
+                  />
                   <span>
                     <Icon name="folder_special" />
                   </span>
@@ -649,8 +658,8 @@ export const LandingPage: React.FC = () => {
               </div>
               <AutoLoopVideo
                 className="inside-video"
-                src="/demos/openvid-1280x720.mp4"
-                poster="/demos/openvid-1280x720.jpg"
+                src="/demos/knitting-pattern-translation-workflow.mp4"
+                poster="/demos/knitting-pattern-translation-workflow.jpg"
                 aria-label={copy.inside.videoLabel}
               />
             </div>
