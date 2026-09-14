@@ -71,6 +71,71 @@ describe('translation error normalization', () => {
     expect(result.html).toBe('<p>hola</p>');
   });
 
+  it('US9: assembles `final` chunk events into the result when `done` carries no inline html', async () => {
+    const events = [
+      JSON.stringify({ type: 'delta', text: '<p>Monta' }),
+      JSON.stringify({ type: 'final', chunk: '<p>Monta 20' }),
+      JSON.stringify({ type: 'final', chunk: ' puntos.</p>' }),
+      JSON.stringify({
+        type: 'done',
+        htmlChunked: true,
+        usage: null,
+        cost: 7,
+        balance: 3,
+        reviewWarnings: [{ code: 'NUMBER_UNRESTORABLE', message: 'check' }],
+      }),
+    ].join('\n');
+    const fetchMock = vi.fn().mockResolvedValue(new Response(`${events}\n`, {
+      status: 200,
+      headers: { 'content-type': 'application/x-ndjson' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const file = new File(['pattern'], 'pattern.txt', { type: 'text/plain' });
+    const result = await translatePatternStream(file, 'Spanish', null, 'English');
+
+    expect(result.html).toBe('<p>Monta 20 puntos.</p>');
+    expect(result.reviewWarnings).toEqual([{ code: 'NUMBER_UNRESTORABLE', message: 'check' }]);
+    expect(result.balance).toBe(3);
+
+    // The client asks for chunked final delivery so the terminal `done` event
+    // is a small line the proxy can't cut mid-multi-megabyte write.
+    const sentBody = fetchMock.mock.calls[0][1]?.body as FormData;
+    expect(sentBody.get('streamFinalChunks')).toBe('true');
+  });
+
+  it('US9: an inline `done` html still wins over stray final chunks (old-server compatibility)', async () => {
+    const events = [
+      JSON.stringify({ type: 'done', html: '<p>hola</p>', usage: null }),
+    ].join('\n');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(`${events}\n`, {
+      status: 200,
+      headers: { 'content-type': 'application/x-ndjson' },
+    })));
+
+    const file = new File(['pattern'], 'pattern.txt', { type: 'text/plain' });
+    const result = await translatePatternStream(file, 'Spanish', null, 'English');
+    expect(result.html).toBe('<p>hola</p>');
+  });
+
+  it('US9: a chunked `done` with no delivered chunks never soft-succeeds as an empty pattern', async () => {
+    const events = [
+      JSON.stringify({ type: 'done', htmlChunked: true, usage: null }),
+    ].join('\n');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(`${events}\n`, {
+      status: 200,
+      headers: { 'content-type': 'application/x-ndjson' },
+    })));
+
+    const file = new File(['pattern'], 'pattern.txt', { type: 'text/plain' });
+    await expect(translatePatternStream(file, 'Spanish', null, 'English')).rejects.toEqual(
+      expect.objectContaining({
+        message: expect.stringMatching(/ended unexpectedly/i),
+        kind: 'server',
+      }),
+    );
+  });
+
   it('converts the original streamed provider payload and retains the refunded balance', async () => {
     const raw = `{"error":{"message":"Your prepayment credits are depleted. RESOURCE_EXHAUSTED","code":429}}`;
     const event = JSON.stringify({

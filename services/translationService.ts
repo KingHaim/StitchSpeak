@@ -173,11 +173,25 @@ interface NdjsonDeltaEvent {
 
 interface NdjsonDoneEvent {
   type: 'done';
-  html: string;
+  /** Full final HTML — present unless the server streamed it as `final` chunks. */
+  html?: string;
+  /** True when the final HTML arrived as `final` chunk events before `done`. */
+  htmlChunked?: boolean;
   usage: TranslationResult['usage'];
   cost?: number;
   balance?: number;
   reviewWarnings?: TranslationResult['reviewWarnings'];
+}
+
+/**
+ * A bounded slice of the settled final HTML. The server streams the (possibly
+ * multi-megabyte, image-inlined) result as these chunks followed by a small
+ * terminal `done`, so the terminal event is never one huge late write that a
+ * proxy can cut mid-flight.
+ */
+interface NdjsonFinalEvent {
+  type: 'final';
+  chunk: string;
 }
 
 interface NdjsonErrorEvent {
@@ -194,7 +208,12 @@ interface NdjsonStatusEvent {
   message: string;
 }
 
-type NdjsonEvent = NdjsonDeltaEvent | NdjsonDoneEvent | NdjsonErrorEvent | NdjsonStatusEvent;
+type NdjsonEvent =
+  | NdjsonDeltaEvent
+  | NdjsonDoneEvent
+  | NdjsonErrorEvent
+  | NdjsonStatusEvent
+  | NdjsonFinalEvent;
 
 /**
  * Streaming variant of translatePattern. Sends `Accept: application/x-ndjson`
@@ -246,6 +265,10 @@ const translatePatternStreamInner = async (
     formData.append('sourceLanguage', sourceLanguage);
   }
   formData.append('aiAcknowledged', 'true');
+  // Ask the server to deliver the final HTML as bounded `final` chunk events
+  // followed by a small terminal `done` (US9). Older servers ignore the flag
+  // and keep sending the full HTML inline on `done`.
+  formData.append('streamFinalChunks', 'true');
 
   const response = await checkedFetch(
     apiUrl('/translate'),
@@ -282,6 +305,7 @@ const translatePatternStreamInner = async (
 
   let buffer = '';
   let accumulated = '';
+  let finalHtmlChunks = '';
   let finalResult: TranslationResult | null = null;
   let streamError: NdjsonErrorEvent | null = null;
 
@@ -294,9 +318,20 @@ const translatePatternStreamInner = async (
         callbacks.onDelta?.(text, accumulated);
         return;
       }
+      case 'final': {
+        if (typeof event.chunk === 'string') finalHtmlChunks += event.chunk;
+        return;
+      }
       case 'done': {
+        // The final HTML arrives either inline on `done` (older servers) or as
+        // the `final` chunks streamed just before it. An empty result in both
+        // is treated like a missing `done`: never a silent empty success.
+        const html = typeof event.html === 'string' && event.html.length > 0
+          ? event.html
+          : finalHtmlChunks;
+        if (html.length === 0) return;
         finalResult = {
-          html: event.html,
+          html,
           usage: event.usage ?? null,
           cost: event.cost,
           balance: event.balance,
