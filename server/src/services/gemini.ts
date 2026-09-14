@@ -12,6 +12,7 @@ import { isProviderBillingExhausted, withExternalDeadline } from './externalDead
 import {
   annotateSourceTopology,
   auditTranslatedTopology,
+  sourceBlockTextById,
   type TranslationTopologyWarning,
 } from './translationTopology.js';
 import {
@@ -19,7 +20,12 @@ import {
   normalizeSpanishMeasurementsInHtml,
   sanitizeMarkdownArtifactsInHtml,
 } from './translationSanitizers.js';
-import { TranslationNumberFidelityError, enforceTranslatedNumberFidelity } from './translationNumberAudit.js';
+import {
+  TranslationNumberFidelityError,
+  TranslationUnauditedNumbersError,
+  enforceTranslatedNumberFidelity,
+  forceAlignmentFromSource,
+} from './translationNumberAudit.js';
 import {
   DEFAULT_RECOVERY_BUDGET_CREDITS,
   recoverTranslatedNumberFidelity,
@@ -1343,8 +1349,9 @@ ${createTitleTranslationRules(3, language)}
   1. data-seg="N": a sequential integer starting at 1 and increasing by exactly 1 for each such block in document order. Never skip or repeat a number.
   2. data-o="...": the ORIGINAL, UNTRANSLATED source-language text of that exact block, as PLAIN TEXT (no HTML tags inside). HTML-escape it by replacing & with &amp;, " with &quot;, < with &lt;, and > with &gt;.
 - The data-o text must correspond 1:1 to the translated content of the SAME element, so a reader can see which source sentence produced which translation.
-- On every textual <th> and <td>, add data-o="..." containing that cell's original plain text, but no data-seg. This lets terminology QA compare table and chart-legend abbreviations with the source.
+- On every textual <th> and <td>, add data-o="..." containing that cell's original plain text, but no data-seg. This lets terminology QA compare table and chart-legend abbreviations with the source. Purely numeric cells (stitch-chart numbers, size tables, measurement grids) count as textual cells here and MUST carry data-o too.
 - Do NOT add data-seg or data-o to <img>, <table>, <thead>, <tbody>, or <tr> elements, or to image/row marker paragraphs such as <p>[IMG_1]</p> or <p>[ROW_1]</p>.
+- NUMBERS REQUIRE ALIGNMENT (HARD RULE): every block or cell whose text contains ANY number — stitch counts, needle sizes, gauge, sizes, measurements, repeats — MUST carry data-o with its original source text. The server rejects the ENTIRE translation if a numeric block arrives without data-o, because its numbers cannot be audited.
 - Example: <p data-seg="4" data-o="Cast on 20 (24, 28) stitches.">Monta 20 (24, 28) puntos.</p>
 
 ${specificRules}
@@ -1752,8 +1759,10 @@ function createFlashSegmentNumberRetry(signal: AbortSignal | undefined): Segment
  * retry just the failing segments (Gemini flash → one OpenAI prose-only pass,
  * both with the source numeric skeleton locked) before letting the job
  * hard-fail with 422 TRANSLATION_NEEDS_HUMAN_CHECK + refund.
+ *
+ * Exported for tests.
  */
-async function finalizeTranslatedHtmlWithRecovery(
+export async function finalizeTranslatedHtmlWithRecovery(
   html: string,
   language: string,
   sourceLanguage: string | undefined,
@@ -1763,7 +1772,12 @@ async function finalizeTranslatedHtmlWithRecovery(
   try {
     return { ...finalizeTranslatedHtml(html, language), usage: null };
   } catch (err) {
-    if (!(err instanceof TranslationNumberFidelityError)) throw err;
+    // Unaudited numeric blocks (US6) carry no data-o source skeleton, so the
+    // recovery ladder has nothing to lock a retry against — rerunning it could
+    // only spend budget on a job that must hard-fail. Fail closed immediately.
+    if (!(err instanceof TranslationNumberFidelityError) || err instanceof TranslationUnauditedNumbersError) {
+      throw err;
+    }
 
     // Recovery operates on the pre-finalize HTML; the final enforcement pass
     // below re-applies every deterministic restore and re-audits the repaired
@@ -2187,8 +2201,9 @@ ${createTitleTranslationRules(4, language)}
   1. data-seg="N": a sequential integer starting at 1 and increasing by exactly 1 for each such block in document order. Never skip or repeat a number.
   2. data-o="...": the ORIGINAL, UNTRANSLATED source-language text of that exact block, as PLAIN TEXT (no HTML tags inside). HTML-escape it by replacing & with &amp;, " with &quot;, < with &lt;, and > with &gt;.
 - The data-o text must correspond 1:1 to the translated content of the SAME element, so a reader can see which source sentence produced which translation.
-- On every textual <th> and <td>, add data-o="..." containing that cell's original plain text, but no data-seg. This lets terminology QA compare table and chart-legend abbreviations with the source.
+- On every textual <th> and <td>, add data-o="..." containing that cell's original plain text, but no data-seg. This lets terminology QA compare table and chart-legend abbreviations with the source. Purely numeric cells (stitch-chart numbers, size tables, measurement grids) count as textual cells here and MUST carry data-o too.
 - Do NOT add data-seg or data-o to <img>, <table>, <thead>, <tbody>, or <tr> elements, or to image marker paragraphs such as <p>[IMG_1]</p>.
+- NUMBERS REQUIRE ALIGNMENT (HARD RULE): every block or cell whose text contains ANY number — stitch counts, needle sizes, gauge, sizes, measurements, repeats — MUST carry data-o with its original source text. The server rejects the ENTIRE translation if a numeric block arrives without data-o, because its numbers cannot be audited.
 - Example: <p data-seg="4" data-o="Cast on 20 (24, 28) stitches.">Monta 20 (24, 28) puntos.</p>
 
 ${specificRules}
@@ -2326,8 +2341,17 @@ async function translateDocumentHtml(
     sourceLanguage,
     signal,
   );
-  const finalized = await finalizeTranslatedHtmlWithRecovery(
+  // US6 force alignment: numeric blocks the model left without data-o get a
+  // deterministic alignment derived from the annotated source (matched by
+  // immutable data-source-id) so the number audit can cover them. Blocks with
+  // no source match stay unaligned and hard-fail in finalize rather than
+  // shipping unaudited numbers as a quiet success.
+  const alignmentForced = forceAlignmentFromSource(
     reinsertImages(repairedEmphasis.html, srcs),
+    sourceBlockTextById(annotatedSource),
+  );
+  const finalized = await finalizeTranslatedHtmlWithRecovery(
+    alignmentForced.html,
     language,
     sourceLanguage,
     options,

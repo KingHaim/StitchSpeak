@@ -137,6 +137,20 @@ function parseTopology(html: string): { nodes: TopologyNode[]; counts: Map<strin
   return { nodes, counts };
 }
 
+/**
+ * Plain text of every annotated source block, keyed by data-source-id. This is
+ * the KNOWN source used to force data-o alignment onto numeric blocks the
+ * model left unaligned (US6) — never derived from the translated text.
+ */
+export function sourceBlockTextById(annotatedSourceHtml: string): Map<string, string> {
+  const texts = new Map<string, string>();
+  for (const node of parseTopology(annotatedSourceHtml).nodes) {
+    if (node.id.startsWith('__anonymous-') || texts.has(node.id)) continue;
+    texts.set(node.id, decodePlainText(node.innerHtml));
+  }
+  return texts;
+}
+
 export function auditTranslatedTopology(
   annotatedSourceHtml: string,
   translatedHtml: string,

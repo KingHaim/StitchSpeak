@@ -17,6 +17,14 @@ import type { TranslationTopologyWarning } from './translationTopology.js';
  * (token-count mismatch, ambiguous layout, unverifiable rebuild) the translate
  * path hard-fails with a "needs human check" error — silent number drift must
  * never reach the user as a quiet success.
+ *
+ * US6 closes the alignment blind spot: a block that contains sacred numbers
+ * (stitch counts, needle sizes, gauge, sizes, repeats, measurements) but NO
+ * data-o alignment cannot be audited at all, so it must never ship as a quiet
+ * success either. Such blocks either get a deterministic alignment derived
+ * from a KNOWN source (forceAlignmentFromSource, document pipeline only) or
+ * hard-fail with the same "needs human check" + refund path. Alignment is
+ * never invented from the translated text itself.
  */
 
 const SEGMENT_TAGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li', 'th', 'td'];
@@ -97,19 +105,40 @@ function readAttribute(tag: string, name: string): string | null {
   return match[1] ?? match[2] ?? '';
 }
 
+/** One block-level segment element (aligned or not), with document positions. */
+interface BlockFrame {
+  tagName: string;
+  /** Raw opening tag markup, e.g. `<p data-seg="4" data-o="…">`. */
+  openingTag: string;
+  /** Index of the opening tag's `<`. */
+  openingStart: number;
+  contentStart: number;
+  /** Index of the closing tag's `<`. */
+  contentEnd: number;
+  /** Index just past the closing tag's `>`. */
+  closeEnd: number;
+  dataSeg: string | null;
+  /** Raw (undecoded) data-o attribute value; null when the attribute is absent. */
+  dataO: string | null;
+  /** data-source-id from the document pipeline's annotated source, if present. */
+  dataSourceId: string | null;
+}
+
 /**
- * Collect every block element that carries a data-o source-alignment
- * attribute, with its position in the document so drifted numeric tokens can
- * be spliced back in place.
+ * Collect every block-level segment element — with or without data-o — with
+ * its position in the document so drifted numeric tokens can be spliced back
+ * in place and unaligned numeric blocks can be detected.
  */
-function collectSegments(html: string): PositionedSegment[] {
-  const collected: PositionedSegment[] = [];
+function collectBlockFrames(html: string): BlockFrame[] {
+  const collected: BlockFrame[] = [];
   const openFrames: Array<{
     tagName: string;
+    openingTag: string;
     dataSeg: string | null;
     dataO: string | null;
+    dataSourceId: string | null;
     contentStart: number;
-    openingIndex: number;
+    openingStart: number;
   }> = [];
   const pattern = new RegExp(`<\\/?(${SEGMENT_TAGS.join('|')})\\b[^>]*>`, 'gi');
   let match: RegExpExecArray | null;
@@ -119,10 +148,12 @@ function collectSegments(html: string): PositionedSegment[] {
     if (!match[0].startsWith('</')) {
       openFrames.push({
         tagName,
+        openingTag: match[0],
         dataSeg: readAttribute(match[0], 'data-seg'),
         dataO: readAttribute(match[0], 'data-o'),
+        dataSourceId: readAttribute(match[0], 'data-source-id'),
         contentStart: pattern.lastIndex,
-        openingIndex: match.index,
+        openingStart: match.index,
       });
       continue;
     }
@@ -137,21 +168,42 @@ function collectSegments(html: string): PositionedSegment[] {
     if (frameIndex < 0) continue;
     const frame = openFrames[frameIndex];
     openFrames.splice(frameIndex, 1);
-    if (frame.dataO === null) continue;
 
-    const innerHtml = html.slice(frame.contentStart, match.index);
     collected.push({
-      ...(frame.dataSeg ? { sourceId: `seg-${frame.dataSeg}` } : {}),
-      sourceText: collapseWhitespace(decodeEntities(frame.dataO)),
-      translatedText: plainTextFromHtml(innerHtml),
-      innerHtml,
+      tagName: frame.tagName,
+      openingTag: frame.openingTag,
+      openingStart: frame.openingStart,
       contentStart: frame.contentStart,
       contentEnd: match.index,
+      closeEnd: pattern.lastIndex,
+      dataSeg: frame.dataSeg,
+      dataO: frame.dataO,
+      dataSourceId: frame.dataSourceId,
     });
   }
 
   collected.sort((a, b) => a.contentStart - b.contentStart);
   return collected;
+}
+
+/**
+ * Every block element that carries a data-o source-alignment attribute,
+ * positioned so drifted numeric tokens can be spliced back in place.
+ */
+function collectSegments(html: string): PositionedSegment[] {
+  return collectBlockFrames(html)
+    .filter((frame) => frame.dataO !== null)
+    .map((frame) => {
+      const innerHtml = html.slice(frame.contentStart, frame.contentEnd);
+      return {
+        ...(frame.dataSeg ? { sourceId: `seg-${frame.dataSeg}` } : {}),
+        sourceText: collapseWhitespace(decodeEntities(frame.dataO as string)),
+        translatedText: plainTextFromHtml(innerHtml),
+        innerHtml,
+        contentStart: frame.contentStart,
+        contentEnd: frame.contentEnd,
+      };
+    });
 }
 
 /** Aligned segment pairs (exported for tests and future terminology QA). */
@@ -596,15 +648,191 @@ export function applySegmentTextRepairs(
   return working;
 }
 
+// --- US6: numeric blocks without data-o alignment ---------------------------
+
+/** [IMG_N]/[ROW_N] placeholders — the only blocks allowed to carry digits without data-o. */
+const MARKER_TOKEN_PATTERN = /\[\s*(?:IMG|ROW)[_\s-]?\d+\s*\]/gi;
+
+/** Strip [IMG_N]/[ROW_N] placeholders so marker digits never count as pattern numbers. */
+function stripMarkerTokens(text: string): string {
+  return collapseWhitespace(text.replace(MARKER_TOKEN_PATTERN, ' '));
+}
+
+/** True when the block carries a data-o the audit can actually diff against. */
+function hasAuditableAlignment(frame: BlockFrame): boolean {
+  return frame.dataO !== null && collapseWhitespace(decodeEntities(frame.dataO)) !== '';
+}
+
+/** One block whose numbers no data-o alignment covers — unauditable content. */
+export interface UnauditedNumericBlock {
+  tagName: string;
+  /** `seg-N` when the block carries data-seg. */
+  sourceId?: string;
+  /** data-source-id when the document pipeline annotated the block. */
+  dataSourceId?: string;
+  /** Plain text of the block's own unaudited content. */
+  text: string;
+  /** Canonical numeric tokens found in that text. */
+  numbers: string[];
+}
+
+interface UnauditedNumericFrame {
+  frame: BlockFrame;
+  text: string;
+  numbers: string[];
+}
+
+/**
+ * Blocks whose numeric tokens no data-o alignment covers. A block is exempt
+ * only when an audited ancestor's data-o fingerprint already spans its text
+ * (the ancestor's translated text includes every descendant). Text belonging
+ * to nested segment blocks is attributed to those blocks, not the parent, so
+ * each violation points at the innermost offender.
+ */
+function collectUnauditedNumericFrames(html: string): UnauditedNumericFrame[] {
+  const frames = collectBlockFrames(html);
+  const audited = frames.filter(hasAuditableAlignment);
+  const found: UnauditedNumericFrame[] = [];
+
+  for (const frame of frames) {
+    if (hasAuditableAlignment(frame)) continue;
+    if (audited.some((ancestor) =>
+      ancestor.contentStart <= frame.openingStart && frame.closeEnd <= ancestor.contentEnd)) {
+      continue;
+    }
+
+    const nestedRanges = frames
+      .filter((nested) =>
+        nested !== frame
+        && frame.contentStart <= nested.openingStart
+        && nested.closeEnd <= frame.contentEnd)
+      .map((nested) => [nested.openingStart, nested.closeEnd] as const)
+      .sort((a, b) => a[0] - b[0]);
+    let ownHtml = '';
+    let cursor = frame.contentStart;
+    for (const [start, end] of nestedRanges) {
+      if (start > cursor) ownHtml += html.slice(cursor, start);
+      cursor = Math.max(cursor, end);
+    }
+    ownHtml += html.slice(cursor, frame.contentEnd);
+
+    const text = stripMarkerTokens(plainTextFromHtml(ownHtml));
+    if (!text) continue;
+    const numbers = canonicalNumberTokens(text);
+    if (numbers.length === 0) continue;
+    found.push({ frame, text, numbers });
+  }
+
+  return found;
+}
+
+/**
+ * Blocks with sacred numbers but no (or empty) data-o alignment — content the
+ * number audit cannot cover. Exported for tests and the force-alignment path.
+ */
+export function collectUnauditedNumericBlocks(html: string): UnauditedNumericBlock[] {
+  return collectUnauditedNumericFrames(html).map(({ frame, text, numbers }) => ({
+    tagName: frame.tagName,
+    ...(frame.dataSeg ? { sourceId: `seg-${frame.dataSeg}` } : {}),
+    ...(frame.dataSourceId ? { dataSourceId: frame.dataSourceId } : {}),
+    text,
+    numbers,
+  }));
+}
+
+function unauditedDetail(blocks: readonly UnauditedNumericBlock[]): string {
+  const first = blocks[0];
+  const excerpt = first.text.length > 60 ? `${first.text.slice(0, 57)}…` : first.text;
+  const more = blocks.length > 1
+    ? ` (+${blocks.length - 1} more block${blocks.length === 2 ? '' : 's'})`
+    : '';
+  return `<${first.tagName}> "${excerpt}" carries numbers [${displaySequence(first.numbers)}] with no data-o source alignment${more}`;
+}
+
+/**
+ * Thrown when a block carries sacred numbers but no data-o alignment, so its
+ * number fidelity cannot be audited at all (product US6). Subclasses
+ * TranslationNumberFidelityError so the existing 422
+ * TRANSLATION_NEEDS_HUMAN_CHECK + refund handling applies unchanged — but the
+ * recovery ladder must NOT retry it: without data-o there is no source
+ * skeleton to lock, so a retry could only invent numbers.
+ */
+export class TranslationUnauditedNumbersError extends TranslationNumberFidelityError {
+  readonly blocks: readonly UnauditedNumericBlock[];
+
+  constructor(blocks: readonly UnauditedNumericBlock[]) {
+    super(unauditedDetail(blocks));
+    this.name = 'TranslationUnauditedNumbersError';
+    this.message =
+      `The translation contains numeric content with no data-o source alignment, so its numbers cannot be audited (${unauditedDetail(blocks)}). `
+      + 'This translation needs a human check before it can be delivered.';
+    this.blocks = blocks;
+  }
+}
+
+function escapeAttributeValue(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * Deterministic "force alignment" (US6): give numeric blocks that are missing
+ * data-o an alignment derived from a KNOWN source — the annotated source
+ * document, keyed by data-source-id. Only blocks that would otherwise fail
+ * the unaudited-numbers gate are touched, and the injected data-o then flows
+ * through the normal restore / recovery-ladder / hard-fail machinery. Blocks
+ * without a source lookup stay unaligned and hard-fail downstream: alignment
+ * is never invented from the translated text itself.
+ */
+export function forceAlignmentFromSource(
+  html: string,
+  sourceTextById: ReadonlyMap<string, string>,
+): { html: string; forcedCount: number } {
+  const targets = collectUnauditedNumericFrames(html)
+    .map(({ frame }) => frame)
+    .filter((frame) => frame.dataSourceId !== null)
+    .map((frame) => ({
+      frame,
+      sourceText: stripMarkerTokens(sourceTextById.get(frame.dataSourceId as string) ?? ''),
+    }))
+    .filter(({ sourceText }) => sourceText !== '');
+
+  if (targets.length === 0) return { html, forcedCount: 0 };
+
+  // Rewrite right-to-left so earlier offsets stay valid.
+  targets.sort((a, b) => b.frame.openingStart - a.frame.openingStart);
+  let working = html;
+  for (const { frame, sourceText } of targets) {
+    const escaped = escapeAttributeValue(sourceText);
+    const rewritten = /\bdata-o\s*=/i.test(frame.openingTag)
+      ? frame.openingTag.replace(/\bdata-o\s*=\s*(?:"[^"]*"|'[^']*')/i, `data-o="${escaped}"`)
+      : `${frame.openingTag.slice(0, -1)} data-o="${escaped}">`;
+    working = `${working.slice(0, frame.openingStart)}${rewritten}${working.slice(frame.contentStart)}`;
+  }
+  return { html: working, forcedCount: targets.length };
+}
+
 /**
  * Enforce number fidelity over every aligned segment: restore drifted tokens
  * from the source in place, or throw TranslationNumberFidelityError when a
  * safe restore is impossible. Never returns HTML with unresolved number drift.
+ *
+ * US6 gate: blocks that carry numbers with no data-o alignment are
+ * unauditable and hard-fail up front — unaudited numeric content must never
+ * ship as a quiet success.
  */
 export function enforceTranslatedNumberFidelity(html: string): {
   html: string;
   reviewWarnings: TranslationTopologyWarning[];
 } {
+  const unaudited = collectUnauditedNumericBlocks(html);
+  if (unaudited.length > 0) {
+    throw new TranslationUnauditedNumbersError(unaudited);
+  }
+
   const audit = auditNumberFidelity(html);
   if (audit.unrestorable.length > 0) {
     throw new TranslationNumberFidelityError(audit.unrestorable[0].detail);
