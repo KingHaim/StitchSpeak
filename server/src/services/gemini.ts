@@ -19,7 +19,13 @@ import {
   normalizeSpanishMeasurementsInHtml,
   sanitizeMarkdownArtifactsInHtml,
 } from './translationSanitizers.js';
-import { enforceTranslatedNumberFidelity } from './translationNumberAudit.js';
+import { TranslationNumberFidelityError, enforceTranslatedNumberFidelity } from './translationNumberAudit.js';
+import {
+  DEFAULT_RECOVERY_BUDGET_CREDITS,
+  recoverTranslatedNumberFidelity,
+  type NumberRecoveryStatus,
+  type SegmentRetryFn,
+} from './translationNumberRecovery.js';
 import { auditTranslatedGlossary, buildGlossaryPromptSection } from './translationGlossary.js';
 
 let aiClient: GoogleGenAI | null = null;
@@ -1198,6 +1204,43 @@ const localizedQaRepairSchema = {
   },
   required: ['repairs', 'manualReview'],
 };
+
+const numberLockRetrySchema = {
+  type: Type.OBJECT,
+  properties: {
+    repairs: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          id: { type: Type.STRING },
+          text: { type: Type.STRING },
+        },
+        required: ['id', 'text'],
+      },
+    },
+  },
+  required: ['repairs'],
+};
+
+export function createNumberLockRetrySystemInstruction(
+  language: string,
+  sourceLanguage?: string,
+): string {
+  const sourceClause = sourceLanguage
+    ? `The source language is ${sourceLanguage}.`
+    : 'Detect each segment\'s source language.';
+  return `You are a precision knitting-pattern segment translator. ${sourceClause}
+You receive JSON segments whose earlier translation was rejected because its numbers no longer matched the source. Each segment has: "id", "sourceText" (the original), "currentTranslation" (the rejected ${language} draft), "lockedNumbers" and "lockedUnits" (the numeric skeleton extracted from the source).
+
+For every segment return {"id", "text"}: a fresh ${language} translation of "sourceText" as plain text (no HTML, no Markdown).
+
+NUMBERS ARE LOCKED. Hard rules:
+1. "text" must contain EXACTLY the tokens in "lockedNumbers", in the same order — never add, drop, merge, convert, or recalculate a number. A ${language} decimal comma for the same value is fine (2.5 → 2,5).
+2. Every unit in "lockedUnits" keeps its measurement system: cm stays cm, in stays in/inches, g stays g. Never convert units.
+3. Translate only the prose around the numbers, with correct ${language} knitting terminology.
+4. If a segment cannot satisfy rules 1-3, omit it from "repairs" instead of guessing.`;
+}
 export const createSystemInstruction = (language: string, sourceLanguage?: string) => {
   const specificRules = getLanguageSpecificRules(language, sourceLanguage);
 
@@ -1655,6 +1698,93 @@ function finalizeTranslatedHtml(
   };
 }
 
+/**
+ * Recovery-ladder step 2: segment-only retry on gemini-3.5-flash (the flash
+ * path already used for QA repairs) with the source number/unit tokens from
+ * data-o supplied as a locked skeleton. Only the failing segments are sent —
+ * never the full document.
+ */
+function createFlashSegmentNumberRetry(signal: AbortSignal | undefined): SegmentRetryFn {
+  return async (ctx) => {
+    const response = await withRetry(() =>
+      getAI().models.generateContent({
+        model: TITLE_REPAIR_MODEL,
+        config: {
+          abortSignal: signal ?? ctx.signal,
+          systemInstruction: createNumberLockRetrySystemInstruction(ctx.targetLanguage, ctx.sourceLanguage),
+          temperature: 0,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          responseMimeType: 'application/json',
+          responseSchema: numberLockRetrySchema,
+        },
+        contents: [{
+          parts: [{
+            text: JSON.stringify({ targetLanguage: ctx.targetLanguage, segments: ctx.segments }),
+          }],
+        }],
+      }),
+    );
+
+    const parsed = JSON.parse(response.text || '{}') as {
+      repairs?: Array<{ id?: unknown; text?: unknown }>;
+    };
+    const repairs = (Array.isArray(parsed.repairs) ? parsed.repairs : [])
+      .flatMap((item): Array<{ id: string; text: string }> => {
+        if (typeof item?.id !== 'string' || typeof item?.text !== 'string') return [];
+        return [{ id: item.id, text: item.text }];
+      });
+
+    const metadata = response.usageMetadata;
+    const usage = metadata
+      ? {
+          promptTokens: metadata.promptTokenCount ?? 0,
+          candidateTokens: metadata.candidatesTokenCount ?? 0,
+          totalTokens: metadata.totalTokenCount ?? 0,
+        }
+      : null;
+    return { repairs, usage };
+  };
+}
+
+/**
+ * finalizeTranslatedHtml with the number-fidelity recovery ladder attached:
+ * when the deterministic preserve-from-source restore cannot fix a segment,
+ * retry just the failing segments (Gemini flash → one OpenAI prose-only pass,
+ * both with the source numeric skeleton locked) before letting the job
+ * hard-fail with 422 TRANSLATION_NEEDS_HUMAN_CHECK + refund.
+ */
+async function finalizeTranslatedHtmlWithRecovery(
+  html: string,
+  language: string,
+  sourceLanguage: string | undefined,
+  options: TranslatePatternOptions,
+  signal: AbortSignal | undefined,
+): Promise<{ html: string; reviewWarnings: TranslationTopologyWarning[]; usage: TranslationUsage | null }> {
+  try {
+    return { ...finalizeTranslatedHtml(html, language), usage: null };
+  } catch (err) {
+    if (!(err instanceof TranslationNumberFidelityError)) throw err;
+
+    // Recovery operates on the pre-finalize HTML; the final enforcement pass
+    // below re-applies every deterministic restore and re-audits the repaired
+    // segments, so recovered output is verified end-to-end before delivery.
+    const recovery = await recoverTranslatedNumberFidelity(html, {
+      targetLanguage: language,
+      ...(sourceLanguage ? { sourceLanguage } : {}),
+      budgetCredits: options.recoveryBudgetCredits ?? DEFAULT_RECOVERY_BUDGET_CREDITS,
+      signal,
+      onStatus: options.onStatus,
+      geminiSegmentRetry: createFlashSegmentNumberRetry(signal),
+    });
+    const finalized = finalizeTranslatedHtml(recovery.html, language);
+    return {
+      html: finalized.html,
+      reviewWarnings: [...recovery.reviewWarnings, ...finalized.reviewWarnings],
+      usage: recovery.usage,
+    };
+  }
+}
+
 async function verifyAndRepairReviewedTranslation(
   html: string,
   language: string,
@@ -1816,6 +1946,18 @@ export interface TranslatePatternOptions {
    * yet replaced. The fully marker-replaced HTML is the resolved `html` value.
    */
   onDelta?: (text: string) => void;
+  /**
+   * Called when the pipeline enters a notable phase the client may surface,
+   * e.g. the number-fidelity recovery ladder ("retrying with stricter number
+   * lock…"). Forwarded to streaming clients as NDJSON `status` events.
+   */
+  onStatus?: (status: NumberRecoveryStatus) => void;
+  /**
+   * Hard cap on estimated recovery-ladder API spend, in credits. Routes pass
+   * the credits charged for this job so recovery never spends more than it
+   * earned. Defaults to the translation fixed margin.
+   */
+  recoveryBudgetCredits?: number;
   /** Approved, account-scoped human corrections for this language pair. */
   translationMemory?: Array<{
     sourceLanguage: string;
@@ -1975,7 +2117,13 @@ async function translatePdf(
     sourceLanguage,
     signal,
   );
-  const finalized = finalizeTranslatedHtml(replaceImageMarkers(repairedEmphasis.html, images), language);
+  const finalized = await finalizeTranslatedHtmlWithRecovery(
+    replaceImageMarkers(repairedEmphasis.html, images),
+    language,
+    sourceLanguage,
+    options,
+    signal,
+  );
 
   return {
     html: finalized.html,
@@ -1983,7 +2131,7 @@ async function translatePdf(
     usage: mergeTranslationUsage(
       mergeTranslationUsage(
         mergeTranslationUsage(usage, repairedCover.usage),
-        repairedBody.usage,
+        mergeTranslationUsage(repairedBody.usage, finalized.usage),
       ),
       mergeTranslationUsage(
         mergeTranslationUsage(
@@ -2178,7 +2326,13 @@ async function translateDocumentHtml(
     sourceLanguage,
     signal,
   );
-  const finalized = finalizeTranslatedHtml(reinsertImages(repairedEmphasis.html, srcs), language);
+  const finalized = await finalizeTranslatedHtmlWithRecovery(
+    reinsertImages(repairedEmphasis.html, srcs),
+    language,
+    sourceLanguage,
+    options,
+    signal,
+  );
   const topologyWarnings = auditTranslatedTopology(annotatedSource, finalized.html);
   return {
     html: finalized.html,
@@ -2190,7 +2344,7 @@ async function translateDocumentHtml(
     usage: mergeTranslationUsage(
       mergeTranslationUsage(
         mergeTranslationUsage(usage, repairedCover.usage),
-        repairedBody.usage,
+        mergeTranslationUsage(repairedBody.usage, finalized.usage),
       ),
       mergeTranslationUsage(
         mergeTranslationUsage(

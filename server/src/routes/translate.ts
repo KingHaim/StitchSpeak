@@ -22,6 +22,14 @@ const translateRateLimit = rateLimit({ windowMs: 60_000, max: 20, name: 'transla
 
 const NDJSON_CONTENT_TYPE = 'application/x-ndjson';
 
+// The number-fidelity hard-fail carries locked product copy that already ends
+// with "You weren't charged." — appending the generic refund suffix would
+// break the exact string. Every other refunded failure keeps the suffix.
+function clientErrorMessage(details: { code: string; message: string }): string {
+  if (details.code === 'TRANSLATION_NEEDS_HUMAN_CHECK') return details.message;
+  return `${details.message} Your StitchSpeak credits were refunded.`;
+}
+
 function clientWantsStream(req: Request): boolean {
   const accept = req.headers.accept;
   if (!accept) return false;
@@ -107,7 +115,9 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
         file.mimetype,
         language,
         sourceLanguage,
-        { translationMemory },
+        // Recovery retries may spend at most what this job charged; they are
+        // never billed separately (the single pending charge covers the job).
+        { translationMemory, recoveryBudgetCredits: cost },
         file.originalname,
       );
       if (chargeId) settlePendingCharge(chargeId);
@@ -117,7 +127,7 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
       const newBalance = refund();
       const details = externalErrorDetails(err);
       res.status(details.status).json({
-        error: `${details.message} Your StitchSpeak credits were refunded.`,
+        error: clientErrorMessage(details),
         code: details.code,
         balance: newBalance,
       });
@@ -173,9 +183,16 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
       sourceLanguage,
       {
         translationMemory,
+        recoveryBudgetCredits: cost,
         onDelta: (text) => {
           if (clientGone) return;
           writeEvent({ type: 'delta', text });
+        },
+        // Surface recovery-ladder progress ("retrying with stricter number
+        // lock…") so the client can show it instead of a silent stall.
+        onStatus: (status) => {
+          if (clientGone) return;
+          writeEvent({ type: 'status', stage: status.stage, message: status.message });
         },
       },
       file.originalname,
@@ -200,15 +217,17 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
       // Headers weren't flushed yet (rare — flushHeaders above runs before
       // translatePattern). Fall back to a regular JSON error.
       res.status(details.status).json({
-        error: `${details.message} Your StitchSpeak credits were refunded.`,
+        error: clientErrorMessage(details),
         code: details.code,
         balance: newBalance,
       });
       return;
     }
+    // A failed stream always ends with an `error` event — never a `done` with
+    // partial html — so the client can never soft-success on wrong numbers.
     writeEvent({
       type: 'error',
-      message: `${details.message} Your StitchSpeak credits were refunded.`,
+      message: clientErrorMessage(details),
       code: details.code,
       status: details.status,
       balance: newBalance,

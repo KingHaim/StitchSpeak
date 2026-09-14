@@ -133,14 +133,19 @@ describe('translation number fidelity enforcement', () => {
       expect(() => enforceTranslatedNumberFidelity(html)).toThrow(TranslationNumberFidelityError);
     });
 
-    it('maps the error to a client-visible 422 needs-human-check response', () => {
+    it('maps the error to a client-visible 422 with the exact locked product copy', () => {
       const error = new TranslationNumberFidelityError('segment seg-2 "Bust: 84 (92, 100, 108) cm"');
       const details = externalErrorDetails(error);
 
       expect(details.status).toBe(422);
       expect(details.code).toBe('TRANSLATION_NEEDS_HUMAN_CHECK');
-      expect(details.message).toContain('human check');
-      expect(details.message).toContain('seg-2');
+      // Exact US5 copy — the technical segment detail must stay server-side.
+      expect(details.message).toBe(
+        'We couldn’t keep stitch, size, gauge, or needle numbers faithful to your pattern — this needs a human check. You weren’t charged.',
+      );
+      expect(details.message).not.toContain('seg-2');
+      // The log-facing message keeps the segment detail for debugging.
+      expect(error.message).toContain('seg-2');
     });
   });
 

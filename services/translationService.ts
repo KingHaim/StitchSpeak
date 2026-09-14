@@ -157,6 +157,11 @@ export interface TranslatePatternStreamCallbacks {
    * `[IMG_5]` will be visible until the final result arrives.
    */
   onDelta?: (delta: string, accumulated: string) => void;
+  /**
+   * Called when the server reports a pipeline phase worth showing, e.g.
+   * "Retrying with stricter number lock…" during number-fidelity recovery.
+   */
+  onStatus?: (message: string, stage: string) => void;
   /** Anonymous flow id joining estimate, translation, save, and export analytics. */
   analyticsFlowId?: string;
 }
@@ -183,7 +188,13 @@ interface NdjsonErrorEvent {
   balance?: number;
 }
 
-type NdjsonEvent = NdjsonDeltaEvent | NdjsonDoneEvent | NdjsonErrorEvent;
+interface NdjsonStatusEvent {
+  type: 'status';
+  stage: string;
+  message: string;
+}
+
+type NdjsonEvent = NdjsonDeltaEvent | NdjsonDoneEvent | NdjsonErrorEvent | NdjsonStatusEvent;
 
 /**
  * Streaming variant of translatePattern. Sends `Accept: application/x-ndjson`
@@ -297,6 +308,12 @@ const translatePatternStreamInner = async (
         streamError = event;
         return;
       }
+      case 'status': {
+        if (typeof event.message === 'string' && event.message.length > 0) {
+          callbacks.onStatus?.(event.message, event.stage);
+        }
+        return;
+      }
     }
   };
 
@@ -359,10 +376,10 @@ const translatePatternStreamInner = async (
   }
 
   if (!finalResult) {
-    // Server closed without a `done` event. Salvage what we have if anything.
-    if (accumulated.length > 0) {
-      return { html: accumulated, usage: null, reviewWarnings: [] };
-    }
+    // The stream ended without a `done` event. Never salvage the accumulated
+    // deltas as a success: raw streamed HTML has not passed number-fidelity
+    // enforcement (or any other finalization), so presenting it would risk
+    // exactly the silent wrong numbers the pipeline exists to prevent.
     throw new TranslationError(
       'Translation ended unexpectedly. Please try again.',
       'server',
