@@ -407,19 +407,17 @@ interface DriftedSegment {
   key: string;
 }
 
-function findFirstDriftedSegment(html: string): DriftedSegment | null {
+function findFirstDriftedSegment(html: string, skipKeys?: ReadonlySet<string>): DriftedSegment | null {
   const occurrences = new Map<string, number>();
   for (const segment of collectSegments(html)) {
     if (!segment.sourceText) continue;
     const occurrence = occurrences.get(segment.sourceText) ?? 0;
     occurrences.set(segment.sourceText, occurrence + 1);
+    const key = segment.sourceId ?? `cell:${occurrence}:${segment.sourceText}`;
+    if (skipKeys?.has(key)) continue;
     const prints = fingerprintSegment(segment);
     if (!hasDrift(prints)) continue;
-    return {
-      segment,
-      prints,
-      key: segment.sourceId ?? `cell:${occurrence}:${segment.sourceText}`,
-    };
+    return { segment, prints, key };
   }
   return null;
 }
@@ -447,6 +445,149 @@ function restoredWarning(drift: DriftedSegment): TranslationTopologyWarning {
 }
 
 /**
+ * One drifted segment the deterministic token-level restore could NOT fix.
+ * Carries everything the recovery ladder needs to retry just this segment
+ * with the source numeric skeleton locked.
+ */
+export interface UnrestorableNumberDrift {
+  /** Stable identity within the document (data-seg id or cell occurrence). */
+  key: string;
+  /** `seg-N` when the block carries data-seg. */
+  sourceId?: string;
+  /** Decoded source-language plain text from data-o. */
+  sourceText: string;
+  /** Current translated plain text of the block. */
+  translatedText: string;
+  /** Locked source number tokens (vulgar fractions normalized), in order. */
+  lockedNumbers: string[];
+  /** Locked canonical source unit tokens, in order. */
+  lockedUnits: string[];
+  /** Human-readable drift description used in hard-fail error messages. */
+  detail: string;
+}
+
+/** Locked numeric skeleton of a source text: raw number tokens + canonical units. */
+export function sourceNumberSkeleton(sourceText: string): { numbers: string[]; units: string[] } {
+  return {
+    numbers: numberMatches(normalizeVulgarFractions(sourceText)).map((match) => match.raw),
+    units: canonicalUnitTokens(sourceText),
+  };
+}
+
+/**
+ * True when a candidate replacement text carries exactly the source's
+ * canonical number and unit sequences — the acceptance gate every recovery
+ * retry must pass before its text is spliced into the document.
+ */
+export function textMatchesNumberSkeleton(sourceText: string, candidateText: string): boolean {
+  return canonicalNumberTokens(sourceText).join('|') === canonicalNumberTokens(candidateText).join('|')
+    && canonicalUnitTokens(sourceText).join('|') === canonicalUnitTokens(candidateText).join('|');
+}
+
+function segmentKey(segment: PositionedSegment, occurrence: number): string {
+  return segment.sourceId ?? `cell:${occurrence}:${segment.sourceText}`;
+}
+
+interface NumberFidelityAudit {
+  html: string;
+  restored: TranslationTopologyWarning[];
+  unrestorable: UnrestorableNumberDrift[];
+}
+
+function toUnrestorable(drift: DriftedSegment, detail: string): UnrestorableNumberDrift {
+  const skeleton = sourceNumberSkeleton(drift.segment.sourceText);
+  return {
+    key: drift.key,
+    ...(drift.segment.sourceId ? { sourceId: drift.segment.sourceId } : {}),
+    sourceText: drift.segment.sourceText,
+    translatedText: drift.segment.translatedText,
+    lockedNumbers: skeleton.numbers,
+    lockedUnits: skeleton.units,
+    detail,
+  };
+}
+
+/**
+ * Core audit pass shared by strict enforcement and the recovery ladder:
+ * restores every safely-restorable segment in place and collects (instead of
+ * throwing on) the segments where a safe token-level restore is impossible.
+ */
+function auditNumberFidelity(html: string): NumberFidelityAudit {
+  const restored: TranslationTopologyWarning[] = [];
+  const unrestorable: UnrestorableNumberDrift[] = [];
+  const attempted = new Set<string>();
+  const skip = new Set<string>();
+  let working = html;
+
+  // Fix one segment per pass and re-parse, so document offsets stay valid and
+  // every restore is re-verified by the next pass before it can succeed.
+  for (;;) {
+    const drift = findFirstDriftedSegment(working, skip);
+    if (!drift) break;
+    if (attempted.has(drift.key)) {
+      skip.add(drift.key);
+      unrestorable.push(toUnrestorable(drift, `${driftDetail(drift)} — restore could not be verified`));
+      continue;
+    }
+    attempted.add(drift.key);
+
+    const restoredInner = restoreSegmentInnerHtml(drift.segment, drift.prints);
+    if (restoredInner === null) {
+      skip.add(drift.key);
+      unrestorable.push(toUnrestorable(drift, driftDetail(drift)));
+      continue;
+    }
+    working = `${working.slice(0, drift.segment.contentStart)}${restoredInner}${working.slice(drift.segment.contentEnd)}`;
+    restored.push(restoredWarning(drift));
+  }
+
+  return { html: working, restored, unrestorable };
+}
+
+/**
+ * Drifted segments that the deterministic preserve-from-source restore cannot
+ * fix — the exact set the recovery ladder retries with a locked skeleton.
+ * Restorable drift is intentionally NOT reflected in the returned data; the
+ * final enforcement pass re-applies those restores deterministically.
+ */
+export function collectUnrestorableNumberDrift(html: string): UnrestorableNumberDrift[] {
+  return auditNumberFidelity(html).unrestorable;
+}
+
+/**
+ * Replace the inner content of the identified segments with plain replacement
+ * text (HTML-escaped), preserving the block tags and their data-seg/data-o
+ * alignment attributes. Used by the recovery ladder to splice verified
+ * segment retranslations back into the document.
+ */
+export function applySegmentTextRepairs(
+  html: string,
+  repairs: Array<{ key: string; text: string }>,
+): string {
+  if (repairs.length === 0) return html;
+  const byKey = new Map(repairs.map((repair) => [repair.key, repair.text]));
+
+  const occurrences = new Map<string, number>();
+  const targets: Array<{ segment: PositionedSegment; text: string }> = [];
+  for (const segment of collectSegments(html)) {
+    if (!segment.sourceText) continue;
+    const occurrence = occurrences.get(segment.sourceText) ?? 0;
+    occurrences.set(segment.sourceText, occurrence + 1);
+    const text = byKey.get(segmentKey(segment, occurrence));
+    if (text === undefined) continue;
+    targets.push({ segment, text });
+  }
+
+  // Splice right-to-left so earlier offsets stay valid.
+  targets.sort((a, b) => b.segment.contentStart - a.segment.contentStart);
+  let working = html;
+  for (const { segment, text } of targets) {
+    working = `${working.slice(0, segment.contentStart)}${escapeHtmlText(text)}${working.slice(segment.contentEnd)}`;
+  }
+  return working;
+}
+
+/**
  * Enforce number fidelity over every aligned segment: restore drifted tokens
  * from the source in place, or throw TranslationNumberFidelityError when a
  * safe restore is impossible. Never returns HTML with unresolved number drift.
@@ -455,27 +596,12 @@ export function enforceTranslatedNumberFidelity(html: string): {
   html: string;
   reviewWarnings: TranslationTopologyWarning[];
 } {
-  const restored: TranslationTopologyWarning[] = [];
-  const attempted = new Set<string>();
-  let working = html;
-
-  // Fix one segment per pass and re-parse, so document offsets stay valid and
-  // every restore is re-verified by the next pass before it can succeed.
-  for (;;) {
-    const drift = findFirstDriftedSegment(working);
-    if (!drift) break;
-    if (attempted.has(drift.key)) {
-      throw new TranslationNumberFidelityError(`${driftDetail(drift)} — restore could not be verified`);
-    }
-    attempted.add(drift.key);
-
-    const restoredInner = restoreSegmentInnerHtml(drift.segment, drift.prints);
-    if (restoredInner === null) {
-      throw new TranslationNumberFidelityError(driftDetail(drift));
-    }
-    working = `${working.slice(0, drift.segment.contentStart)}${restoredInner}${working.slice(drift.segment.contentEnd)}`;
-    restored.push(restoredWarning(drift));
+  const audit = auditNumberFidelity(html);
+  if (audit.unrestorable.length > 0) {
+    throw new TranslationNumberFidelityError(audit.unrestorable[0].detail);
   }
+  const working = audit.html;
+  const restored = audit.restored;
 
   if (restored.length > MAX_RESTORED_WARNINGS) {
     const extra = restored.length - MAX_RESTORED_WARNINGS;

@@ -107,7 +107,9 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
         file.mimetype,
         language,
         sourceLanguage,
-        { translationMemory },
+        // Recovery retries may spend at most what this job charged; they are
+        // never billed separately (the single pending charge covers the job).
+        { translationMemory, recoveryBudgetCredits: cost },
         file.originalname,
       );
       if (chargeId) settlePendingCharge(chargeId);
@@ -173,9 +175,16 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
       sourceLanguage,
       {
         translationMemory,
+        recoveryBudgetCredits: cost,
         onDelta: (text) => {
           if (clientGone) return;
           writeEvent({ type: 'delta', text });
+        },
+        // Surface recovery-ladder progress ("retrying with stricter number
+        // lock…") so the client can show it instead of a silent stall.
+        onStatus: (status) => {
+          if (clientGone) return;
+          writeEvent({ type: 'status', stage: status.stage, message: status.message });
         },
       },
       file.originalname,
