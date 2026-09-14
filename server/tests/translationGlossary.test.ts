@@ -9,6 +9,7 @@ import {
   createSystemInstruction,
 } from '../src/services/gemini';
 import { GLOSSARY_LANGUAGES } from '../src/services/glossaryTerms';
+import { LANGUAGES as APP_LANGUAGES } from '../../constants';
 
 describe('resolveGlossaryLanguage', () => {
   it('resolves language names, codes, and aliases', () => {
@@ -108,6 +109,42 @@ describe('translate prompt integration', () => {
     const prompt = createSystemInstruction('German', 'English');
     expect(prompt).toContain('LOCKED TERMINOLOGY BANK — GERMAN');
     expect(prompt).toContain('rechts [r]');
+  });
+
+  // Pins "every language pair" to the app's actual target-language catalogue:
+  // adding a language to constants.ts without glossary coverage fails here
+  // instead of silently shipping translate prompts without a locked bank.
+  it('covers every app target language in both PDF and document prompts', () => {
+    expect(APP_LANGUAGES.length).toBeGreaterThan(0);
+    for (const { name } of APP_LANGUAGES) {
+      for (const prompt of [
+        createSystemInstruction(name, 'English'),
+        createDocumentSystemInstruction(name, 'English'),
+      ]) {
+        if (name === 'English') {
+          expect(prompt, name).toContain('LOCKED ENGLISH TERMINOLOGY');
+        } else {
+          expect(prompt, name).toContain(`LOCKED TERMINOLOGY BANK — ${name.toUpperCase()}`);
+        }
+      }
+    }
+  });
+
+  it('covers every source→target glossary pair with a two-column bank', () => {
+    for (const source of GLOSSARY_LANGUAGES) {
+      for (const target of GLOSSARY_LANGUAGES) {
+        if (target.code === 'en' || source.code === target.code) continue;
+        const section = buildGlossaryPromptSection(target.name, source.name);
+        expect(section, `${source.name} → ${target.name}`)
+          .toContain(`LOCKED TERMINOLOGY BANK — ${target.name.toUpperCase()}`);
+        if (source.code !== 'en') {
+          // The source-language column is present for non-English sources
+          // (checked on the "knit" term, which every glossary language has).
+          expect(section, `${source.name} → ${target.name} source column`)
+            .toMatch(/^- knit \[K\] \/ .+ -> .+$/m);
+        }
+      }
+    }
   });
 });
 
