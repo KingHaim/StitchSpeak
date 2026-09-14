@@ -11,6 +11,7 @@ import {
   type SegmentVerifyFn,
 } from '../src/services/translationNumberVerifier';
 import { finalizeTranslatedHtmlWithRecovery } from '../src/services/gemini';
+import type { SegmentRetryFn } from '../src/services/translationNumberRecovery';
 
 /** A dropped size in a multi-size list: unrestorable by the deterministic pass. */
 const FLAGGED_HTML =
@@ -163,12 +164,36 @@ describe('US7 verdicts', () => {
   });
 });
 
-// Jaime follow-up after US7: the strip only stays loud for residual real
-// issues. Successfully restored segments are resolved (never loud), and a
-// segment whose current number/unit token lists are identical to the source
-// skeleton clears deterministically — it can never stay a false-positive KEEP.
-describe('quieter strip (Jaime follow-up after US7)', () => {
-  it('clears a stale warning deterministically when the segment now matches the source skeleton', async () => {
+// US7b (product-locked ACs): the strip only stays loud for residual real
+// issues. AC1 — a successful flash lock / #18 preserve ships no loud homework.
+// AC2 — identical-skeleton CLEAR before KEEP/unrestorable (after the x/×/*
+// separator normalize): the same list on both sides is never KEEP. AC3 —
+// still never a 422, real KEEP stays, no invented data-o.
+describe('US7b quieter strip', () => {
+  it('AC1: a successful flash number-lock retry ships with no loud strip homework', async () => {
+    // A dropped size the deterministic #18 preserve cannot fix, so the
+    // recovery ladder runs. The (mocked) Gemini flash segment retry returns a
+    // skeleton-matching retranslation — tokens actually changed, so a quiet
+    // NUMBER_RESTORED is recorded internally (server log), but the delivered
+    // job carries no loud strip entry at all.
+    const flash: SegmentRetryFn = async (ctx) => ({
+      repairs: ctx.segments.map((segment) => ({ id: segment.id, text: FIXED_TEXT })),
+      usage: { promptTokens: 50, candidateTokens: 50, totalTokens: 100 },
+    });
+
+    const result = await finalizeTranslatedHtmlWithRecovery(
+      FLAGGED_HTML,
+      'Spanish',
+      'English',
+      { recoveryBudgetCredits: 10, numberLockSegmentRetry: flash },
+      undefined,
+    );
+
+    expect(result.html).toContain(FIXED_TEXT);
+    expect(result.reviewWarnings).toEqual([]);
+  });
+
+  it('AC2: clears a stale warning deterministically when the segment now matches the source skeleton', async () => {
     const { warnings } = settle(FLAGGED_HTML);
     expect(warnings.map((warning) => warning.code)).toEqual(['NUMBER_UNRESTORABLE']);
 
@@ -192,7 +217,7 @@ describe('quieter strip (Jaime follow-up after US7)', () => {
     expect(result.reviewWarnings).toEqual([]);
   });
 
-  it('drops only the stale number warning; other warning kinds stay loud', async () => {
+  it('AC2: drops only the stale number warning; other warning kinds stay loud', async () => {
     const settledHtml = '<div>'
       + '<p data-seg="1" data-o="Bust: 84 (92, 100, 108) cm">Pecho: 84 (92, 108) cm</p>'
       + '<p>Teje 12 vueltas.</p>'
@@ -218,7 +243,7 @@ describe('quieter strip (Jaime follow-up after US7)', () => {
     expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['UNAUDITED_NUMBERS']);
   });
 
-  it('a deterministically restored segment ships quiet through the full finalize path', async () => {
+  it('AC1: a deterministic #18 preserve ships quiet through the full finalize path', async () => {
     // The audit restores 26 → 24 in place; the restored item is resolved, so
     // it must not reach the user-facing loud list (it is logged server-side).
     const html = '<p data-seg="1" data-o="Cast on 24 sts.">Monta 26 pts.</p>';
@@ -235,7 +260,7 @@ describe('quieter strip (Jaime follow-up after US7)', () => {
     expect(result.reviewWarnings).toEqual([]);
   });
 
-  it('only residual real issues stay loud when restored and unrestorable drift coexist', async () => {
+  it('AC3: real KEEP stays loud when restored and unrestorable drift coexist', async () => {
     // NUMBER_RESTORED items — whether from the deterministic splice or a
     // successful number-lock recovery retry — are filtered from the delivered
     // warnings by the same code-based gate, so only the KEEP-grade residual

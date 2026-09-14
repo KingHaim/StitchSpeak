@@ -1874,7 +1874,7 @@ export async function finalizeTranslatedHtmlWithRecovery(
         budgetCredits: options.recoveryBudgetCredits ?? DEFAULT_RECOVERY_BUDGET_CREDITS,
         signal,
         onStatus: options.onStatus,
-        geminiSegmentRetry: createFlashSegmentNumberRetry(signal),
+        geminiSegmentRetry: options.numberLockSegmentRetry ?? createFlashSegmentNumberRetry(signal),
       });
       working = recovery.html;
       recoveryWarnings = recovery.reviewWarnings;
@@ -2108,6 +2108,13 @@ export interface TranslatePatternOptions {
    * 25% of it. Defaults to the translation fixed margin.
    */
   recoveryBudgetCredits?: number;
+  /**
+   * Test seam: overrides the Gemini flash number-lock segment retry (recovery
+   * ladder step 2) so US7b AC1 — a successful flash lock ships with no loud
+   * strip homework — can be exercised end-to-end without a live model call.
+   * Production callers never set this.
+   */
+  numberLockSegmentRetry?: SegmentRetryFn;
   /** Approved, account-scoped human corrections for this language pair. */
   translationMemory?: Array<{
     sourceLanguage: string;
