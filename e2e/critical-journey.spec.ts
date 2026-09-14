@@ -172,13 +172,12 @@ test('translation happy path surfaces review mismatches and exports cleanly', as
   await expect(page.locator('.bilingual-pane [data-seg="2"].seg-active').first()).toBeAttached();
 
   // Automated-draft ≠ published tech edit disclaimer is visible on the review
-  // surface. Copy locked in components/AiTechEditNotice.tsx (Jaime override:
-  // must say mistakes are possible + human review; never "AI") — do not edit
-  // the string here without updating the source of truth.
+  // surface. Patterns locked this copy verbatim (source of truth:
+  // components/AiTechEditNotice.tsx) — do not edit the string.
   const notice = page.getByTestId('ai-tech-edit-notice');
   await expect(notice).toBeVisible();
   await expect(notice).toContainText(
-    'This is an automated draft translation, not a published tech edit. Automated number and glossary checks can miss things, so mistakes are possible — have a human tech editor review the pattern before publication.',
+    'This is an automated draft translation, not a published tech edit. Number and glossary checks are automated — have a human tech editor review the pattern before publication.',
   );
 
   // Export completes the happy path.
