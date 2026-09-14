@@ -3,6 +3,7 @@ import { PatternUpload } from '../PatternUpload';
 import { TranslatedOutput } from '../TranslatedOutput';
 import { OriginalPreview } from '../OriginalPreview';
 import { BilingualViewer } from '../BilingualViewer';
+import { AiTechEditNotice } from '../AiTechEditNotice';
 import { Chatbot } from '../Chatbot';
 import { BuyCreditsModal } from '../BuyCreditsModal';
 import { TranslationLanguageModal } from '../TranslationLanguageModal';
@@ -1202,12 +1203,7 @@ export const DashboardPage: React.FC = () => {
                   </div>
                 )}
 
-                {selectedJob.status === 'complete' && (
-                  <p className="text-xs text-on-surface-variant/80 leading-relaxed px-2">
-                    This is an AI translation with automated number and glossary checks — not a tech
-                    edit. A human tech editor is still recommended before publication.
-                  </p>
-                )}
+                {selectedJob.status === 'complete' && <AiTechEditNotice />}
 
                 {canStudioExport && (
                   <div

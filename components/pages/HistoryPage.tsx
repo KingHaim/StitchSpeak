@@ -21,6 +21,7 @@ import { PatternThumbnail } from '../PatternThumbnail';
 import { PatternViewer } from '../PatternViewer';
 import { OriginalPreview } from '../OriginalPreview';
 import { BilingualViewer } from '../BilingualViewer';
+import { AiTechEditNotice } from '../AiTechEditNotice';
 import { abbreviationLanguageCodeFromTargetLabel } from '../../services/abbreviationService';
 import { hasAlignment, synthesizeAlignment } from '../../services/alignment';
 import { extractOriginalHtml, isTextExtractableFile } from '../../services/originalDocument';
@@ -1218,10 +1219,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
                           // warning sourceIds only match genuine pipeline alignment.
                           reviewWarnings={hasStoredAlignment ? fullViewRecord.reviewWarnings : undefined}
                         />
-                        <p className="px-1 text-xs text-on-surface-variant/80 leading-relaxed">
-                          This is an AI translation with automated number and glossary checks — not a
-                          tech edit. A human tech editor is still recommended before publication.
-                        </p>
+                        <AiTechEditNotice />
                       </div>
                     );
                   }

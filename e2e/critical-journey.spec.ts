@@ -171,8 +171,11 @@ test('translation happy path surfaces review mismatches and exports cleanly', as
   await reviewStrip.getByRole('button', { name: /restored numbers/ }).click();
   await expect(page.locator('.bilingual-pane [data-seg="2"].seg-active').first()).toBeAttached();
 
-  // AI ≠ tech edit disclaimer is visible on the review surface.
-  await expect(page.getByText(/not a tech\s?edit/i).first()).toBeVisible();
+  // AI ≠ published tech edit disclaimer is visible on the review surface
+  // (locked copy lives in components/AiTechEditNotice.tsx).
+  const notice = page.getByTestId('ai-tech-edit-notice');
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText('not a published tech edit');
 
   // Export completes the happy path.
   await page.getByRole('button', { name: 'Export this file' }).click();
