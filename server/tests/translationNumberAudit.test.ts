@@ -200,6 +200,36 @@ describe('translation number fidelity enforcement', () => {
       expect(result.reviewWarnings).toEqual([]);
     });
 
+    // Jaime follow-up after US7: a translated segment whose number/unit list
+    // is identical to the source skeleton — locale spelling included — must
+    // never be flagged (it was a false-positive KEEP: the strip showed
+    // "translated numbers [10] do not match the source numbers [10]" when the
+    // spelled-out unit was simply not recognized by the tokenizer).
+    it('does not false-positive on spelled-out localized unit spellings', () => {
+      const html = `<div>
+        <p data-seg="1" data-o="Length: 10 cm from cast-on.">Largo: 10 centímetros desde el montado.</p>
+        <p data-seg="2" data-o="Længde: 15 cm.">Length: 15 centimeters.</p>
+        <p data-seg="3" data-o="Needle: 4 mm.">Aguja: 4 milímetros.</p>
+        <p data-seg="4" data-o="Weight: 1 g per motif.">Peso: 1 gramo por motivo.</p>
+        <p data-seg="5" data-o="Width: 4 in.">Bredde: 4 tommer.</p>
+        <p data-seg="6" data-o="Ball: 1 kg.">Nøgle: 1 kilo.</p>
+      </div>`;
+      const result = enforceTranslatedNumberFidelity(html);
+
+      expect(result.html).toBe(html);
+      expect(result.reviewWarnings).toEqual([]);
+    });
+
+    it('still restores a genuine unit-system swap written in a spelled-out form', () => {
+      const html = '<p data-seg="1" data-o="Length: 10 cm from cast-on.">Largo: 10 pulgadas desde el montado.</p>';
+      const result = enforceTranslatedNumberFidelity(html);
+
+      expect(result.html).toContain('Largo: 10 cm desde el montado.');
+      expect(result.reviewWarnings).toHaveLength(1);
+      expect(result.reviewWarnings[0].code).toBe('NUMBER_RESTORED');
+      expect(result.reviewWarnings[0].message).toContain('units [in] → [cm]');
+    });
+
     it('does not false-positive on decimal reformatting of vulgar fractions or trailing zeros', () => {
       const html = `<div>
         <p data-seg="1" data-o="Use a 1½ in border.">Usa un borde de 1,5 in.</p>
@@ -402,6 +432,24 @@ describe('translation number fidelity enforcement', () => {
       expect(canonicalUnitTokens('4″ wide')).toEqual(['in']);
       expect(canonicalUnitTokens('4 in.')).toEqual(['in']);
       expect(canonicalUnitTokens('4 pulgadas')).toEqual(['in']);
+    });
+
+    it('collapses spelled-out localized unit forms to the same canonical unit', () => {
+      expect(canonicalUnitTokens('10 centímetros')).toEqual(['cm']);
+      expect(canonicalUnitTokens('10 centimeters')).toEqual(['cm']);
+      expect(canonicalUnitTokens('10 centimètres')).toEqual(['cm']);
+      expect(canonicalUnitTokens('4 milímetros')).toEqual(['mm']);
+      expect(canonicalUnitTokens('4 millimeter')).toEqual(['mm']);
+      expect(canonicalUnitTokens('1 tomme')).toEqual(['in']);
+      expect(canonicalUnitTokens('1 gramo')).toEqual(['g']);
+      expect(canonicalUnitTokens('2 kilos')).toEqual(['kg']);
+      expect(canonicalUnitTokens('2 ounces')).toEqual(['oz']);
+    });
+
+    // Spelled-out meter forms are deliberately NOT mapped: bare `m` is not a
+    // unit token (Danish maske), so "100 m" ↔ "100 metros" must not drift.
+    it('does not tokenize spelled-out meters', () => {
+      expect(canonicalUnitTokens('100 metros de hilo')).toEqual([]);
     });
 
     it('does not treat the English preposition "in" as a unit', () => {
