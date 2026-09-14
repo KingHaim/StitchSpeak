@@ -21,6 +21,7 @@ import { PatternThumbnail } from '../PatternThumbnail';
 import { PatternViewer } from '../PatternViewer';
 import { OriginalPreview } from '../OriginalPreview';
 import { BilingualViewer } from '../BilingualViewer';
+import { AiTechEditNotice } from '../AiTechEditNotice';
 import { abbreviationLanguageCodeFromTargetLabel } from '../../services/abbreviationService';
 import { hasAlignment, synthesizeAlignment } from '../../services/alignment';
 import { extractOriginalHtml, isTextExtractableFile } from '../../services/originalDocument';
@@ -1202,10 +1203,8 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
 
               <div className="p-4 sm:p-6 overflow-y-auto bg-background flex-1">
                 {(() => {
-                  const alignedHtml =
-                    fullViewHtml && hasAlignment(fullViewHtml)
-                      ? fullViewHtml
-                      : fullViewSynthesizedHtml;
+                  const hasStoredAlignment = !!fullViewHtml && hasAlignment(fullViewHtml);
+                  const alignedHtml = hasStoredAlignment ? fullViewHtml : fullViewSynthesizedHtml;
                   if (alignedHtml && !isFullViewLoading) {
                     return (
                       <div className="space-y-3">
@@ -1216,7 +1215,11 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
                           html={alignedHtml}
                           sourceLabel={fullViewRecord.sourceLanguage || 'Original language'}
                           targetLabel={fullViewRecord.targetLanguage}
+                          // Synthesized alignment invents its own seg ids, so stored
+                          // warning sourceIds only match genuine pipeline alignment.
+                          reviewWarnings={hasStoredAlignment ? fullViewRecord.reviewWarnings : undefined}
                         />
+                        <AiTechEditNotice />
                       </div>
                     );
                   }
