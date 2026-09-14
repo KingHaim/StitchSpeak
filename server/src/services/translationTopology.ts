@@ -9,7 +9,7 @@ export type TranslationTopologyWarningCode =
   | 'LIST_LEVEL_CHANGED'
   | 'EMPTY_PARAGRAPH_CHANGED'
   | 'LANGUAGE_QA_REVIEW'
-  | 'NUMBER_CHANGED';
+  | 'NUMBER_RESTORED';
 
 export interface TranslationTopologyWarning {
   code: TranslationTopologyWarningCode;
