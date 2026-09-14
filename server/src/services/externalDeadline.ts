@@ -56,20 +56,20 @@ export function externalErrorDetails(error: unknown): ExternalErrorDetails {
     return {
       status: 503,
       code: 'PROVIDER_QUOTA_EXHAUSTED',
-      message: 'The AI service is temporarily unavailable because its provider quota has been exhausted. Please try again later.',
+      message: 'The translation service is temporarily unavailable because its provider quota has been exhausted. Please try again later.',
     };
   }
   if (/\b(?:429|Too Many Requests)\b/i.test(text)) {
     return {
       status: 503,
       code: 'PROVIDER_RATE_LIMITED',
-      message: 'The AI service is temporarily busy. Please wait a moment and try again.',
+      message: 'The translation service is temporarily busy. Please wait a moment and try again.',
     };
   }
   return {
     status: 500,
     code: 'EXTERNAL_SERVICE_ERROR',
-    message: 'The AI service could not complete the request. Please try again later.',
+    message: 'The translation service could not complete the request. Please try again later.',
   };
 }
 

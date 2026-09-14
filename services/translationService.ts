@@ -21,10 +21,10 @@ export function normalizeTranslationErrorMessage(message: string): string {
     || /RESOURCE_EXHAUSTED/i.test(message)
     || /quota (?:has been )?exceeded/i.test(message)
   ) {
-    return 'The AI translation service is temporarily unavailable because its provider quota has been exhausted. Your StitchSpeak credits were refunded. Please try again later.';
+    return 'The translation service is temporarily unavailable because its provider quota has been exhausted. Your StitchSpeak credits were refunded. Please try again later.';
   }
   if (/^\s*(?:\{|\[)/.test(message) || /"error"\s*:/.test(message)) {
-    return 'The AI translation service returned an unexpected error. Your StitchSpeak credits were refunded. Please try again later.';
+    return 'The translation service returned an unexpected error. Your StitchSpeak credits were refunded. Please try again later.';
   }
   return message;
 }
