@@ -1202,10 +1202,8 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
 
               <div className="p-4 sm:p-6 overflow-y-auto bg-background flex-1">
                 {(() => {
-                  const alignedHtml =
-                    fullViewHtml && hasAlignment(fullViewHtml)
-                      ? fullViewHtml
-                      : fullViewSynthesizedHtml;
+                  const hasStoredAlignment = !!fullViewHtml && hasAlignment(fullViewHtml);
+                  const alignedHtml = hasStoredAlignment ? fullViewHtml : fullViewSynthesizedHtml;
                   if (alignedHtml && !isFullViewLoading) {
                     return (
                       <div className="space-y-3">
@@ -1216,7 +1214,14 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigateToTranslate 
                           html={alignedHtml}
                           sourceLabel={fullViewRecord.sourceLanguage || 'Original language'}
                           targetLabel={fullViewRecord.targetLanguage}
+                          // Synthesized alignment invents its own seg ids, so stored
+                          // warning sourceIds only match genuine pipeline alignment.
+                          reviewWarnings={hasStoredAlignment ? fullViewRecord.reviewWarnings : undefined}
                         />
+                        <p className="px-1 text-xs text-on-surface-variant/80 leading-relaxed">
+                          This is an AI translation with automated number and glossary checks — not a
+                          tech edit. A human tech editor is still recommended before publication.
+                        </p>
                       </div>
                     );
                   }

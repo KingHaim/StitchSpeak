@@ -80,6 +80,108 @@ test('signed-in user can upload a pattern and review its translation estimate', 
   await expect(dialog.getByRole('button', { name: /Start translation/ })).toBeEnabled();
 });
 
+test('translation happy path surfaces review mismatches and exports cleanly', async ({ page }) => {
+  const translatedHtml =
+    '<h1 data-seg="1" data-o="Bufanda de fin de semana">Weekend Scarf</h1>' +
+    '<p data-seg="2" data-o="Montar 24 puntos.">Cast on 24 stitches.</p>' +
+    '<p data-seg="3" data-o="Tejer hasta 120 cm y cerrar.">Knit until 120 cm, then cast off loosely.</p>';
+
+  await mockAccountApi(page);
+  // Deterministic translation result: aligned HTML plus one segment-level
+  // number restore and one document-level glossary variant mix.
+  await page.route('**/api/translate', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        html: translatedHtml,
+        usage: null,
+        cost: 1,
+        balance: 23,
+        reviewWarnings: [
+          {
+            code: 'NUMBER_RESTORED',
+            sourceId: 'seg-2',
+            message: 'In "Montar 24 puntos.": restored numbers [26] → [24] to match the source.',
+          },
+          {
+            code: 'GLOSSARY_VARIANT_MIX',
+            message:
+              'The English translation mixes "bind off" and "cast off" — pick one regional variant family (US or UK) and use it consistently.',
+          },
+        ],
+      }),
+    });
+  });
+  // Registered after mockAccountApi so this handler wins: saving the pattern
+  // POSTs to the same /api/patterns endpoint the dashboard lists from.
+  await page.route('**/api/patterns', async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          pattern: {
+            id: 'pat-e2e-1',
+            timestamp: Date.now(),
+            fileName: 'bufanda.txt',
+            fileType: 'text/plain',
+            sourceLanguage: 'Spanish',
+            targetLanguage: 'English',
+            pdfMetrics: null,
+            cost: 1,
+            reviewWarnings: [],
+            hasSource: false,
+          },
+        }),
+      });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ patterns: [] }) });
+  });
+  await page.route('**/api/patterns/*/source', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+  });
+  await page.route('**/api/chat/start', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ sessionId: 'chat-e2e-1' }) });
+  });
+
+  await signIn(page);
+
+  // Upload → estimate → confirm.
+  await page.locator('#file-upload').setInputFiles({
+    name: 'bufanda.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Montar 24 puntos. Tejer hasta 120 cm y cerrar.'),
+  });
+  const dialog = page.getByRole('dialog', { name: 'Select translation language' });
+  await expect(dialog.getByRole('heading', { name: 'Translation estimate' })).toBeVisible();
+  await dialog.getByRole('checkbox').check();
+  await dialog.getByRole('button', { name: /Start translation/ }).click();
+
+  // Bilingual review: mismatches surface in-context.
+  const reviewStrip = page.getByTestId('bilingual-review-strip');
+  await expect(reviewStrip).toBeVisible();
+  await expect(reviewStrip.getByText('2 automated checks flagged items for review')).toBeVisible();
+  await expect(reviewStrip.getByText(/mixes "bind off" and "cast off"/)).toBeVisible();
+
+  // The flagged segment is marked in the panes, and clicking the warning
+  // jumps to (activates) that block.
+  await expect(page.locator('.bilingual-pane [data-seg="2"].seg-flagged').first()).toBeAttached();
+  await reviewStrip.getByRole('button', { name: /restored numbers/ }).click();
+  await expect(page.locator('.bilingual-pane [data-seg="2"].seg-active').first()).toBeAttached();
+
+  // AI ≠ tech edit disclaimer is visible on the review surface.
+  await expect(page.getByText(/not a tech\s?edit/i).first()).toBeVisible();
+
+  // Export completes the happy path.
+  await page.getByRole('button', { name: 'Export this file' }).click();
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('menuitem', { name: 'Text (.txt)' }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/\.txt$/);
+});
+
 test('beta form requires the participation agreement before submitting', async ({ page }) => {
   let submissions = 0;
   await page.route('**/api/beta-applications', async (route) => {

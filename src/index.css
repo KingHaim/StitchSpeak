@@ -296,6 +296,14 @@ h1, h2, h3, h4, h5, h6 {
 .bilingual-pane [data-seg]:hover {
   background-color: color-mix(in srgb, var(--color-primary) 7%, transparent);
 }
+/* Blocks flagged by automated review (number restores, glossary mismatches).
+   Declared before .seg-active so the hover/jump highlight wins when both apply. */
+.bilingual-pane [data-seg].seg-flagged {
+  background-color: color-mix(in srgb, #d97706 10%, transparent);
+  box-shadow: inset 3px 0 0 0 #d97706;
+  padding-left: 0.5em;
+  margin-left: -0.5em;
+}
 .bilingual-pane [data-seg].seg-active {
   background-color: color-mix(in srgb, var(--color-primary) 16%, transparent);
   box-shadow: inset 3px 0 0 0 var(--color-primary);

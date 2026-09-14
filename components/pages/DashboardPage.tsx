@@ -1109,7 +1109,9 @@ export const DashboardPage: React.FC = () => {
               selectedJob.status === 'translating' ||
               selectedJob.status === 'error') && (
               <>
-                {selectedJob.status === 'complete' && selectedJob.reviewWarnings.length > 0 && (
+                {/* Segment-level mismatches render in-context inside the bilingual
+                    viewer; this flat summary covers the layout without alignment. */}
+                {!showBilingual && selectedJob.status === 'complete' && selectedJob.reviewWarnings.length > 0 && (
                   <div
                     role="status"
                     className="rounded-xl border border-amber-500/30 bg-amber-50 px-5 py-4 text-amber-950"
@@ -1148,6 +1150,7 @@ export const DashboardPage: React.FC = () => {
                       html={selectedJob.translatedHtml}
                       sourceLabel={selectedJob.sourceLanguage.name}
                       targetLabel={selectedJob.targetLanguage.name}
+                      reviewWarnings={selectedJob.reviewWarnings}
                     />
                   </div>
                 ) : (
@@ -1197,6 +1200,13 @@ export const DashboardPage: React.FC = () => {
                       />
                     </div>
                   </div>
+                )}
+
+                {selectedJob.status === 'complete' && (
+                  <p className="text-xs text-on-surface-variant/80 leading-relaxed px-2">
+                    This is an AI translation with automated number and glossary checks — not a tech
+                    edit. A human tech editor is still recommended before publication.
+                  </p>
                 )}
 
                 {canStudioExport && (
