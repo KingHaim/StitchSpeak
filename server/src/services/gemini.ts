@@ -31,6 +31,12 @@ import {
   type NumberRecoveryStatus,
   type SegmentRetryFn,
 } from './translationNumberRecovery.js';
+import {
+  createNumberVerifySystemInstruction,
+  verifyResidualNumberWarnings,
+  type NumberVerifierStatus,
+  type SegmentVerifyFn,
+} from './translationNumberVerifier.js';
 import { auditTranslatedGlossary, buildGlossaryPromptSection } from './translationGlossary.js';
 
 let aiClient: GoogleGenAI | null = null;
@@ -1754,6 +1760,79 @@ function createFlashSegmentNumberRetry(signal: AbortSignal | undefined): Segment
   };
 }
 
+const numberVerifySchema = {
+  type: Type.OBJECT,
+  properties: {
+    verdicts: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          id: { type: Type.STRING },
+          verdict: { type: Type.STRING, enum: ['CLEAR', 'FIX', 'KEEP'] },
+          fixedText: { type: Type.STRING },
+        },
+        required: ['id', 'verdict'],
+      },
+    },
+  },
+  required: ['verdicts'],
+};
+
+/**
+ * US7 verifier step 1: structured CLEAR/FIX/KEEP verdicts from
+ * gemini-3.5-flash over the segments still flagged after enforcement. Only
+ * the flagged segments are sent — never the full document.
+ */
+function createFlashSegmentNumberVerify(signal: AbortSignal | undefined): SegmentVerifyFn {
+  return async (ctx) => {
+    const response = await withRetry(() =>
+      getAI().models.generateContent({
+        model: TITLE_REPAIR_MODEL,
+        config: {
+          abortSignal: signal ?? ctx.signal,
+          systemInstruction: createNumberVerifySystemInstruction(ctx.targetLanguage, ctx.sourceLanguage),
+          temperature: 0,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          responseMimeType: 'application/json',
+          responseSchema: numberVerifySchema,
+        },
+        contents: [{
+          parts: [{
+            text: JSON.stringify({ targetLanguage: ctx.targetLanguage, segments: ctx.segments }),
+          }],
+        }],
+      }),
+    );
+
+    const parsed = JSON.parse(response.text || '{}') as {
+      verdicts?: Array<{ id?: unknown; verdict?: unknown; fixedText?: unknown }>;
+    };
+    const verdicts = (Array.isArray(parsed.verdicts) ? parsed.verdicts : [])
+      .flatMap((item): Array<{ id: string; verdict: 'CLEAR' | 'FIX' | 'KEEP'; fixedText?: string }> => {
+        if (typeof item?.id !== 'string') return [];
+        // Anything that is not a recognizable verdict counts as KEEP by
+        // omission — the verifier module treats missing verdicts as unproven.
+        if (item.verdict !== 'CLEAR' && item.verdict !== 'FIX' && item.verdict !== 'KEEP') return [];
+        return [{
+          id: item.id,
+          verdict: item.verdict,
+          ...(typeof item.fixedText === 'string' ? { fixedText: item.fixedText } : {}),
+        }];
+      });
+
+    const metadata = response.usageMetadata;
+    const usage = metadata
+      ? {
+          promptTokens: metadata.promptTokenCount ?? 0,
+          candidateTokens: metadata.candidatesTokenCount ?? 0,
+          totalTokens: metadata.totalTokenCount ?? 0,
+        }
+      : null;
+    return { verdicts, usage };
+  };
+}
+
 /**
  * finalizeTranslatedHtml with the best-effort number-fidelity recovery ladder
  * attached: when the deterministic preserve-from-source restore cannot fix a
@@ -1763,6 +1842,13 @@ function createFlashSegmentNumberRetry(signal: AbortSignal | undefined): Segment
  * and unaudited numeric blocks (US6), which carry no data-o skeleton to lock
  * a retry against, ship with UNAUDITED_NUMBERS warnings — the job never fails
  * (Jaime override: no 422 hard-fail for number-fidelity issues).
+ *
+ * US7 post-translate verifier: once the warnings have settled, the segments
+ * still flagged NUMBER_UNRESTORABLE get one structured CLEAR/FIX/KEEP verdict
+ * pass (flash first, OpenAI escalation when keyed, spend capped at 25% of the
+ * job's credits) so the review strip only stays loud for real residuals.
+ * UNAUDITED_NUMBERS blocks have no source to verify against and always stay.
+ * The verifier is best-effort like recovery — it can never fail the job.
  *
  * Exported for tests.
  */
@@ -1802,9 +1888,32 @@ export async function finalizeTranslatedHtmlWithRecovery(
   }
 
   const finalized = finalizeTranslatedHtml(working, language);
+  let finalHtml = finalized.html;
+  let finalWarnings = [...recoveryWarnings, ...finalized.reviewWarnings];
+
+  if (finalWarnings.some((warning) => warning.code === 'NUMBER_UNRESTORABLE')) {
+    try {
+      const verified = await verifyResidualNumberWarnings(finalHtml, finalWarnings, {
+        targetLanguage: language,
+        ...(sourceLanguage ? { sourceLanguage } : {}),
+        jobCredits: options.recoveryBudgetCredits ?? DEFAULT_RECOVERY_BUDGET_CREDITS,
+        signal,
+        onStatus: options.onStatus,
+        geminiVerify: createFlashSegmentNumberVerify(signal),
+      });
+      finalHtml = verified.html;
+      finalWarnings = verified.reviewWarnings;
+      usage = mergeTranslationUsage(usage, verified.usage);
+    } catch (err) {
+      // The verifier is strictly best-effort (US6b stays): any unexpected
+      // failure delivers the job with the warnings exactly as they settled.
+      console.warn('[gemini] number verifier failed; delivering with settled review warnings:', err);
+    }
+  }
+
   return {
-    html: finalized.html,
-    reviewWarnings: [...recoveryWarnings, ...finalized.reviewWarnings],
+    html: finalHtml,
+    reviewWarnings: finalWarnings,
     usage,
   };
 }
@@ -1973,13 +2082,15 @@ export interface TranslatePatternOptions {
   /**
    * Called when the pipeline enters a notable phase the client may surface,
    * e.g. the number-fidelity recovery ladder ("retrying with stricter number
-   * lock…"). Forwarded to streaming clients as NDJSON `status` events.
+   * lock…") or the post-translate number verifier ("Double-checking
+   * numbers…"). Forwarded to streaming clients as NDJSON `status` events.
    */
-  onStatus?: (status: NumberRecoveryStatus) => void;
+  onStatus?: (status: NumberRecoveryStatus | NumberVerifierStatus) => void;
   /**
    * Hard cap on estimated recovery-ladder API spend, in credits. Routes pass
    * the credits charged for this job so recovery never spends more than it
-   * earned. Defaults to the translation fixed margin.
+   * earned; the US7 post-translate verifier may additionally spend at most
+   * 25% of it. Defaults to the translation fixed margin.
    */
   recoveryBudgetCredits?: number;
   /** Approved, account-scoped human corrections for this language pair. */
