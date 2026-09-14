@@ -1,3 +1,5 @@
+import { TranslationNumberFidelityError } from './translationNumberAudit.js';
+
 export class ExternalServiceTimeoutError extends Error {
   readonly status = 504;
 
@@ -38,6 +40,9 @@ export function isProviderBillingExhausted(error: unknown): boolean {
 export function externalErrorDetails(error: unknown): ExternalErrorDetails {
   if (error instanceof ExternalServiceTimeoutError) {
     return { status: 504, code: 'EXTERNAL_SERVICE_TIMEOUT', message: error.message };
+  }
+  if (error instanceof TranslationNumberFidelityError) {
+    return { status: error.status, code: error.code, message: error.message };
   }
 
   const text = errorText(error);

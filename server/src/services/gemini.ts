@@ -19,6 +19,7 @@ import {
   normalizeSpanishMeasurementsInHtml,
   sanitizeMarkdownArtifactsInHtml,
 } from './translationSanitizers.js';
+import { enforceTranslatedNumberFidelity } from './translationNumberAudit.js';
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -1612,16 +1613,28 @@ function finalizeTranslatedHtml(
   language: string,
 ): { html: string; reviewWarnings: TranslationTopologyWarning[] } {
   let finalized = sanitizeMarkdownArtifactsInHtml(html);
+  // Deterministic number-fidelity enforcement over data-seg/data-o aligned
+  // segments: drifted counts/measurements/units are surgically restored from
+  // the source inside the translated sentence, and unrestorable drift throws
+  // TranslationNumberFidelityError so the translate path hard-fails instead of
+  // returning silent number drift. Runs before Spanish measurement
+  // normalization so restored source tokens get localized too; the audit's own
+  // canonicalization already tolerates locale formatting. Zero model cost.
+  const numberFidelity = enforceTranslatedNumberFidelity(finalized);
+  finalized = numberFidelity.html;
   if (reviewedLanguage(language) === 'spanish') {
     finalized = normalizeSpanishMeasurementsInHtml(finalized);
   }
   const artifacts = findMarkdownArtifacts(finalized);
   return {
     html: finalized,
-    reviewWarnings: artifacts.map((artifact) => ({
-      code: 'LANGUAGE_QA_REVIEW' as const,
-      message: `A Markdown artifact (${artifact}) remains and needs manual review.`,
-    })),
+    reviewWarnings: [
+      ...artifacts.map((artifact) => ({
+        code: 'LANGUAGE_QA_REVIEW' as const,
+        message: `A Markdown artifact (${artifact}) remains and needs manual review.`,
+      })),
+      ...numberFidelity.reviewWarnings,
+    ],
   };
 }
 
