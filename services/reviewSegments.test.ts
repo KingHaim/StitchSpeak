@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { flaggedSegIds, segIdFromWarning, warningKindLabel } from './reviewSegments';
+import { flaggedSegIds, loudReviewWarnings, segIdFromWarning, warningKindLabel } from './reviewSegments';
 import type { TranslationReviewWarning } from '../types';
 
 const alignedHtml =
@@ -33,6 +33,32 @@ describe('flaggedSegIds', () => {
 
   it('returns an empty set when there are no warnings', () => {
     expect(flaggedSegIds([], alignedHtml).size).toBe(0);
+  });
+});
+
+describe('loudReviewWarnings', () => {
+  it('filters resolved restored-number items so they never reach the loud strip', () => {
+    const warnings: TranslationReviewWarning[] = [
+      // Resolved by an automated pass (deterministic restore or a successful
+      // number-lock retry) — telemetry, not review work. Patterns saved
+      // before the server stopped delivering these still carry them.
+      { code: 'NUMBER_RESTORED', sourceId: 'seg-1', message: 'restored numbers' },
+      { code: 'NUMBER_UNRESTORABLE', sourceId: 'seg-2', message: 'numbers do not match' },
+      { code: 'UNAUDITED_NUMBERS', sourceId: 'seg-3', message: 'could not be checked' },
+      { code: 'GLOSSARY_VARIANT_MIX', message: 'mixed US/UK variants' },
+    ];
+
+    expect(loudReviewWarnings(warnings).map((warning) => warning.code)).toEqual([
+      'NUMBER_UNRESTORABLE',
+      'UNAUDITED_NUMBERS',
+      'GLOSSARY_VARIANT_MIX',
+    ]);
+  });
+
+  it('returns an empty list when every item was resolved', () => {
+    expect(
+      loudReviewWarnings([{ code: 'NUMBER_RESTORED', sourceId: 'seg-1', message: 'restored' }]),
+    ).toEqual([]);
   });
 });
 

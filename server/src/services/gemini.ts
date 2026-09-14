@@ -1874,7 +1874,7 @@ export async function finalizeTranslatedHtmlWithRecovery(
         budgetCredits: options.recoveryBudgetCredits ?? DEFAULT_RECOVERY_BUDGET_CREDITS,
         signal,
         onStatus: options.onStatus,
-        geminiSegmentRetry: createFlashSegmentNumberRetry(signal),
+        geminiSegmentRetry: options.numberLockSegmentRetry ?? createFlashSegmentNumberRetry(signal),
       });
       working = recovery.html;
       recoveryWarnings = recovery.reviewWarnings;
@@ -1909,6 +1909,21 @@ export async function finalizeTranslatedHtmlWithRecovery(
       // failure delivers the job with the warnings exactly as they settled.
       console.warn('[gemini] number verifier failed; delivering with settled review warnings:', err);
     }
+  }
+
+  // Quieter strip (Jaime follow-up after US7): a segment whose numbers were
+  // successfully restored — by the deterministic splice or a number-lock
+  // recovery retry — is resolved, not review work, so NUMBER_RESTORED items
+  // never stay on the user-facing loud list. They are kept in the server log
+  // for telemetry; only residual real issues (NUMBER_UNRESTORABLE keeps and
+  // UNAUDITED_NUMBERS blocks) stay loud.
+  const restoredWarnings = finalWarnings.filter((warning) => warning.code === 'NUMBER_RESTORED');
+  if (restoredWarnings.length > 0) {
+    console.info(
+      `[gemini] ${restoredWarnings.length} restored-number segment(s) resolved and quieted:`,
+      restoredWarnings.map((warning) => warning.message).join(' | '),
+    );
+    finalWarnings = finalWarnings.filter((warning) => warning.code !== 'NUMBER_RESTORED');
   }
 
   return {
@@ -2093,6 +2108,13 @@ export interface TranslatePatternOptions {
    * 25% of it. Defaults to the translation fixed margin.
    */
   recoveryBudgetCredits?: number;
+  /**
+   * Test seam: overrides the Gemini flash number-lock segment retry (recovery
+   * ladder step 2) so US7b AC1 — a successful flash lock ships with no loud
+   * strip homework — can be exercised end-to-end without a live model call.
+   * Production callers never set this.
+   */
+  numberLockSegmentRetry?: SegmentRetryFn;
   /** Approved, account-scoped human corrections for this language pair. */
   translationMemory?: Array<{
     sourceLanguage: string;

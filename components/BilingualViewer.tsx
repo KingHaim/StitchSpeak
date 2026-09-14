@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { stripCodeFences } from '../services/alignment';
 import { sanitizePatternHtml } from '../services/sanitizePatternHtml';
-import { flaggedSegIds, segIdFromWarning, warningKindLabel } from '../services/reviewSegments';
+import { flaggedSegIds, loudReviewWarnings, segIdFromWarning, warningKindLabel } from '../services/reviewSegments';
 import type { TranslationReviewWarning } from '../types';
 
 interface BilingualViewerProps {
@@ -93,9 +93,14 @@ export const BilingualViewer: React.FC<BilingualViewerProps> = ({
     [html],
   );
 
+  // Successfully restored items (NUMBER_RESTORED) are resolved, not review
+  // work: they never show in the loud strip, even on patterns saved before
+  // the server stopped delivering them.
+  const loudWarnings = useMemo(() => loudReviewWarnings(reviewWarnings), [reviewWarnings]);
+
   const flaggedSegs = useMemo(
-    () => flaggedSegIds(reviewWarnings, cleanHtml),
-    [reviewWarnings, cleanHtml],
+    () => flaggedSegIds(loudWarnings, cleanHtml),
+    [loudWarnings, cleanHtml],
   );
 
   const { originalHtml, translatedHtml } = useMemo(
@@ -178,7 +183,7 @@ export const BilingualViewer: React.FC<BilingualViewerProps> = ({
 
   return (
     <div className="bilingual-viewer rounded-xl overflow-hidden border border-outline-variant/15 bg-surface-container-lowest shadow-[0_32px_64px_-15px_rgba(29,28,23,0.06)]">
-      {reviewWarnings.length > 0 && (
+      {loudWarnings.length > 0 && (
         <div
           role="status"
           data-testid="bilingual-review-strip"
@@ -188,12 +193,12 @@ export const BilingualViewer: React.FC<BilingualViewerProps> = ({
             <span className="material-symbols-outlined text-lg text-amber-700" aria-hidden>
               flag
             </span>
-            {reviewWarnings.length} automated{' '}
-            {reviewWarnings.length === 1 ? 'check flagged an item' : 'checks flagged items'} for
+            {loudWarnings.length} automated{' '}
+            {loudWarnings.length === 1 ? 'check flagged an item' : 'checks flagged items'} for
             review
           </p>
           <ul className="mt-2 space-y-1.5">
-            {(showAllWarnings ? reviewWarnings : reviewWarnings.slice(0, VISIBLE_WARNINGS)).map((warning, index) => {
+            {(showAllWarnings ? loudWarnings : loudWarnings.slice(0, VISIBLE_WARNINGS)).map((warning, index) => {
               const segId = segIdFromWarning(warning);
               const canJump = segId !== null && flaggedSegs.has(segId);
               return (
@@ -219,7 +224,7 @@ export const BilingualViewer: React.FC<BilingualViewerProps> = ({
               );
             })}
           </ul>
-          {reviewWarnings.length > VISIBLE_WARNINGS && (
+          {loudWarnings.length > VISIBLE_WARNINGS && (
             <button
               type="button"
               onClick={() => setShowAllWarnings((prev) => !prev)}
@@ -227,7 +232,7 @@ export const BilingualViewer: React.FC<BilingualViewerProps> = ({
             >
               {showAllWarnings
                 ? 'Show fewer'
-                : `Show all ${reviewWarnings.length} items`}
+                : `Show all ${loudWarnings.length} items`}
             </button>
           )}
         </div>

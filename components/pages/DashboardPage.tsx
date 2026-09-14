@@ -23,6 +23,7 @@ import {
   takeOpenPatternHint,
 } from '../../services/openPatternHint';
 import { stripCodeFences, stripAlignmentAttributes, hasAlignment } from '../../services/alignment';
+import { loudReviewWarnings } from '../../services/reviewSegments';
 import {
   exportPatternPdf,
   exportPatternDoc,
@@ -189,6 +190,13 @@ export const DashboardPage: React.FC = () => {
   const selectedJob = useMemo(
     () => (selectedJobId ? jobs.find((j) => j.id === selectedJobId) ?? null : null),
     [jobs, selectedJobId],
+  );
+
+  // Restored-number items are resolved, not review work — only residual real
+  // issues stay loud on the flat summary (the bilingual strip filters too).
+  const selectedJobLoudWarnings = useMemo(
+    () => loudReviewWarnings(selectedJob?.reviewWarnings ?? []),
+    [selectedJob],
   );
 
   useEffect(() => {
@@ -1112,18 +1120,18 @@ export const DashboardPage: React.FC = () => {
               <>
                 {/* Segment-level mismatches render in-context inside the bilingual
                     viewer; this flat summary covers the layout without alignment. */}
-                {!showBilingual && selectedJob.status === 'complete' && selectedJob.reviewWarnings.length > 0 && (
+                {!showBilingual && selectedJob.status === 'complete' && selectedJobLoudWarnings.length > 0 && (
                   <div
                     role="status"
                     className="rounded-xl border border-amber-500/30 bg-amber-50 px-5 py-4 text-amber-950"
                   >
                     <p className="font-semibold">Manual review recommended</p>
                     <p className="mt-1 text-sm">
-                      StitchSpeak preserved the translation but found {selectedJob.reviewWarnings.length}{' '}
-                      structural or terminology {selectedJob.reviewWarnings.length === 1 ? 'item' : 'items'} it could not safely repair.
+                      StitchSpeak preserved the translation but found {selectedJobLoudWarnings.length}{' '}
+                      structural or terminology {selectedJobLoudWarnings.length === 1 ? 'item' : 'items'} it could not safely repair.
                     </p>
                     <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
-                      {selectedJob.reviewWarnings.slice(0, 5).map((warning, index) => (
+                      {selectedJobLoudWarnings.slice(0, 5).map((warning, index) => (
                         <li key={`${warning.code}-${warning.sourceId ?? index}`}>
                           {warning.sourceId ? `${warning.sourceId}: ` : ''}{warning.message}
                         </li>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildUnrestorableDriftWarnings,
   canonicalNumberTokens,
   canonicalUnitTokens,
   collectUnauditedNumericBlocks,
@@ -200,6 +201,51 @@ describe('translation number fidelity enforcement', () => {
       expect(result.reviewWarnings).toEqual([]);
     });
 
+    // Jaime follow-up after US7: a translated segment whose number/unit list
+    // is identical to the source skeleton — locale spelling included — must
+    // never be flagged (it was a false-positive KEEP: the strip showed
+    // "translated numbers [10] do not match the source numbers [10]" when the
+    // spelled-out unit was simply not recognized by the tokenizer).
+    it('does not false-positive on spelled-out localized unit spellings', () => {
+      const html = `<div>
+        <p data-seg="1" data-o="Length: 10 cm from cast-on.">Largo: 10 centímetros desde el montado.</p>
+        <p data-seg="2" data-o="Længde: 15 cm.">Length: 15 centimeters.</p>
+        <p data-seg="3" data-o="Needle: 4 mm.">Aguja: 4 milímetros.</p>
+        <p data-seg="4" data-o="Weight: 1 g per motif.">Peso: 1 gramo por motivo.</p>
+        <p data-seg="5" data-o="Width: 4 in.">Bredde: 4 tommer.</p>
+        <p data-seg="6" data-o="Ball: 1 kg.">Nøgle: 1 kilo.</p>
+      </div>`;
+      const result = enforceTranslatedNumberFidelity(html);
+
+      expect(result.html).toBe(html);
+      expect(result.reviewWarnings).toEqual([]);
+    });
+
+    // CTO brief (Luna Pants gauge): identical display lists like
+    // [29, 40, 10, 10, 4, 2.5] must never flag — gauge separators x/×/* are
+    // layout, not numbers, and normalize to whitespace before token extract.
+    it('gauge separator respellings (x/×/*) are layout, never drift', () => {
+      const html = `<div>
+        <p data-seg="1" data-o="Strikkefasthed: 29 m x 40 pinde = 10 x 10 cm, pind 4 mm (2,5).">Gauge: 29 sts × 40 rows = 10 × 10 cm, needle 4 mm (2.5).</p>
+        <p data-seg="2" data-o="Gauge: 22 sts x 30 rows = 10 x 10 cm.">Tensión: 22 pts * 30 vueltas = 10 * 10 cm.</p>
+        <td data-o="10x10 cm">10 × 10 cm</td>
+      </div>`;
+      const result = enforceTranslatedNumberFidelity(html);
+
+      expect(result.html).toBe(html);
+      expect(result.reviewWarnings).toEqual([]);
+    });
+
+    it('still restores a genuine unit-system swap written in a spelled-out form', () => {
+      const html = '<p data-seg="1" data-o="Length: 10 cm from cast-on.">Largo: 10 pulgadas desde el montado.</p>';
+      const result = enforceTranslatedNumberFidelity(html);
+
+      expect(result.html).toContain('Largo: 10 cm desde el montado.');
+      expect(result.reviewWarnings).toHaveLength(1);
+      expect(result.reviewWarnings[0].code).toBe('NUMBER_RESTORED');
+      expect(result.reviewWarnings[0].message).toContain('units [in] → [cm]');
+    });
+
     it('does not false-positive on decimal reformatting of vulgar fractions or trailing zeros', () => {
       const html = `<div>
         <p data-seg="1" data-o="Use a 1½ in border.">Usa un borde de 1,5 in.</p>
@@ -390,6 +436,37 @@ describe('translation number fidelity enforcement', () => {
     });
   });
 
+  // CTO brief: before emit unrestorable/KEEP — identical token lists CLEAR.
+  // The gate lives at the single warning choke point, so no upstream path
+  // (stale snapshot, later normalization) can keep a matching segment loud.
+  describe('unrestorable warning choke point', () => {
+    it('never emits a warning for a drift whose token lists already match the source skeleton', () => {
+      const staleButMatching = {
+        key: 'seg-1',
+        sourceId: 'seg-1',
+        sourceText: 'Strikkefasthed: 29 m x 40 pinde = 10 x 10 cm, pind 4 mm (2,5).',
+        translatedText: 'Gauge: 29 sts × 40 rows = 10 × 10 cm, needle 4 mm (2.5).',
+        lockedNumbers: ['29', '40', '10', '10', '4', '2,5'],
+        lockedUnits: ['cm', 'mm'],
+        detail: 'stale snapshot',
+      };
+      const genuineDrift = {
+        key: 'seg-2',
+        sourceId: 'seg-2',
+        sourceText: 'Bust: 84 (92, 100, 108) cm',
+        translatedText: 'Pecho: 84 (92, 108) cm',
+        lockedNumbers: ['84', '92', '100', '108'],
+        lockedUnits: ['cm'],
+        detail: 'dropped size',
+      };
+
+      const warnings = buildUnrestorableDriftWarnings([staleButMatching, genuineDrift]);
+
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].sourceId).toBe('seg-2');
+    });
+  });
+
   describe('canonical tokens', () => {
     it('normalizes decimal separators, dash variants, and trailing zeros', () => {
       expect(canonicalNumberTokens('2,5 mm, rounds 5 - 7, 10.50 cm')).toEqual(
@@ -402,6 +479,35 @@ describe('translation number fidelity enforcement', () => {
       expect(canonicalUnitTokens('4″ wide')).toEqual(['in']);
       expect(canonicalUnitTokens('4 in.')).toEqual(['in']);
       expect(canonicalUnitTokens('4 pulgadas')).toEqual(['in']);
+    });
+
+    it('collapses spelled-out localized unit forms to the same canonical unit', () => {
+      expect(canonicalUnitTokens('10 centímetros')).toEqual(['cm']);
+      expect(canonicalUnitTokens('10 centimeters')).toEqual(['cm']);
+      expect(canonicalUnitTokens('10 centimètres')).toEqual(['cm']);
+      expect(canonicalUnitTokens('4 milímetros')).toEqual(['mm']);
+      expect(canonicalUnitTokens('4 millimeter')).toEqual(['mm']);
+      expect(canonicalUnitTokens('1 tomme')).toEqual(['in']);
+      expect(canonicalUnitTokens('1 gramo')).toEqual(['g']);
+      expect(canonicalUnitTokens('2 kilos')).toEqual(['kg']);
+      expect(canonicalUnitTokens('2 ounces')).toEqual(['oz']);
+    });
+
+    // Spelled-out meter forms are deliberately NOT mapped: bare `m` is not a
+    // unit token (Danish maske), so "100 m" ↔ "100 metros" must not drift.
+    it('does not tokenize spelled-out meters', () => {
+      expect(canonicalUnitTokens('100 metros de hilo')).toEqual([]);
+    });
+
+    it('normalizes gauge separators x/×/* between digits to whitespace', () => {
+      const expected = canonicalNumberTokens('10 x 10 cm');
+      expect(expected).toEqual(['10', '10']);
+      expect(canonicalNumberTokens('10×10 cm')).toEqual(expected);
+      expect(canonicalNumberTokens('10 * 10 cm')).toEqual(expected);
+      expect(canonicalNumberTokens('10x10 cm')).toEqual(expected);
+      expect(canonicalUnitTokens('10x10cm')).toEqual(['cm']);
+      // A multiplier that is not between two digits keeps its shape.
+      expect(canonicalNumberTokens('repeat 2x more')).toEqual(['2']);
     });
 
     it('does not treat the English preposition "in" as a unit', () => {

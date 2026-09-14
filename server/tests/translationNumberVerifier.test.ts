@@ -11,6 +11,7 @@ import {
   type SegmentVerifyFn,
 } from '../src/services/translationNumberVerifier';
 import { finalizeTranslatedHtmlWithRecovery } from '../src/services/gemini';
+import type { SegmentRetryFn } from '../src/services/translationNumberRecovery';
 
 /** A dropped size in a multi-size list: unrestorable by the deterministic pass. */
 const FLAGGED_HTML =
@@ -160,6 +161,126 @@ describe('US7 verdicts', () => {
 
     expect(result.html).toContain('Tallas: 2 (4, 6, 8) años');
     expect(result.reviewWarnings).toEqual([]);
+  });
+});
+
+// US7b (product-locked ACs): the strip only stays loud for residual real
+// issues. AC1 — a successful flash lock / #18 preserve ships no loud homework.
+// AC2 — identical-skeleton CLEAR before KEEP/unrestorable (after the x/×/*
+// separator normalize): the same list on both sides is never KEEP. AC3 —
+// still never a 422, real KEEP stays, no invented data-o.
+describe('US7b quieter strip', () => {
+  it('AC1: a successful flash number-lock retry ships with no loud strip homework', async () => {
+    // A dropped size the deterministic #18 preserve cannot fix, so the
+    // recovery ladder runs. The (mocked) Gemini flash segment retry returns a
+    // skeleton-matching retranslation — tokens actually changed, so a quiet
+    // NUMBER_RESTORED is recorded internally (server log), but the delivered
+    // job carries no loud strip entry at all.
+    const flash: SegmentRetryFn = async (ctx) => ({
+      repairs: ctx.segments.map((segment) => ({ id: segment.id, text: FIXED_TEXT })),
+      usage: { promptTokens: 50, candidateTokens: 50, totalTokens: 100 },
+    });
+
+    const result = await finalizeTranslatedHtmlWithRecovery(
+      FLAGGED_HTML,
+      'Spanish',
+      'English',
+      { recoveryBudgetCredits: 10, numberLockSegmentRetry: flash },
+      undefined,
+    );
+
+    expect(result.html).toContain(FIXED_TEXT);
+    expect(result.reviewWarnings).toEqual([]);
+  });
+
+  it('AC2: clears a stale warning deterministically when the segment now matches the source skeleton', async () => {
+    const { warnings } = settle(FLAGGED_HTML);
+    expect(warnings.map((warning) => warning.code)).toEqual(['NUMBER_UNRESTORABLE']);
+
+    // The delivered document has since been repaired (e.g. by a later
+    // normalization or restore pass): its number/unit token lists are now
+    // identical to the source skeleton. The warning must drop without any
+    // model verdict and at zero model cost — never a false-positive KEEP.
+    const repairedHtml =
+      '<p data-seg="2" data-o="Bust: 84 (92, 100, 108) cm">Pecho: 84 (92, 100, 108) cm</p>';
+    const gemini = vi.fn(verdictFn('KEEP'));
+
+    const result = await verifyResidualNumberWarnings(repairedHtml, warnings, {
+      ...baseOptions,
+      geminiVerify: gemini,
+      openAIVerify: vi.fn(verdictFn('KEEP')),
+    });
+
+    expect(gemini).not.toHaveBeenCalled();
+    expect(result.spentCredits).toBe(0);
+    expect(result.html).toBe(repairedHtml);
+    expect(result.reviewWarnings).toEqual([]);
+  });
+
+  it('AC2: drops only the stale number warning; other warning kinds stay loud', async () => {
+    const settledHtml = '<div>'
+      + '<p data-seg="1" data-o="Bust: 84 (92, 100, 108) cm">Pecho: 84 (92, 108) cm</p>'
+      + '<p>Teje 12 vueltas.</p>'
+      + '</div>';
+    const { warnings } = settle(settledHtml);
+    expect(warnings.map((warning) => warning.code)).toEqual([
+      'UNAUDITED_NUMBERS',
+      'NUMBER_UNRESTORABLE',
+    ]);
+
+    const repairedHtml = '<div>'
+      + '<p data-seg="1" data-o="Bust: 84 (92, 100, 108) cm">Pecho: 84 (92, 100, 108) cm</p>'
+      + '<p>Teje 12 vueltas.</p>'
+      + '</div>';
+    const gemini = vi.fn(verdictFn('KEEP'));
+
+    const result = await verifyResidualNumberWarnings(repairedHtml, warnings, {
+      ...baseOptions,
+      geminiVerify: gemini,
+    });
+
+    expect(gemini).not.toHaveBeenCalled();
+    expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['UNAUDITED_NUMBERS']);
+  });
+
+  it('AC1: a deterministic #18 preserve ships quiet through the full finalize path', async () => {
+    // The audit restores 26 → 24 in place; the restored item is resolved, so
+    // it must not reach the user-facing loud list (it is logged server-side).
+    const html = '<p data-seg="1" data-o="Cast on 24 sts.">Monta 26 pts.</p>';
+
+    const result = await finalizeTranslatedHtmlWithRecovery(
+      html,
+      'Spanish',
+      'English',
+      { recoveryBudgetCredits: 0 },
+      undefined,
+    );
+
+    expect(result.html).toContain('Monta 24 pts.');
+    expect(result.reviewWarnings).toEqual([]);
+  });
+
+  it('AC3: real KEEP stays loud when restored and unrestorable drift coexist', async () => {
+    // NUMBER_RESTORED items — whether from the deterministic splice or a
+    // successful number-lock recovery retry — are filtered from the delivered
+    // warnings by the same code-based gate, so only the KEEP-grade residual
+    // (and unaudited blocks) reaches the strip.
+    const html = '<div>'
+      + '<p data-seg="1" data-o="Cast on 24 sts.">Monta 26 pts.</p>'
+      + '<p data-seg="2" data-o="Bust: 84 (92, 100, 108) cm">Pecho: 84 (92, 108) cm</p>'
+      + '</div>';
+
+    const result = await finalizeTranslatedHtmlWithRecovery(
+      html,
+      'Spanish',
+      'English',
+      { recoveryBudgetCredits: 0 },
+      undefined,
+    );
+
+    expect(result.html).toContain('Monta 24 pts.');
+    expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNRESTORABLE']);
+    expect(result.reviewWarnings[0].sourceId).toBe('seg-2');
   });
 });
 
