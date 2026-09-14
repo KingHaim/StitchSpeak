@@ -39,7 +39,8 @@ describe('flaggedSegIds', () => {
 describe('warningKindLabel', () => {
   it('labels number-fidelity and glossary warning codes', () => {
     expect(warningKindLabel('NUMBER_RESTORED')).toBe('Numbers');
-    expect(warningKindLabel('NUMBER_UNVERIFIED')).toBe('Numbers');
+    expect(warningKindLabel('NUMBER_UNRESTORABLE')).toBe('Numbers');
+    expect(warningKindLabel('UNAUDITED_NUMBERS')).toBe('Numbers');
     expect(warningKindLabel('GLOSSARY_TERM_UNTRANSLATED')).toBe('Glossary');
     expect(warningKindLabel('GLOSSARY_VARIANT_MIX')).toBe('Glossary');
     expect(warningKindLabel('SOMETHING_ELSE')).toBe('Review');

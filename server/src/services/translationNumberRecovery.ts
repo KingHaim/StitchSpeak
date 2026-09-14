@@ -28,7 +28,7 @@ import {
  *      cannot call it. No other model ids are ever used.
  *   4. Exhausted (or the recovery budget would be exceeded) → return the best
  *      HTML produced so far. The final enforcement pass flags the segments
- *      that are still drifted with NUMBER_UNVERIFIED review warnings (Jaime
+ *      that are still drifted with NUMBER_UNRESTORABLE review warnings (Jaime
  *      override: recovery is best-effort — it never hard-fails the job).
  *
  * Every candidate replacement is verified against the source skeleton with
@@ -190,7 +190,7 @@ interface LadderStep {
  * deterministic restore could not fix. Returns repaired HTML once every
  * segment passes the locked-skeleton check, or the best-effort HTML when the
  * ladder (or its budget) is exhausted — the final enforcement pass emits
- * NUMBER_UNVERIFIED review warnings for whatever is still drifted.
+ * NUMBER_UNRESTORABLE review warnings for whatever is still drifted.
  */
 export async function recoverTranslatedNumberFidelity(
   html: string,
@@ -291,7 +291,7 @@ export async function recoverTranslatedNumberFidelity(
 
   // Soft path (Jaime override): the exhausted ladder no longer hard-fails the
   // job. Deliver the best HTML produced so far; the still-drifted segments are
-  // flagged by the final enforcement pass as NUMBER_UNVERIFIED warnings.
+  // flagged by the final enforcement pass as NUMBER_UNRESTORABLE warnings.
   console.warn(
     `[number-recovery] ${failing.length} segment(s) still drifted after ${exhaustionReason}: ${failing[0].detail}`,
   );

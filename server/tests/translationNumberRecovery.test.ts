@@ -70,10 +70,10 @@ describe('unrestorable drift collection', () => {
 describe('recovery ladder', () => {
   it('step 2: the Gemini flash segment retry recovers a case the deterministic pass only warns about', async () => {
     // Without recovery, the drift is unrestorable and would ship with a
-    // NUMBER_UNVERIFIED review warning (soft path — no hard-fail).
+    // NUMBER_UNRESTORABLE review warning (soft path — no hard-fail).
     expect(
       enforceTranslatedNumberFidelity(HARD_FAIL_HTML).reviewWarnings.map((warning) => warning.code),
-    ).toEqual(['NUMBER_UNVERIFIED']);
+    ).toEqual(['NUMBER_UNRESTORABLE']);
 
     const gemini = vi.fn(retryFnReturning(RECOVERED_TEXT));
     const openAI = vi.fn(retryFnReturning(RECOVERED_TEXT));
@@ -147,7 +147,7 @@ describe('recovery ladder', () => {
     expect(enforceTranslatedNumberFidelity(result.html).reviewWarnings).toEqual([]);
   });
 
-  it('exhausted ladder → best-effort delivery, flagged NUMBER_UNVERIFIED by the final audit', async () => {
+  it('exhausted ladder → best-effort delivery, flagged NUMBER_UNRESTORABLE by the final audit', async () => {
     const gemini = vi.fn(retryFnReturning('Pecho: 84 cm'));
     const openAI = vi.fn(retryFnReturning(null));
 
@@ -167,7 +167,7 @@ describe('recovery ladder', () => {
     // The enforcement pass that always runs afterwards emits the review
     // warning the user sees — no 422, no refund, no hard-fail.
     const enforced = enforceTranslatedNumberFidelity(result.html);
-    expect(enforced.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNVERIFIED']);
+    expect(enforced.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNRESTORABLE']);
     expect(enforced.reviewWarnings[0].sourceId).toBe('seg-2');
   });
 
@@ -175,7 +175,7 @@ describe('recovery ladder', () => {
     // Unrestorable drift (a dropped number token) whose retries come back with
     // the numbers right but the unit system converted — a classic silent-drift
     // hazard (cm → in). Neither may touch the document; the draft ships with
-    // a NUMBER_UNVERIFIED warning instead.
+    // a NUMBER_UNRESTORABLE warning instead.
     const html = '<p data-seg="9" data-o="Length: 10cm, work 5-7 rounds.">Largo: 10cm.</p>';
     const badUnits = 'Largo: 10in, teje 5-7 vueltas.';
     const gemini = vi.fn(retryFnReturning(badUnits));
@@ -193,7 +193,7 @@ describe('recovery ladder', () => {
     expect(result.html).not.toContain('10in');
     expect(
       enforceTranslatedNumberFidelity(result.html).reviewWarnings.map((warning) => warning.code),
-    ).toEqual(['NUMBER_UNVERIFIED']);
+    ).toEqual(['NUMBER_UNRESTORABLE']);
   });
 
   it('cost cap: stops before any call that would exceed the job budget and delivers best-effort', async () => {
@@ -213,7 +213,7 @@ describe('recovery ladder', () => {
     expect(result.spentCredits).toBe(0);
     expect(
       enforceTranslatedNumberFidelity(result.html).reviewWarnings.map((warning) => warning.code),
-    ).toEqual(['NUMBER_UNVERIFIED']);
+    ).toEqual(['NUMBER_UNRESTORABLE']);
   });
 
   it('recovers table cells without data-seg ids via occurrence keys', async () => {

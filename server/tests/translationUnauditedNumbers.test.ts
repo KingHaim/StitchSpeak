@@ -8,17 +8,17 @@ import {
 
 // US6 wiring, soft path (Jaime override): unaudited numeric blocks never ship
 // silently, but they no longer fail the job either — the full finalize +
-// recovery pipeline completes and flags them with NUMBER_UNVERIFIED review
+// recovery pipeline completes and flags them with UNAUDITED_NUMBERS review
 // warnings. They never trigger the (model-billed) recovery ladder, which has
 // no data-o skeleton to lock.
 describe('US6 unaudited numeric blocks through the translate pipeline', () => {
-  it('completes with a NUMBER_UNVERIFIED warning for a numeric block without data-o', async () => {
+  it('completes with an UNAUDITED_NUMBERS warning for a numeric block without data-o', async () => {
     const html = '<div><h2 data-seg="1" data-o="Materials">Materiales</h2><p>Monta 24 puntos.</p></div>';
 
     const result = await finalizeTranslatedHtmlWithRecovery(html, 'Spanish', 'English', {}, undefined);
 
     expect(result.html).toBe(html);
-    expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNVERIFIED']);
+    expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['UNAUDITED_NUMBERS']);
     expect(result.reviewWarnings[0].message).toContain('24');
     expect(result.usage).toBeNull();
   });
@@ -42,11 +42,12 @@ describe('US6 unaudited numeric blocks through the translate pipeline', () => {
 
     expect(result.html).toBe(html);
     expect(result.reviewWarnings.map((warning) => warning.code)).toEqual([
-      'NUMBER_UNVERIFIED',
-      'NUMBER_UNVERIFIED',
+      'UNAUDITED_NUMBERS',
+      'NUMBER_UNRESTORABLE',
     ]);
-    const bySection = result.reviewWarnings.map((warning) => warning.sourceId ?? null);
-    expect(bySection).toContain('seg-1');
+    // The unrestorable drift points at its aligned segment.
+    const unrestorable = result.reviewWarnings.find((warning) => warning.code === 'NUMBER_UNRESTORABLE');
+    expect(unrestorable?.sourceId).toBe('seg-1');
     expect(result.usage).toBeNull();
   });
 

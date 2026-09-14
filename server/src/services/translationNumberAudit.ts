@@ -15,16 +15,16 @@ import type { TranslationTopologyWarning } from './translationTopology.js';
  * sentence: the surrounding target-language prose is never replaced with
  * source-language text. When a safe token-level restore is not possible
  * (token-count mismatch, ambiguous layout, unverifiable rebuild) the job is
- * still delivered, with an explicit NUMBER_UNVERIFIED review warning pointing
- * at the affected section — number drift is never silent, but it no longer
- * blocks an otherwise usable translation (Jaime override of the US6
+ * still delivered, with an explicit NUMBER_UNRESTORABLE review warning
+ * pointing at the affected section — number drift is never silent, but it no
+ * longer blocks an otherwise usable translation (Jaime override of the US6
  * hard-fail: soft path, warnings instead of 422 + refund).
  *
  * US6 alignment blind spot: a block that contains sacred numbers (stitch
  * counts, needle sizes, gauge, sizes, repeats, measurements) but NO data-o
  * alignment cannot be audited at all. Such blocks either get a deterministic
  * alignment derived from a KNOWN source (forceAlignmentFromSource, document
- * pipeline only) or ship with the same NUMBER_UNVERIFIED review warning.
+ * pipeline only) or ship with an UNAUDITED_NUMBERS review warning.
  * Alignment is never invented from the translated text itself.
  */
 
@@ -724,7 +724,7 @@ export function collectUnauditedNumericBlocks(html: string): UnauditedNumericBlo
  */
 function unauditedNumbersWarning(block: UnauditedNumericBlock): TranslationTopologyWarning {
   return {
-    code: 'NUMBER_UNVERIFIED',
+    code: 'UNAUDITED_NUMBERS',
     ...(block.sourceId ? { sourceId: block.sourceId } : {}),
     message: `In "${textExcerpt(block.text)}": the numbers [${displaySequence(block.numbers)}] could not be checked against the source by the automated audit — compare this section with the original pattern.`,
   };
@@ -736,7 +736,7 @@ function unauditedNumbersWarning(block: UnauditedNumericBlock): TranslationTopol
  */
 function unrestorableDriftWarning(drift: UnrestorableNumberDrift): TranslationTopologyWarning {
   return {
-    code: 'NUMBER_UNVERIFIED',
+    code: 'NUMBER_UNRESTORABLE',
     ...(drift.sourceId ? { sourceId: drift.sourceId } : {}),
     message: `In "${textExcerpt(drift.sourceText)}": the translated numbers [${displaySequence(canonicalNumberTokens(drift.translatedText))}] do not match the source numbers [${displaySequence(canonicalNumberTokens(drift.sourceText))}] and could not be restored automatically — check this section against the original pattern.`,
   };
@@ -756,7 +756,7 @@ function escapeAttributeValue(value: string): string {
  * document, keyed by data-source-id. Only blocks that would otherwise fail
  * the unaudited-numbers gate are touched, and the injected data-o then flows
  * through the normal restore / recovery-ladder / warning machinery. Blocks
- * without a source lookup stay unaligned and surface a NUMBER_UNVERIFIED
+ * without a source lookup stay unaligned and surface an UNAUDITED_NUMBERS
  * review warning downstream: alignment is never invented from the translated
  * text itself.
  */
@@ -800,21 +800,19 @@ function capWarnings(
 /**
  * Enforce number fidelity over every aligned segment: restore drifted tokens
  * from the source in place. Number issues the deterministic machinery cannot
- * fix — unrestorable drift, and blocks carrying numbers with no data-o
- * alignment (US6) — are surfaced as NUMBER_UNVERIFIED review warnings on a
- * completed job instead of failing it (Jaime override: warnings, never a 422
- * hard-fail). Number problems are never silent, but they never block delivery.
+ * fix are surfaced as review warnings on a completed job instead of failing
+ * it (Jaime override / CTO brief: warnings, never a 422 hard-fail) —
+ * UNAUDITED_NUMBERS for blocks carrying numbers with no data-o alignment
+ * (US6) and NUMBER_UNRESTORABLE for drift no safe restore could fix. Number
+ * problems are never silent, but they never block delivery.
  */
 export function enforceTranslatedNumberFidelity(html: string): {
   html: string;
   reviewWarnings: TranslationTopologyWarning[];
 } {
-  const unverified = collectUnauditedNumericBlocks(html).map(unauditedNumbersWarning);
-
+  const unaudited = collectUnauditedNumericBlocks(html).map(unauditedNumbersWarning);
   const audit = auditNumberFidelity(html);
-  for (const drift of audit.unrestorable) {
-    unverified.push(unrestorableDriftWarning(drift));
-  }
+  const unrestorable = audit.unrestorable.map(unrestorableDriftWarning);
 
   return {
     html: audit.html,
@@ -823,9 +821,13 @@ export function enforceTranslatedNumberFidelity(html: string): {
         code: 'NUMBER_RESTORED',
         message: `${extra} more segment${extra === 1 ? '' : 's'} had numbers restored from the source.`,
       })),
-      ...capWarnings(unverified, (extra) => ({
-        code: 'NUMBER_UNVERIFIED',
-        message: `${extra} more section${extra === 1 ? '' : 's'} carried numbers the automated audit could not verify — review them against the original pattern.`,
+      ...capWarnings(unaudited, (extra) => ({
+        code: 'UNAUDITED_NUMBERS',
+        message: `${extra} more section${extra === 1 ? '' : 's'} carried numbers that could not be checked against the source — review them against the original pattern.`,
+      })),
+      ...capWarnings(unrestorable, (extra) => ({
+        code: 'NUMBER_UNRESTORABLE',
+        message: `${extra} more segment${extra === 1 ? '' : 's'} had translated numbers that do not match the source — review them against the original pattern.`,
       })),
     ],
   };

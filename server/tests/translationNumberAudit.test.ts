@@ -114,7 +114,7 @@ describe('translation number fidelity enforcement', () => {
 
   // Jaime override (US6 hard-fail strip): unrestorable drift no longer throws
   // — the job completes and the affected sections are flagged with
-  // NUMBER_UNVERIFIED review warnings instead.
+  // NUMBER_UNRESTORABLE review warnings instead.
   describe('soft warnings on unrestorable drift', () => {
     it('warns instead of failing when a size is dropped from a multi-size list', () => {
       const html = '<p data-seg="2" data-o="Bust: 84 (92, 100, 108) cm">Pecho: 84 (92, 108) cm</p>';
@@ -123,7 +123,7 @@ describe('translation number fidelity enforcement', () => {
       // The drifted draft ships as-is; the warning points at the section.
       expect(result.html).toBe(html);
       expect(result.reviewWarnings).toHaveLength(1);
-      expect(result.reviewWarnings[0].code).toBe('NUMBER_UNVERIFIED');
+      expect(result.reviewWarnings[0].code).toBe('NUMBER_UNRESTORABLE');
       expect(result.reviewWarnings[0].sourceId).toBe('seg-2');
       expect(result.reviewWarnings[0].message).toContain('84, 92, 100, 108');
       expect(result.reviewWarnings[0].message).toContain('84, 92, 108');
@@ -135,7 +135,7 @@ describe('translation number fidelity enforcement', () => {
       const result = enforceTranslatedNumberFidelity(html);
 
       expect(result.html).toBe(html);
-      expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNVERIFIED']);
+      expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNRESTORABLE']);
     });
 
     it('warns when all numbers vanished from the translation', () => {
@@ -143,7 +143,7 @@ describe('translation number fidelity enforcement', () => {
       const result = enforceTranslatedNumberFidelity(html);
 
       expect(result.html).toBe(html);
-      expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNVERIFIED']);
+      expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNRESTORABLE']);
     });
 
     it('still restores restorable drift while warning about the unrestorable rest', () => {
@@ -157,7 +157,7 @@ describe('translation number fidelity enforcement', () => {
       expect(result.html).toContain('Pecho: 84 (92, 108) cm');
       expect(result.reviewWarnings.map((warning) => [warning.code, warning.sourceId])).toEqual([
         ['NUMBER_RESTORED', 'seg-1'],
-        ['NUMBER_UNVERIFIED', 'seg-2'],
+        ['NUMBER_UNRESTORABLE', 'seg-2'],
       ]);
     });
 
@@ -221,7 +221,7 @@ describe('translation number fidelity enforcement', () => {
   });
 
   // US6, soft path (Jaime override): sacred numbers with no data-o alignment
-  // never ship silently — the job completes with a NUMBER_UNVERIFIED review
+  // never ship silently — the job completes with an UNAUDITED_NUMBERS review
   // warning per unauditable block (or the caller forces a deterministic
   // alignment first; see forceAlignmentFromSource). No hard-fail, no 422.
   describe('soft warnings on unaudited numeric blocks (US6)', () => {
@@ -231,7 +231,7 @@ describe('translation number fidelity enforcement', () => {
 
       expect(result.html).toBe(html);
       expect(result.reviewWarnings).toHaveLength(1);
-      expect(result.reviewWarnings[0].code).toBe('NUMBER_UNVERIFIED');
+      expect(result.reviewWarnings[0].code).toBe('UNAUDITED_NUMBERS');
       expect(result.reviewWarnings[0].message).toContain('999');
       expect(result.reviewWarnings[0].message).toContain('could not be checked against the source');
       expect(result.reviewWarnings[0].message).toContain('compare this section with the original');
@@ -242,7 +242,7 @@ describe('translation number fidelity enforcement', () => {
       const result = enforceTranslatedNumberFidelity(html);
 
       expect(result.html).toBe(html);
-      expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNVERIFIED']);
+      expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['UNAUDITED_NUMBERS']);
       expect(result.reviewWarnings[0].sourceId).toBe('seg-1');
     });
 
@@ -251,17 +251,17 @@ describe('translation number fidelity enforcement', () => {
       const result = enforceTranslatedNumberFidelity(html);
 
       expect(result.html).toBe(html);
-      expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNVERIFIED']);
+      expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['UNAUDITED_NUMBERS']);
     });
 
-    it('caps emitted NUMBER_UNVERIFIED warnings and summarizes the remainder', () => {
+    it('caps emitted UNAUDITED_NUMBERS warnings and summarizes the remainder', () => {
       const blocks = Array.from({ length: 45 }, (_value, index) =>
         `<p>Vuelta ${index + 1}: teje 11 pts.</p>`).join('');
       const result = enforceTranslatedNumberFidelity(blocks);
 
       expect(result.html).toBe(blocks);
       expect(result.reviewWarnings).toHaveLength(41);
-      expect(result.reviewWarnings.every((warning) => warning.code === 'NUMBER_UNVERIFIED')).toBe(true);
+      expect(result.reviewWarnings.every((warning) => warning.code === 'UNAUDITED_NUMBERS')).toBe(true);
       expect(result.reviewWarnings.at(-1)?.message).toContain('5 more sections');
     });
 
@@ -374,7 +374,7 @@ describe('translation number fidelity enforcement', () => {
       expect(forced.forcedCount).toBe(0);
       const result = enforceTranslatedNumberFidelity(forced.html);
       expect(result.html).toBe(forced.html);
-      expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNVERIFIED']);
+      expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['UNAUDITED_NUMBERS']);
     });
 
     it('leaves prose-only and already-aligned blocks untouched', () => {

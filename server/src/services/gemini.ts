@@ -1676,9 +1676,10 @@ function finalizeTranslatedHtml(
   // Deterministic number-fidelity enforcement over data-seg/data-o aligned
   // segments: drifted counts/measurements/units are surgically restored from
   // the source inside the translated sentence, and anything the machinery
-  // cannot fix or verify (unrestorable drift, unaudited numeric blocks) is
-  // surfaced as NUMBER_UNVERIFIED review warnings on a completed job — never
-  // a hard-fail (Jaime override). Runs before Spanish measurement
+  // cannot fix or verify is surfaced as review warnings on a completed job —
+  // NUMBER_UNRESTORABLE for unrestorable drift, UNAUDITED_NUMBERS for numeric
+  // blocks with no alignment — never a hard-fail (Jaime override / CTO
+  // brief). Runs before Spanish measurement
   // normalization so restored source tokens get localized too; the audit's own
   // canonicalization already tolerates locale formatting. Zero model cost.
   const numberFidelity = enforceTranslatedNumberFidelity(finalized);
@@ -1758,10 +1759,10 @@ function createFlashSegmentNumberRetry(signal: AbortSignal | undefined): Segment
  * attached: when the deterministic preserve-from-source restore cannot fix a
  * segment, retry just the failing segments (Gemini flash → one OpenAI
  * prose-only pass, both with the source numeric skeleton locked). Whatever
- * still drifts after recovery — and unaudited numeric blocks (US6), which
- * carry no data-o skeleton to lock a retry against — ships with
- * NUMBER_UNVERIFIED review warnings instead of failing the job (Jaime
- * override: no 422 hard-fail for number-fidelity issues).
+ * still drifts after recovery ships with NUMBER_UNRESTORABLE review warnings,
+ * and unaudited numeric blocks (US6), which carry no data-o skeleton to lock
+ * a retry against, ship with UNAUDITED_NUMBERS warnings — the job never fails
+ * (Jaime override: no 422 hard-fail for number-fidelity issues).
  *
  * Exported for tests.
  */
@@ -2353,7 +2354,7 @@ async function translateDocumentHtml(
   // US6 force alignment: numeric blocks the model left without data-o get a
   // deterministic alignment derived from the annotated source (matched by
   // immutable data-source-id) so the number audit can cover them. Blocks with
-  // no source match stay unaligned and surface NUMBER_UNVERIFIED review
+  // no source match stay unaligned and surface UNAUDITED_NUMBERS review
   // warnings in finalize rather than shipping unaudited numbers silently.
   const alignmentForced = forceAlignmentFromSource(
     reinsertImages(repairedEmphasis.html, srcs),
