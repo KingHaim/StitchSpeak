@@ -1911,6 +1911,21 @@ export async function finalizeTranslatedHtmlWithRecovery(
     }
   }
 
+  // Quieter strip (Jaime follow-up after US7): a segment whose numbers were
+  // successfully restored — by the deterministic splice or a number-lock
+  // recovery retry — is resolved, not review work, so NUMBER_RESTORED items
+  // never stay on the user-facing loud list. They are kept in the server log
+  // for telemetry; only residual real issues (NUMBER_UNRESTORABLE keeps and
+  // UNAUDITED_NUMBERS blocks) stay loud.
+  const restoredWarnings = finalWarnings.filter((warning) => warning.code === 'NUMBER_RESTORED');
+  if (restoredWarnings.length > 0) {
+    console.info(
+      `[gemini] ${restoredWarnings.length} restored-number segment(s) resolved and quieted:`,
+      restoredWarnings.map((warning) => warning.message).join(' | '),
+    );
+    finalWarnings = finalWarnings.filter((warning) => warning.code !== 'NUMBER_RESTORED');
+  }
+
   return {
     html: finalHtml,
     reviewWarnings: finalWarnings,

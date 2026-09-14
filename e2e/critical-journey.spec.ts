@@ -87,8 +87,10 @@ test('translation happy path surfaces review mismatches and exports cleanly', as
     '<p data-seg="3" data-o="Tejer hasta 120 cm y cerrar.">Knit until 120 cm, then cast off loosely.</p>';
 
   await mockAccountApi(page);
-  // Deterministic translation result: aligned HTML plus one segment-level
-  // number restore and one document-level glossary variant mix.
+  // Deterministic translation result: aligned HTML plus one residual
+  // segment-level number mismatch, one document-level glossary variant mix,
+  // and one already-resolved number restore (older saved patterns still carry
+  // these) that must stay OFF the loud review strip.
   await page.route('**/api/translate', async (route) => {
     await route.fulfill({
       status: 200,
@@ -101,8 +103,14 @@ test('translation happy path surfaces review mismatches and exports cleanly', as
         reviewWarnings: [
           {
             code: 'NUMBER_RESTORED',
+            sourceId: 'seg-3',
+            message: 'In "Tejer hasta 120 cm y cerrar.": restored numbers [110] → [120] to match the source.',
+          },
+          {
+            code: 'NUMBER_UNRESTORABLE',
             sourceId: 'seg-2',
-            message: 'In "Montar 24 puntos.": restored numbers [26] → [24] to match the source.',
+            message:
+              'In "Montar 24 puntos.": the translated numbers [24, 2] do not match the source numbers [24] and could not be restored automatically — check this section against the original pattern.',
           },
           {
             code: 'GLOSSARY_VARIANT_MIX',
@@ -159,16 +167,20 @@ test('translation happy path surfaces review mismatches and exports cleanly', as
   await dialog.getByRole('checkbox').check();
   await dialog.getByRole('button', { name: /Start translation/ }).click();
 
-  // Bilingual review: mismatches surface in-context.
+  // Bilingual review: only residual mismatches surface in-context — the
+  // already-resolved number restore is quiet (2 loud items, not 3).
   const reviewStrip = page.getByTestId('bilingual-review-strip');
   await expect(reviewStrip).toBeVisible();
   await expect(reviewStrip.getByText('2 automated checks flagged items for review')).toBeVisible();
   await expect(reviewStrip.getByText(/mixes "bind off" and "cast off"/)).toBeVisible();
+  await expect(reviewStrip.getByText(/restored numbers/)).toHaveCount(0);
 
   // The flagged segment is marked in the panes, and clicking the warning
-  // jumps to (activates) that block.
+  // jumps to (activates) that block. The restored (quiet) segment is not
+  // flagged at all.
   await expect(page.locator('.bilingual-pane [data-seg="2"].seg-flagged').first()).toBeAttached();
-  await reviewStrip.getByRole('button', { name: /restored numbers/ }).click();
+  await expect(page.locator('.bilingual-pane [data-seg="3"].seg-flagged')).toHaveCount(0);
+  await reviewStrip.getByRole('button', { name: /could not be restored automatically/ }).click();
   await expect(page.locator('.bilingual-pane [data-seg="2"].seg-active').first()).toBeAttached();
 
   // Automated-draft ≠ published tech edit disclaimer is visible on the review

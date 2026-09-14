@@ -163,6 +163,102 @@ describe('US7 verdicts', () => {
   });
 });
 
+// Jaime follow-up after US7: the strip only stays loud for residual real
+// issues. Successfully restored segments are resolved (never loud), and a
+// segment whose current number/unit token lists are identical to the source
+// skeleton clears deterministically — it can never stay a false-positive KEEP.
+describe('quieter strip (Jaime follow-up after US7)', () => {
+  it('clears a stale warning deterministically when the segment now matches the source skeleton', async () => {
+    const { warnings } = settle(FLAGGED_HTML);
+    expect(warnings.map((warning) => warning.code)).toEqual(['NUMBER_UNRESTORABLE']);
+
+    // The delivered document has since been repaired (e.g. by a later
+    // normalization or restore pass): its number/unit token lists are now
+    // identical to the source skeleton. The warning must drop without any
+    // model verdict and at zero model cost — never a false-positive KEEP.
+    const repairedHtml =
+      '<p data-seg="2" data-o="Bust: 84 (92, 100, 108) cm">Pecho: 84 (92, 100, 108) cm</p>';
+    const gemini = vi.fn(verdictFn('KEEP'));
+
+    const result = await verifyResidualNumberWarnings(repairedHtml, warnings, {
+      ...baseOptions,
+      geminiVerify: gemini,
+      openAIVerify: vi.fn(verdictFn('KEEP')),
+    });
+
+    expect(gemini).not.toHaveBeenCalled();
+    expect(result.spentCredits).toBe(0);
+    expect(result.html).toBe(repairedHtml);
+    expect(result.reviewWarnings).toEqual([]);
+  });
+
+  it('drops only the stale number warning; other warning kinds stay loud', async () => {
+    const settledHtml = '<div>'
+      + '<p data-seg="1" data-o="Bust: 84 (92, 100, 108) cm">Pecho: 84 (92, 108) cm</p>'
+      + '<p>Teje 12 vueltas.</p>'
+      + '</div>';
+    const { warnings } = settle(settledHtml);
+    expect(warnings.map((warning) => warning.code)).toEqual([
+      'UNAUDITED_NUMBERS',
+      'NUMBER_UNRESTORABLE',
+    ]);
+
+    const repairedHtml = '<div>'
+      + '<p data-seg="1" data-o="Bust: 84 (92, 100, 108) cm">Pecho: 84 (92, 100, 108) cm</p>'
+      + '<p>Teje 12 vueltas.</p>'
+      + '</div>';
+    const gemini = vi.fn(verdictFn('KEEP'));
+
+    const result = await verifyResidualNumberWarnings(repairedHtml, warnings, {
+      ...baseOptions,
+      geminiVerify: gemini,
+    });
+
+    expect(gemini).not.toHaveBeenCalled();
+    expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['UNAUDITED_NUMBERS']);
+  });
+
+  it('a deterministically restored segment ships quiet through the full finalize path', async () => {
+    // The audit restores 26 → 24 in place; the restored item is resolved, so
+    // it must not reach the user-facing loud list (it is logged server-side).
+    const html = '<p data-seg="1" data-o="Cast on 24 sts.">Monta 26 pts.</p>';
+
+    const result = await finalizeTranslatedHtmlWithRecovery(
+      html,
+      'Spanish',
+      'English',
+      { recoveryBudgetCredits: 0 },
+      undefined,
+    );
+
+    expect(result.html).toContain('Monta 24 pts.');
+    expect(result.reviewWarnings).toEqual([]);
+  });
+
+  it('only residual real issues stay loud when restored and unrestorable drift coexist', async () => {
+    // NUMBER_RESTORED items — whether from the deterministic splice or a
+    // successful number-lock recovery retry — are filtered from the delivered
+    // warnings by the same code-based gate, so only the KEEP-grade residual
+    // (and unaudited blocks) reaches the strip.
+    const html = '<div>'
+      + '<p data-seg="1" data-o="Cast on 24 sts.">Monta 26 pts.</p>'
+      + '<p data-seg="2" data-o="Bust: 84 (92, 100, 108) cm">Pecho: 84 (92, 108) cm</p>'
+      + '</div>';
+
+    const result = await finalizeTranslatedHtmlWithRecovery(
+      html,
+      'Spanish',
+      'English',
+      { recoveryBudgetCredits: 0 },
+      undefined,
+    );
+
+    expect(result.html).toContain('Monta 24 pts.');
+    expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNRESTORABLE']);
+    expect(result.reviewWarnings[0].sourceId).toBe('seg-2');
+  });
+});
+
 describe('US7 escalation', () => {
   it('escalates non-cleared segments to the OpenAI pass when provided', async () => {
     const { html, warnings } = settle(FLAGGED_HTML);

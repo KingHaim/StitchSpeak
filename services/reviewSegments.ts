@@ -7,6 +7,22 @@ import type { TranslationReviewWarning } from '../types';
  * translation pipeline stamps on each block.
  */
 
+/**
+ * Codes for items an automated pass already resolved (numbers restored from
+ * the source by the deterministic audit or a locked recovery retry). New
+ * server responses no longer deliver them, but patterns saved earlier still
+ * carry them in their stored warnings — they are telemetry, not review work,
+ * so every loud review surface filters them out.
+ */
+const RESOLVED_WARNING_CODES = new Set(['NUMBER_RESTORED']);
+
+/** Only the warnings that should stay loud on review surfaces (the strip). */
+export function loudReviewWarnings(
+  warnings: readonly TranslationReviewWarning[],
+): TranslationReviewWarning[] {
+  return warnings.filter((warning) => !RESOLVED_WARNING_CODES.has(warning.code));
+}
+
 /** Extract the data-seg id ("12") from a warning's sourceId ("seg-12"). */
 export function segIdFromWarning(warning: TranslationReviewWarning): string | null {
   const match = warning.sourceId?.match(/^seg-(.+)$/);
