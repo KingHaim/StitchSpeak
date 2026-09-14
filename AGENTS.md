@@ -58,5 +58,6 @@ Without `VITE_API_URL`, the frontend will call `/api/*` relative to its own orig
 ### Key notes
 
 - Tailwind CSS v4 uses the `@tailwindcss/vite` plugin — there is no `tailwind.config.js`. Custom theme tokens (brand colors, animations) are defined via `@theme` and `@utility` in `src/index.css`.
+- **Vercel proxied-rewrite timeout (US9)**: on stitchspeak.com / *.vercel.app, `/api/*` reaches Railway through the external rewrite in `vercel.json`. Vercel documents a **maximum proxied request timeout of 120 seconds** for rewrites to external destinations ([docs/limits](https://vercel.com/docs/limits#proxied-request-timeout)) and exposes **no `vercel.json` knob to raise it**. Long `/api/translate` NDJSON streams (~4 min jobs) mitigate with immediate header flush, 12s `ping` heartbeats, quiet-stream `status` keep-alive ticks, and chunked final delivery — but a stream running past the proxy limit cannot be guaranteed through the rewrite. The same-origin rewrite is still required for HttpOnly session cookies (Safari drops them cross-origin to Railway), so a bypass needs a token-authenticated direct-to-Railway path or a resumable job/poll design.
 - The app deploys to both **Vercel** (`vercel.json`) and **GitHub Pages** (`.github/workflows/deploy.yml`).
 - TypeScript strict mode is enabled.
