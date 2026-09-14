@@ -1,12 +1,12 @@
 import React from 'react';
 
 /**
- * Locked product copy (Patterns craft gate): the AI ≠ published tech edit
- * line shown on the translate/review path. Keep the wording in this one
- * place — every surface that needs the disclaimer renders this component.
+ * Locked product copy (Patterns craft gate): the automated-draft ≠ published
+ * tech edit line shown on the translate/review path. Keep the wording in this
+ * one place — every surface that needs the disclaimer renders this component.
  */
 export const AI_TECH_EDIT_NOTICE =
-  'This is an AI translation, not a published tech edit. Automated checks cover numbers and glossary terms only — have a human tech editor review the pattern before publication.';
+  'This is an automated draft translation, not a published tech edit. Number and glossary checks are automated — have a human tech editor review the pattern before publication.';
 
 export const AiTechEditNotice: React.FC<{ className?: string }> = ({ className = '' }) => (
   <p

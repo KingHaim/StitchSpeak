@@ -39,7 +39,7 @@ describe('external service deadlines', () => {
     expect(details).toEqual({
       status: 503,
       code: 'PROVIDER_QUOTA_EXHAUSTED',
-      message: 'The AI service is temporarily unavailable because its provider quota has been exhausted. Please try again later.',
+      message: 'The translation service is temporarily unavailable because its provider quota has been exhausted. Please try again later.',
     });
     expect(details.message).not.toMatch(/ai\.studio|prepayment|RESOURCE_EXHAUSTED|\{\\?"error/i);
   });
