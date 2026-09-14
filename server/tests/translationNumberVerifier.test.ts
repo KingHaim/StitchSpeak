@@ -10,7 +10,11 @@ import {
   type NumberVerifyVerdict,
   type SegmentVerifyFn,
 } from '../src/services/translationNumberVerifier';
-import { finalizeTranslatedHtmlWithRecovery } from '../src/services/gemini';
+import {
+  VERIFIER_DEADLINE_TAIL_MS,
+  VERIFIER_MIN_DEADLINE_BUDGET_MS,
+  finalizeTranslatedHtmlWithRecovery,
+} from '../src/services/gemini';
 import type { SegmentRetryFn } from '../src/services/translationNumberRecovery';
 
 /** A dropped size in a multi-size list: unrestorable by the deterministic pass. */
@@ -450,6 +454,145 @@ describe('US7 never hard-fails (US6b stays)', () => {
     expect(result.html).toBe(FLAGGED_HTML);
     expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNRESTORABLE']);
     expect(result.usage).toBeNull();
+  });
+});
+
+// Celeste incident: the 4-minute translation deadline aborted mid-verifier
+// and the stream tore down without a terminal event. The verifier must never
+// START without enough deadline budget, must run under its own bounded abort
+// signal, and an abort must degrade to the settled warnings — never fail an
+// otherwise finished job.
+describe('US7 deadline budget', () => {
+  const settledOptions = {
+    recoveryBudgetCredits: 10,
+    // The recovery ladder runs but repairs nothing, so the flagged segment
+    // reaches the verifier stage with a settled NUMBER_UNRESTORABLE warning.
+    numberLockSegmentRetry: (async () => ({ repairs: [], usage: null })) as SegmentRetryFn,
+  };
+
+  it('locks the near-deadline skip threshold at ~20-30s and above the tail margin', () => {
+    expect(VERIFIER_MIN_DEADLINE_BUDGET_MS).toBeGreaterThanOrEqual(20_000);
+    expect(VERIFIER_MIN_DEADLINE_BUDGET_MS).toBeLessThanOrEqual(30_000);
+    expect(VERIFIER_MIN_DEADLINE_BUDGET_MS).toBeGreaterThan(VERIFIER_DEADLINE_TAIL_MS);
+  });
+
+  it('skips the verifier near the deadline and delivers the settled warnings', async () => {
+    const verify = vi.fn(verdictFn('CLEAR'));
+
+    const result = await finalizeTranslatedHtmlWithRecovery(
+      FLAGGED_HTML,
+      'Spanish',
+      'English',
+      {
+        ...settledOptions,
+        numberVerify: verify,
+        // Less budget than the minimum: the verifier must not even start.
+        deadlineAt: Date.now() + VERIFIER_MIN_DEADLINE_BUDGET_MS - 10_000,
+      },
+      undefined,
+    );
+
+    expect(verify).not.toHaveBeenCalled();
+    expect(result.html).toContain('Pecho: 84 (92, 108) cm');
+    expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNRESTORABLE']);
+  });
+
+  it('runs the verifier under its own abort signal when budget remains', async () => {
+    const verify = vi.fn(verdictFn('CLEAR'));
+
+    const result = await finalizeTranslatedHtmlWithRecovery(
+      FLAGGED_HTML,
+      'Spanish',
+      'English',
+      {
+        ...settledOptions,
+        numberVerify: verify,
+        deadlineAt: Date.now() + 120_000,
+      },
+      undefined,
+    );
+
+    expect(verify).toHaveBeenCalledTimes(1);
+    // The verifier gets a real, not-yet-aborted signal bounded to the
+    // remaining budget — never the raw job-wide deadline alone.
+    const signal = verify.mock.calls[0][0].signal;
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal?.aborted).toBe(false);
+    expect(result.reviewWarnings).toEqual([]);
+  });
+
+  it('an abort mid-verifier degrades to the settled warnings and never fails the job', async () => {
+    const abortingVerify = vi.fn<SegmentVerifyFn>(async () => {
+      throw Object.assign(new Error('This operation was aborted'), { name: 'AbortError' });
+    });
+
+    const result = await finalizeTranslatedHtmlWithRecovery(
+      FLAGGED_HTML,
+      'Spanish',
+      'English',
+      {
+        ...settledOptions,
+        numberVerify: abortingVerify,
+        deadlineAt: Date.now() + 120_000,
+      },
+      undefined,
+    );
+
+    // Degrade, don't fail: the delivered HTML and the settled warnings ship.
+    expect(abortingVerify).toHaveBeenCalledTimes(1);
+    expect(result.html).toContain('Pecho: 84 (92, 108) cm');
+    expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNRESTORABLE']);
+  });
+
+  it('runs the verifier normally when no deadline context is provided', async () => {
+    const verify = vi.fn(verdictFn('CLEAR'));
+
+    const result = await finalizeTranslatedHtmlWithRecovery(
+      FLAGGED_HTML,
+      'Spanish',
+      'English',
+      { ...settledOptions, numberVerify: verify },
+      undefined,
+    );
+
+    expect(verify).toHaveBeenCalledTimes(1);
+    expect(result.reviewWarnings).toEqual([]);
+  });
+});
+
+// Celeste incident, part 2 (M1L / "lifting"): a stale KEEP produced by the
+// old too-greedy bare-g tokenizer must clear at the same deterministic
+// identical-skeleton choke point as US7b — never re-emitted, never billed.
+describe('bare-g false positive clears at the choke point', () => {
+  it('drops a stale M1L bare-g warning without a model call', async () => {
+    const html =
+      '<p data-seg="3" data-o="M1L: lift the strand between two stitches.">'
+      + 'Make 1 g lifting the strand between two stitches.</p>';
+    const staleWarnings = [{
+      code: 'NUMBER_UNRESTORABLE' as const,
+      sourceId: 'seg-3',
+      message: 'stale warning from the old bare-g tokenizer',
+    }];
+    const gemini = vi.fn(verdictFn('KEEP'));
+
+    const result = await verifyResidualNumberWarnings(html, staleWarnings, {
+      ...baseOptions,
+      geminiVerify: gemini,
+      openAIVerify: vi.fn(verdictFn('KEEP')),
+    });
+
+    expect(gemini).not.toHaveBeenCalled();
+    expect(result.spentCredits).toBe(0);
+    expect(result.html).toBe(html);
+    expect(result.reviewWarnings).toEqual([]);
+  });
+
+  it('the fresh audit no longer settles a warning for M1L increase prose', async () => {
+    const html =
+      '<p data-seg="3" data-o="M1L: lift the strand between two stitches.">'
+      + 'Make 1 g lifting the strand between two stitches.</p>';
+    const { warnings } = settle(html);
+    expect(warnings).toEqual([]);
   });
 });
 

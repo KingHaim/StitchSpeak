@@ -4,6 +4,7 @@ import {
   canonicalNumberTokens,
   canonicalUnitTokens,
   collectUnauditedNumericBlocks,
+  collectUnrestorableNumberDrift,
   enforceTranslatedNumberFidelity,
   extractAlignedSegments,
   forceAlignmentFromSource,
@@ -519,6 +520,59 @@ describe('translation number fidelity enforcement', () => {
 
     it('excludes bare m so Danish stitch abbreviations are not counted as meters', () => {
       expect(canonicalUnitTokens('strik 20 m')).toEqual([]);
+    });
+
+    // Prod false positive (Celeste): increase prose like "M1L … lifting" made
+    // a bare `g` after a digit register as grams, producing loud KEEP noise
+    // ("units [none] vs [g]") for a segment whose numbers matched.
+    describe('bare g/gr/grs near stitch instructions', () => {
+      it('never reads a g attached to an increase abbreviation (M1/M1L/M1R) as grams', () => {
+        expect(canonicalUnitTokens('M1 g')).toEqual([]);
+        expect(canonicalUnitTokens('inc with m1 g at each end')).toEqual([]);
+      });
+
+      it('never reads a g followed by knitting prose (e.g. "lifting") as grams', () => {
+        expect(canonicalUnitTokens('work 1 g lifting the bar between sts')).toEqual([]);
+        expect(canonicalUnitTokens('haz 1 gr levantando la hebra')).toEqual([]);
+      });
+
+      it('keeps real mass context as grams', () => {
+        expect(canonicalUnitTokens('Yarn: 100 g')).toEqual(['g']);
+        expect(canonicalUnitTokens('100 g.')).toEqual(['g']);
+        expect(canonicalUnitTokens('100 g (3.5 oz)')).toEqual(['g', 'oz']);
+        expect(canonicalUnitTokens('100 g of wool')).toEqual(['g']);
+        expect(canonicalUnitTokens('100 g de lana')).toEqual(['g']);
+        expect(canonicalUnitTokens('50 g per skein')).toEqual(['g']);
+        // Spelled-out gram words are unambiguous and always tokenize.
+        expect(canonicalUnitTokens('100 gramos finos')).toEqual(['g']);
+        expect(canonicalUnitTokens('100 grams total')).toEqual(['g']);
+      });
+    });
+  });
+
+  // Prod repro (Celeste): source "M1L: …" carries the number 1 and no unit;
+  // the translated increase prose used to fingerprint as [1]/[g] and surface
+  // a loud NUMBER_UNRESTORABLE KEEP even though the numbers matched.
+  describe('M1L / lifting unit false positive', () => {
+    const M1L_HTML =
+      '<p data-seg="3" data-o="M1L: lift the strand between two stitches.">'
+      + 'Make 1 g lifting the strand between two stitches.</p>';
+
+    it('does not flag an M1L segment whose numbers match the source', () => {
+      const result = enforceTranslatedNumberFidelity(M1L_HTML);
+
+      expect(result.html).toBe(M1L_HTML);
+      expect(result.reviewWarnings).toEqual([]);
+    });
+
+    it('clears a stale bare-g warning at the identical-skeleton choke point', () => {
+      // A warning produced by the old, too-greedy tokenizer must never be
+      // re-emitted: with numbers matching and the unit diff being only the
+      // bare-g false-positive class, the skeleton comparison is now identical
+      // and the choke point (same as US7b) drops it.
+      const drifts = collectUnrestorableNumberDrift(M1L_HTML);
+      expect(drifts).toEqual([]);
+      expect(buildUnrestorableDriftWarnings(drifts)).toEqual([]);
     });
   });
 });
