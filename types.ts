@@ -266,6 +266,8 @@ export interface TranslationJob {
   pdfMetrics: PdfMetrics | null;
   priceEstimate: PriceEstimate | null;
   status: TranslationJobStatus;
+  /** Live server-side phase message while translating (e.g. number-lock retry). */
+  statusMessage?: string | null;
   translatedHtml: string;
   reviewWarnings: TranslationReviewWarning[];
   error: string | null;

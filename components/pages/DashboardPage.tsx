@@ -529,6 +529,13 @@ export const DashboardPage: React.FC = () => {
                 ),
               );
             },
+            onStatus: (message) => {
+              setJobs((prev) =>
+                prev.map((j) =>
+                  j.id === id ? { ...j, statusMessage: message } : j,
+                ),
+              );
+            },
           },
         );
 
@@ -540,6 +547,7 @@ export const DashboardPage: React.FC = () => {
                   translatedHtml: result.html,
                   reviewWarnings: result.reviewWarnings ?? [],
                   status: 'complete' as const,
+                  statusMessage: null,
                   error: null,
                 }
               : j,
@@ -625,7 +633,7 @@ export const DashboardPage: React.FC = () => {
             : baseMessage;
         setJobs((prev) =>
           prev.map((j) =>
-            j.id === id ? { ...j, status: 'error' as const, error: message } : j,
+            j.id === id ? { ...j, status: 'error' as const, statusMessage: null, error: message } : j,
           ),
         );
       }
@@ -982,6 +990,12 @@ export const DashboardPage: React.FC = () => {
                       style={{ width: `${completionPercent ?? 0}%` }}
                     />
                   </div>
+                  {selectedJob.status === 'translating' && selectedJob.statusMessage && (
+                    <p className="text-xs text-on-surface-variant flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                      {selectedJob.statusMessage}
+                    </p>
+                  )}
                 </div>
               </div>
             )}
