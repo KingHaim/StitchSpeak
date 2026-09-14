@@ -21,8 +21,7 @@ import {
   sanitizeMarkdownArtifactsInHtml,
 } from './translationSanitizers.js';
 import {
-  TranslationNumberFidelityError,
-  TranslationUnauditedNumbersError,
+  collectUnrestorableNumberDrift,
   enforceTranslatedNumberFidelity,
   forceAlignmentFromSource,
 } from './translationNumberAudit.js';
@@ -1676,9 +1675,11 @@ function finalizeTranslatedHtml(
   let finalized = sanitizeMarkdownArtifactsInHtml(html);
   // Deterministic number-fidelity enforcement over data-seg/data-o aligned
   // segments: drifted counts/measurements/units are surgically restored from
-  // the source inside the translated sentence, and unrestorable drift throws
-  // TranslationNumberFidelityError so the translate path hard-fails instead of
-  // returning silent number drift. Runs before Spanish measurement
+  // the source inside the translated sentence, and anything the machinery
+  // cannot fix or verify is surfaced as review warnings on a completed job —
+  // NUMBER_UNRESTORABLE for unrestorable drift, UNAUDITED_NUMBERS for numeric
+  // blocks with no alignment — never a hard-fail (Jaime override / CTO
+  // brief). Runs before Spanish measurement
   // normalization so restored source tokens get localized too; the audit's own
   // canonicalization already tolerates locale formatting. Zero model cost.
   const numberFidelity = enforceTranslatedNumberFidelity(finalized);
@@ -1754,11 +1755,14 @@ function createFlashSegmentNumberRetry(signal: AbortSignal | undefined): Segment
 }
 
 /**
- * finalizeTranslatedHtml with the number-fidelity recovery ladder attached:
- * when the deterministic preserve-from-source restore cannot fix a segment,
- * retry just the failing segments (Gemini flash → one OpenAI prose-only pass,
- * both with the source numeric skeleton locked) before letting the job
- * hard-fail with 422 TRANSLATION_NEEDS_HUMAN_CHECK + refund.
+ * finalizeTranslatedHtml with the best-effort number-fidelity recovery ladder
+ * attached: when the deterministic preserve-from-source restore cannot fix a
+ * segment, retry just the failing segments (Gemini flash → one OpenAI
+ * prose-only pass, both with the source numeric skeleton locked). Whatever
+ * still drifts after recovery ships with NUMBER_UNRESTORABLE review warnings,
+ * and unaudited numeric blocks (US6), which carry no data-o skeleton to lock
+ * a retry against, ship with UNAUDITED_NUMBERS warnings — the job never fails
+ * (Jaime override: no 422 hard-fail for number-fidelity issues).
  *
  * Exported for tests.
  */
@@ -1769,34 +1773,40 @@ export async function finalizeTranslatedHtmlWithRecovery(
   options: TranslatePatternOptions,
   signal: AbortSignal | undefined,
 ): Promise<{ html: string; reviewWarnings: TranslationTopologyWarning[]; usage: TranslationUsage | null }> {
-  try {
-    return { ...finalizeTranslatedHtml(html, language), usage: null };
-  } catch (err) {
-    // Unaudited numeric blocks (US6) carry no data-o source skeleton, so the
-    // recovery ladder has nothing to lock a retry against — rerunning it could
-    // only spend budget on a job that must hard-fail. Fail closed immediately.
-    if (!(err instanceof TranslationNumberFidelityError) || err instanceof TranslationUnauditedNumbersError) {
-      throw err;
-    }
+  let working = html;
+  let recoveryWarnings: TranslationTopologyWarning[] = [];
+  let usage: TranslationUsage | null = null;
 
+  if (collectUnrestorableNumberDrift(html).length > 0) {
     // Recovery operates on the pre-finalize HTML; the final enforcement pass
     // below re-applies every deterministic restore and re-audits the repaired
     // segments, so recovered output is verified end-to-end before delivery.
-    const recovery = await recoverTranslatedNumberFidelity(html, {
-      targetLanguage: language,
-      ...(sourceLanguage ? { sourceLanguage } : {}),
-      budgetCredits: options.recoveryBudgetCredits ?? DEFAULT_RECOVERY_BUDGET_CREDITS,
-      signal,
-      onStatus: options.onStatus,
-      geminiSegmentRetry: createFlashSegmentNumberRetry(signal),
-    });
-    const finalized = finalizeTranslatedHtml(recovery.html, language);
-    return {
-      html: finalized.html,
-      reviewWarnings: [...recovery.reviewWarnings, ...finalized.reviewWarnings],
-      usage: recovery.usage,
-    };
+    try {
+      const recovery = await recoverTranslatedNumberFidelity(html, {
+        targetLanguage: language,
+        ...(sourceLanguage ? { sourceLanguage } : {}),
+        budgetCredits: options.recoveryBudgetCredits ?? DEFAULT_RECOVERY_BUDGET_CREDITS,
+        signal,
+        onStatus: options.onStatus,
+        geminiSegmentRetry: createFlashSegmentNumberRetry(signal),
+      });
+      working = recovery.html;
+      recoveryWarnings = recovery.reviewWarnings;
+      usage = recovery.usage;
+    } catch (err) {
+      // Recovery is strictly best-effort: an unexpected failure inside the
+      // ladder must never take down an otherwise completed translation. The
+      // enforcement pass below flags whatever is still drifted.
+      console.warn('[gemini] number recovery failed; delivering the draft with review warnings:', err);
+    }
   }
+
+  const finalized = finalizeTranslatedHtml(working, language);
+  return {
+    html: finalized.html,
+    reviewWarnings: [...recoveryWarnings, ...finalized.reviewWarnings],
+    usage,
+  };
 }
 
 async function verifyAndRepairReviewedTranslation(
@@ -2344,8 +2354,8 @@ async function translateDocumentHtml(
   // US6 force alignment: numeric blocks the model left without data-o get a
   // deterministic alignment derived from the annotated source (matched by
   // immutable data-source-id) so the number audit can cover them. Blocks with
-  // no source match stay unaligned and hard-fail in finalize rather than
-  // shipping unaudited numbers as a quiet success.
+  // no source match stay unaligned and surface UNAUDITED_NUMBERS review
+  // warnings in finalize rather than shipping unaudited numbers silently.
   const alignmentForced = forceAlignmentFromSource(
     reinsertImages(repairedEmphasis.html, srcs),
     sourceBlockTextById(annotatedSource),

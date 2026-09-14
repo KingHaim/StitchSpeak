@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  TranslationNumberFidelityError,
   applySegmentTextRepairs,
   collectUnrestorableNumberDrift,
   enforceTranslatedNumberFidelity,
@@ -15,7 +14,6 @@ import {
   type NumberRecoveryStatus,
   type SegmentRetryFn,
 } from '../src/services/translationNumberRecovery';
-import { externalErrorDetails } from '../src/services/externalDeadline';
 
 /** A dropped size in a multi-size list: unrestorable by the deterministic pass. */
 const HARD_FAIL_HTML =
@@ -70,8 +68,12 @@ describe('unrestorable drift collection', () => {
 });
 
 describe('recovery ladder', () => {
-  it('step 2: the Gemini flash segment retry recovers a case that would have hard-failed', async () => {
-    expect(() => enforceTranslatedNumberFidelity(HARD_FAIL_HTML)).toThrow(TranslationNumberFidelityError);
+  it('step 2: the Gemini flash segment retry recovers a case the deterministic pass only warns about', async () => {
+    // Without recovery, the drift is unrestorable and would ship with a
+    // NUMBER_UNRESTORABLE review warning (soft path — no hard-fail).
+    expect(
+      enforceTranslatedNumberFidelity(HARD_FAIL_HTML).reviewWarnings.map((warning) => warning.code),
+    ).toEqual(['NUMBER_UNRESTORABLE']);
 
     const gemini = vi.fn(retryFnReturning(RECOVERED_TEXT));
     const openAI = vi.fn(retryFnReturning(RECOVERED_TEXT));
@@ -104,8 +106,8 @@ describe('recovery ladder', () => {
     expect(result.reviewWarnings[0].code).toBe('NUMBER_RESTORED');
     expect(result.reviewWarnings[0].sourceId).toBe('seg-2');
     expect(result.reviewWarnings[0].message).toContain('numbers locked');
-    // The recovered document now passes strict enforcement end-to-end.
-    expect(() => enforceTranslatedNumberFidelity(result.html)).not.toThrow();
+    // The recovered document now passes the enforcement audit cleanly.
+    expect(enforceTranslatedNumberFidelity(result.html).reviewWarnings).toEqual([]);
   });
 
   it('step 3: the OpenAI prose-only pass recovers when the flash retry still drifts', async () => {
@@ -126,7 +128,7 @@ describe('recovery ladder', () => {
     expect(openAI).toHaveBeenCalledTimes(1);
     expect(statuses.map((status) => status.stage)).toEqual(['number_lock_retry', 'number_lock_openai']);
     expect(result.html).toContain('Contorno de pecho: 84 (92, 100, 108) cm');
-    expect(() => enforceTranslatedNumberFidelity(result.html)).not.toThrow();
+    expect(enforceTranslatedNumberFidelity(result.html).reviewWarnings).toEqual([]);
   });
 
   it('degrades to the OpenAI step when the flash retry call itself fails', async () => {
@@ -142,79 +144,76 @@ describe('recovery ladder', () => {
     });
 
     expect(openAI).toHaveBeenCalledTimes(1);
-    expect(() => enforceTranslatedNumberFidelity(result.html)).not.toThrow();
+    expect(enforceTranslatedNumberFidelity(result.html).reviewWarnings).toEqual([]);
   });
 
-  it('exhausted ladder → TranslationNumberFidelityError → existing 422 + refund path', async () => {
+  it('exhausted ladder → best-effort delivery, flagged NUMBER_UNRESTORABLE by the final audit', async () => {
     const gemini = vi.fn(retryFnReturning('Pecho: 84 cm'));
     const openAI = vi.fn(retryFnReturning(null));
 
-    let thrown: unknown;
-    try {
-      await recoverTranslatedNumberFidelity(HARD_FAIL_HTML, {
-        ...baseOptions,
-        geminiSegmentRetry: gemini,
-        openAISegmentRetry: openAI,
-      });
-    } catch (err) {
-      thrown = err;
-    }
+    const result = await recoverTranslatedNumberFidelity(HARD_FAIL_HTML, {
+      ...baseOptions,
+      geminiSegmentRetry: gemini,
+      openAISegmentRetry: openAI,
+    });
 
-    expect(thrown).toBeInstanceOf(TranslationNumberFidelityError);
     expect(gemini).toHaveBeenCalledTimes(1);
     expect(openAI).toHaveBeenCalledTimes(1);
 
-    const details = externalErrorDetails(thrown);
-    expect(details.status).toBe(422);
-    expect(details.code).toBe('TRANSLATION_NEEDS_HUMAN_CHECK');
-    // Exact US5 user-facing copy; the exhaustion detail stays in server logs.
-    expect(details.message).toBe(
-      'We couldn’t keep stitch, size, gauge, or needle numbers faithful to your pattern — this needs a human check. You weren’t charged.',
-    );
-    expect((thrown as Error).message).toContain('retries were exhausted');
+    // The rejected retries never touched the document; the drifted draft ships.
+    expect(result.html).toBe(HARD_FAIL_HTML);
+    expect(result.reviewWarnings).toEqual([]);
+
+    // The enforcement pass that always runs afterwards emits the review
+    // warning the user sees — no 422, no refund, no hard-fail.
+    const enforced = enforceTranslatedNumberFidelity(result.html);
+    expect(enforced.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNRESTORABLE']);
+    expect(enforced.reviewWarnings[0].sourceId).toBe('seg-2');
   });
 
   it('never introduces model output that fails the locked-skeleton gate', async () => {
     // Unrestorable drift (a dropped number token) whose retries come back with
     // the numbers right but the unit system converted — a classic silent-drift
-    // hazard (cm → in). Neither may touch the document; the job hard-fails.
+    // hazard (cm → in). Neither may touch the document; the draft ships with
+    // a NUMBER_UNRESTORABLE warning instead.
     const html = '<p data-seg="9" data-o="Length: 10cm, work 5-7 rounds.">Largo: 10cm.</p>';
     const badUnits = 'Largo: 10in, teje 5-7 vueltas.';
     const gemini = vi.fn(retryFnReturning(badUnits));
     const openAI = vi.fn(retryFnReturning(badUnits));
 
-    await expect(
-      recoverTranslatedNumberFidelity(html, {
-        ...baseOptions,
-        geminiSegmentRetry: gemini,
-        openAISegmentRetry: openAI,
-      }),
-    ).rejects.toThrow(TranslationNumberFidelityError);
+    const result = await recoverTranslatedNumberFidelity(html, {
+      ...baseOptions,
+      geminiSegmentRetry: gemini,
+      openAISegmentRetry: openAI,
+    });
+
     expect(gemini).toHaveBeenCalledTimes(1);
     expect(openAI).toHaveBeenCalledTimes(1);
+    expect(result.html).toBe(html);
+    expect(result.html).not.toContain('10in');
+    expect(
+      enforceTranslatedNumberFidelity(result.html).reviewWarnings.map((warning) => warning.code),
+    ).toEqual(['NUMBER_UNRESTORABLE']);
   });
 
-  it('cost cap: stops before any call that would exceed the job budget and hard-fails', async () => {
+  it('cost cap: stops before any call that would exceed the job budget and delivers best-effort', async () => {
     const gemini = vi.fn(retryFnReturning(RECOVERED_TEXT));
     const openAI = vi.fn(retryFnReturning(RECOVERED_TEXT));
 
-    let thrown: unknown;
-    try {
-      await recoverTranslatedNumberFidelity(HARD_FAIL_HTML, {
-        ...baseOptions,
-        budgetCredits: 0,
-        geminiSegmentRetry: gemini,
-        openAISegmentRetry: openAI,
-      });
-    } catch (err) {
-      thrown = err;
-    }
+    const result = await recoverTranslatedNumberFidelity(HARD_FAIL_HTML, {
+      ...baseOptions,
+      budgetCredits: 0,
+      geminiSegmentRetry: gemini,
+      openAISegmentRetry: openAI,
+    });
 
     expect(gemini).not.toHaveBeenCalled();
     expect(openAI).not.toHaveBeenCalled();
-    expect(thrown).toBeInstanceOf(TranslationNumberFidelityError);
-    expect((thrown as Error).message).toContain('recovery budget');
-    expect(externalErrorDetails(thrown).status).toBe(422);
+    expect(result.html).toBe(HARD_FAIL_HTML);
+    expect(result.spentCredits).toBe(0);
+    expect(
+      enforceTranslatedNumberFidelity(result.html).reviewWarnings.map((warning) => warning.code),
+    ).toEqual(['NUMBER_UNRESTORABLE']);
   });
 
   it('recovers table cells without data-seg ids via occurrence keys', async () => {
@@ -228,7 +227,7 @@ describe('recovery ladder', () => {
     });
 
     expect(result.html).toContain('Tallas: 2 (4, 6, 8) años');
-    expect(() => enforceTranslatedNumberFidelity(result.html)).not.toThrow();
+    expect(enforceTranslatedNumberFidelity(result.html).reviewWarnings).toEqual([]);
   });
 
   it('leaves restorable drift alone for the deterministic pass to fix afterwards', async () => {

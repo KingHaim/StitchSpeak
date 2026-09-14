@@ -1,7 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import {
-  TranslationUnauditedNumbersError,
-} from '../src/services/translationNumberAudit';
 import { sourceBlockTextById } from '../src/services/translationTopology';
 import {
   createDocumentSystemInstruction,
@@ -9,30 +6,49 @@ import {
   finalizeTranslatedHtmlWithRecovery,
 } from '../src/services/gemini';
 
-// US6 wiring: unaudited numeric blocks must hard-fail through the full
-// finalize + recovery pipeline — never ship as success, and never trigger the
-// (model-billed) recovery ladder, which has no data-o skeleton to lock.
+// US6 wiring, soft path (Jaime override): unaudited numeric blocks never ship
+// silently, but they no longer fail the job either — the full finalize +
+// recovery pipeline completes and flags them with UNAUDITED_NUMBERS review
+// warnings. They never trigger the (model-billed) recovery ladder, which has
+// no data-o skeleton to lock.
 describe('US6 unaudited numeric blocks through the translate pipeline', () => {
-  it('hard-fails a numeric block without data-o instead of shipping success', async () => {
+  it('completes with an UNAUDITED_NUMBERS warning for a numeric block without data-o', async () => {
     const html = '<div><h2 data-seg="1" data-o="Materials">Materiales</h2><p>Monta 24 puntos.</p></div>';
 
-    await expect(
-      finalizeTranslatedHtmlWithRecovery(html, 'Spanish', 'English', {}, undefined),
-    ).rejects.toThrow(TranslationUnauditedNumbersError);
+    const result = await finalizeTranslatedHtmlWithRecovery(html, 'Spanish', 'English', {}, undefined);
+
+    expect(result.html).toBe(html);
+    expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['UNAUDITED_NUMBERS']);
+    expect(result.reviewWarnings[0].message).toContain('24');
+    expect(result.usage).toBeNull();
   });
 
-  it('bypasses the recovery ladder even when aligned segments also drifted', async () => {
-    // The drifted segment alone would enter the recovery ladder (model calls);
-    // the unaudited numeric block makes the job unfixable, so it must fail
-    // closed immediately without attempting any retry.
+  it('flags both drifted aligned segments and unaudited blocks on one completed job', async () => {
+    // The drifted segment enters the (best-effort) recovery ladder; a zero
+    // budget makes it a no-op without any model call. Both problems surface
+    // as review warnings on a successful result — no 422, no refund.
     const html = '<div>'
       + '<p data-seg="1" data-o="Bust: 84 (92, 100, 108) cm">Pecho: 84 (92, 108) cm</p>'
       + '<p>Teje 12 vueltas.</p>'
       + '</div>';
 
-    await expect(
-      finalizeTranslatedHtmlWithRecovery(html, 'Spanish', 'English', {}, undefined),
-    ).rejects.toThrow(TranslationUnauditedNumbersError);
+    const result = await finalizeTranslatedHtmlWithRecovery(
+      html,
+      'Spanish',
+      'English',
+      { recoveryBudgetCredits: 0 },
+      undefined,
+    );
+
+    expect(result.html).toBe(html);
+    expect(result.reviewWarnings.map((warning) => warning.code)).toEqual([
+      'UNAUDITED_NUMBERS',
+      'NUMBER_UNRESTORABLE',
+    ]);
+    // The unrestorable drift points at its aligned segment.
+    const unrestorable = result.reviewWarnings.find((warning) => warning.code === 'NUMBER_UNRESTORABLE');
+    expect(unrestorable?.sourceId).toBe('seg-1');
+    expect(result.usage).toBeNull();
   });
 
   it('still delivers a clean fully-aligned translation', async () => {

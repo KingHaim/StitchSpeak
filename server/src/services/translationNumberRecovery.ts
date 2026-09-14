@@ -5,7 +5,6 @@ import { TECH_EDIT_MODEL } from './techEdit.js';
 import { PRICING } from './pricing.js';
 import type { TranslationTopologyWarning } from './translationTopology.js';
 import {
-  TranslationNumberFidelityError,
   applySegmentTextRepairs,
   collectUnrestorableNumberDrift,
   textMatchesNumberSkeleton,
@@ -27,9 +26,10 @@ import {
  *      same locked skeleton. Prefers the `gpt-6-astra` API id and falls back
  *      to `gpt-5.6-sol` (the tech-edit model already keyed) when the account
  *      cannot call it. No other model ids are ever used.
- *   4. Exhausted (or the recovery budget would be exceeded) → throw
- *      TranslationNumberFidelityError → the existing 422
- *      TRANSLATION_NEEDS_HUMAN_CHECK + refund path.
+ *   4. Exhausted (or the recovery budget would be exceeded) → return the best
+ *      HTML produced so far. The final enforcement pass flags the segments
+ *      that are still drifted with NUMBER_UNRESTORABLE review warnings (Jaime
+ *      override: recovery is best-effort — it never hard-fails the job).
  *
  * Every candidate replacement is verified against the source skeleton with
  * textMatchesNumberSkeleton before it may touch the document, so a recovery
@@ -37,8 +37,7 @@ import {
  *
  * Cost cap: the total estimated recovery API spend can never exceed the
  * credits already charged for the job. Recovery steps are never billed to the
- * user — the job keeps its single pending charge, refunded only on the final
- * hard-fail.
+ * user — the job keeps its single pending charge.
  */
 
 /**
@@ -189,8 +188,9 @@ interface LadderStep {
 /**
  * Run the recovery ladder over the segments whose number drift the
  * deterministic restore could not fix. Returns repaired HTML once every
- * segment passes the locked-skeleton check, or throws
- * TranslationNumberFidelityError when the ladder (or its budget) is exhausted.
+ * segment passes the locked-skeleton check, or the best-effort HTML when the
+ * ladder (or its budget) is exhausted — the final enforcement pass emits
+ * NUMBER_UNRESTORABLE review warnings for whatever is still drifted.
  */
 export async function recoverTranslatedNumberFidelity(
   html: string,
@@ -289,9 +289,13 @@ export async function recoverTranslatedNumberFidelity(
     }
   }
 
-  throw new TranslationNumberFidelityError(
-    `${failing[0].detail} — ${exhaustionReason}`,
+  // Soft path (Jaime override): the exhausted ladder no longer hard-fails the
+  // job. Deliver the best HTML produced so far; the still-drifted segments are
+  // flagged by the final enforcement pass as NUMBER_UNRESTORABLE warnings.
+  console.warn(
+    `[number-recovery] ${failing.length} segment(s) still drifted after ${exhaustionReason}: ${failing[0].detail}`,
   );
+  return { html: working, reviewWarnings, usage, spentCredits };
 }
 
 // --- Step 3: real OpenAI prose-only pass -----------------------------------
