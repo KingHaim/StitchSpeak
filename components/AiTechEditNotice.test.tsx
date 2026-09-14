@@ -17,9 +17,9 @@ afterEach(async () => {
 });
 
 describe('AiTechEditNotice', () => {
-  it('pins the Patterns-locked disclaimer copy verbatim', () => {
+  it('pins the disclaimer copy verbatim (Jaime override: mistakes are possible + human review)', () => {
     expect(AI_TECH_EDIT_NOTICE).toBe(
-      'This is an automated draft translation, not a published tech edit. Number and glossary checks are automated — have a human tech editor review the pattern before publication.',
+      'This is an automated draft translation, not a published tech edit. Automated number and glossary checks can miss things, so mistakes are possible — have a human tech editor review the pattern before publication.',
     );
   });
 

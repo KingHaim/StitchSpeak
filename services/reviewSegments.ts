@@ -36,7 +36,7 @@ export function flaggedSegIds(
 
 /** Short human label for a warning code, shown as a chip next to the message. */
 export function warningKindLabel(code: string): string {
-  if (code === 'NUMBER_RESTORED') return 'Numbers';
+  if (code.startsWith('NUMBER')) return 'Numbers';
   if (code.startsWith('GLOSSARY')) return 'Glossary';
   return 'Review';
 }

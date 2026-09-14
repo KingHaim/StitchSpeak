@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  NUMBER_FIDELITY_USER_MESSAGE,
-  TranslationNumberFidelityError,
-  TranslationUnauditedNumbersError,
   canonicalNumberTokens,
   canonicalUnitTokens,
   collectUnauditedNumericBlocks,
@@ -10,7 +7,6 @@ import {
   extractAlignedSegments,
   forceAlignmentFromSource,
 } from '../src/services/translationNumberAudit';
-import { externalErrorDetails } from '../src/services/externalDeadline';
 
 describe('translation number fidelity enforcement', () => {
   it('extracts aligned segments from data-seg blocks and data-o table cells', () => {
@@ -116,40 +112,63 @@ describe('translation number fidelity enforcement', () => {
     });
   });
 
-  describe('hard-fail on unrestorable drift', () => {
-    it('hard-fails when a size is dropped from a multi-size list (token-count mismatch)', () => {
+  // Jaime override (US6 hard-fail strip): unrestorable drift no longer throws
+  // — the job completes and the affected sections are flagged with
+  // NUMBER_UNVERIFIED review warnings instead.
+  describe('soft warnings on unrestorable drift', () => {
+    it('warns instead of failing when a size is dropped from a multi-size list', () => {
       const html = '<p data-seg="2" data-o="Bust: 84 (92, 100, 108) cm">Pecho: 84 (92, 108) cm</p>';
+      const result = enforceTranslatedNumberFidelity(html);
 
-      expect(() => enforceTranslatedNumberFidelity(html)).toThrow(TranslationNumberFidelityError);
-      expect(() => enforceTranslatedNumberFidelity(html)).toThrow(/human check/);
-      expect(() => enforceTranslatedNumberFidelity(html)).toThrow(/84, 92, 100, 108/);
+      // The drifted draft ships as-is; the warning points at the section.
+      expect(result.html).toBe(html);
+      expect(result.reviewWarnings).toHaveLength(1);
+      expect(result.reviewWarnings[0].code).toBe('NUMBER_UNVERIFIED');
+      expect(result.reviewWarnings[0].sourceId).toBe('seg-2');
+      expect(result.reviewWarnings[0].message).toContain('84, 92, 100, 108');
+      expect(result.reviewWarnings[0].message).toContain('84, 92, 108');
+      expect(result.reviewWarnings[0].message).toContain('check this section against the original');
     });
 
-    it('hard-fails when the translation injects extra numbers', () => {
+    it('warns when the translation injects extra numbers', () => {
       const html = '<p data-seg="5" data-o="Work 10 rounds.">Teje 10 vueltas (unos 4 cm).</p>';
+      const result = enforceTranslatedNumberFidelity(html);
 
-      expect(() => enforceTranslatedNumberFidelity(html)).toThrow(TranslationNumberFidelityError);
+      expect(result.html).toBe(html);
+      expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNVERIFIED']);
     });
 
-    it('hard-fails when all numbers vanished from the translation', () => {
+    it('warns when all numbers vanished from the translation', () => {
       const html = '<p data-seg="6" data-o="Cast on 20 sts.">Monta los puntos.</p>';
+      const result = enforceTranslatedNumberFidelity(html);
 
-      expect(() => enforceTranslatedNumberFidelity(html)).toThrow(TranslationNumberFidelityError);
+      expect(result.html).toBe(html);
+      expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNVERIFIED']);
     });
 
-    it('maps the error to a client-visible 422 with the exact locked product copy', () => {
-      const error = new TranslationNumberFidelityError('segment seg-2 "Bust: 84 (92, 100, 108) cm"');
-      const details = externalErrorDetails(error);
+    it('still restores restorable drift while warning about the unrestorable rest', () => {
+      const html = `<div>
+        <p data-seg="1" data-o="Cast on 40 sts.">Monta 42 pts.</p>
+        <p data-seg="2" data-o="Bust: 84 (92, 100, 108) cm">Pecho: 84 (92, 108) cm</p>
+      </div>`;
+      const result = enforceTranslatedNumberFidelity(html);
 
-      expect(details.status).toBe(422);
-      expect(details.code).toBe('TRANSLATION_NEEDS_HUMAN_CHECK');
-      // Exact US5 copy — the technical segment detail must stay server-side.
-      expect(details.message).toBe(
-        'We couldn’t keep stitch, size, gauge, or needle numbers faithful to your pattern — this needs a human check. You weren’t charged.',
-      );
-      expect(details.message).not.toContain('seg-2');
-      // The log-facing message keeps the segment detail for debugging.
-      expect(error.message).toContain('seg-2');
+      expect(result.html).toContain('Monta 40 pts.');
+      expect(result.html).toContain('Pecho: 84 (92, 108) cm');
+      expect(result.reviewWarnings.map((warning) => [warning.code, warning.sourceId])).toEqual([
+        ['NUMBER_RESTORED', 'seg-1'],
+        ['NUMBER_UNVERIFIED', 'seg-2'],
+      ]);
+    });
+
+    it('keeps the user-visible warning copy free of the word "AI"', () => {
+      const html = '<p data-seg="2" data-o="Bust: 84 (92, 100, 108) cm">Pecho: 84 (92, 108) cm</p><p>Teje 12 vueltas.</p>';
+      const result = enforceTranslatedNumberFidelity(html);
+
+      expect(result.reviewWarnings.length).toBeGreaterThan(0);
+      for (const warning of result.reviewWarnings) {
+        expect(warning.message).not.toMatch(/\bAI\b/);
+      }
     });
   });
 
@@ -201,50 +220,49 @@ describe('translation number fidelity enforcement', () => {
     });
   });
 
-  // US6: sacred numbers with no data-o alignment must never ship as a quiet
-  // success — the block is unauditable, so the job hard-fails (or the caller
-  // forces a deterministic alignment first; see forceAlignmentFromSource).
-  describe('hard-fail on unaudited numeric blocks (US6)', () => {
-    it('hard-fails a numeric paragraph with no data-o instead of shipping silently', () => {
+  // US6, soft path (Jaime override): sacred numbers with no data-o alignment
+  // never ship silently — the job completes with a NUMBER_UNVERIFIED review
+  // warning per unauditable block (or the caller forces a deterministic
+  // alignment first; see forceAlignmentFromSource). No hard-fail, no 422.
+  describe('soft warnings on unaudited numeric blocks (US6)', () => {
+    it('warns on a numeric paragraph with no data-o instead of shipping silently', () => {
       const html = '<p>Monta 999 puntos.</p>';
+      const result = enforceTranslatedNumberFidelity(html);
 
-      expect(() => enforceTranslatedNumberFidelity(html)).toThrow(TranslationUnauditedNumbersError);
-      expect(() => enforceTranslatedNumberFidelity(html)).toThrow(/no data-o source alignment/);
-      expect(() => enforceTranslatedNumberFidelity(html)).toThrow(/999/);
-      expect(() => enforceTranslatedNumberFidelity(html)).toThrow(/human check/);
+      expect(result.html).toBe(html);
+      expect(result.reviewWarnings).toHaveLength(1);
+      expect(result.reviewWarnings[0].code).toBe('NUMBER_UNVERIFIED');
+      expect(result.reviewWarnings[0].message).toContain('999');
+      expect(result.reviewWarnings[0].message).toContain('could not be checked against the source');
+      expect(result.reviewWarnings[0].message).toContain('compare this section with the original');
     });
 
-    it('hard-fails a numeric block whose data-o is empty', () => {
+    it('warns on a numeric block whose data-o is empty', () => {
       const html = '<p data-seg="1" data-o="">Texto sin fuente 42.</p>';
+      const result = enforceTranslatedNumberFidelity(html);
 
-      expect(() => enforceTranslatedNumberFidelity(html)).toThrow(TranslationUnauditedNumbersError);
+      expect(result.html).toBe(html);
+      expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNVERIFIED']);
+      expect(result.reviewWarnings[0].sourceId).toBe('seg-1');
     });
 
-    it('hard-fails numeric table cells without data-o', () => {
+    it('warns on numeric table cells without data-o', () => {
       const html = '<table><tr><td data-o="Size">Talla</td><td>45.5</td></tr></table>';
+      const result = enforceTranslatedNumberFidelity(html);
 
-      expect(() => enforceTranslatedNumberFidelity(html)).toThrow(TranslationUnauditedNumbersError);
+      expect(result.html).toBe(html);
+      expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNVERIFIED']);
     });
 
-    it('maps to the same locked 422 human-check response as number drift', () => {
-      let caught: unknown = null;
-      try {
-        enforceTranslatedNumberFidelity('<p>Teje 12 vueltas.</p>');
-      } catch (err) {
-        caught = err;
-      }
+    it('caps emitted NUMBER_UNVERIFIED warnings and summarizes the remainder', () => {
+      const blocks = Array.from({ length: 45 }, (_value, index) =>
+        `<p>Vuelta ${index + 1}: teje 11 pts.</p>`).join('');
+      const result = enforceTranslatedNumberFidelity(blocks);
 
-      expect(caught).toBeInstanceOf(TranslationUnauditedNumbersError);
-      // Subclasses the drift error so every existing instanceof check
-      // (refund path, locked client copy) applies unchanged.
-      expect(caught).toBeInstanceOf(TranslationNumberFidelityError);
-      const details = externalErrorDetails(caught);
-      expect(details.status).toBe(422);
-      expect(details.code).toBe('TRANSLATION_NEEDS_HUMAN_CHECK');
-      expect(details.message).toBe(NUMBER_FIDELITY_USER_MESSAGE);
-      // The technical detail stays server-side.
-      expect(details.message).not.toContain('data-o');
-      expect((caught as Error).message).toContain('data-o');
+      expect(result.html).toBe(blocks);
+      expect(result.reviewWarnings).toHaveLength(41);
+      expect(result.reviewWarnings.every((warning) => warning.code === 'NUMBER_UNVERIFIED')).toBe(true);
+      expect(result.reviewWarnings.at(-1)?.message).toContain('5 more sections');
     });
 
     it('allows image and row marker paragraphs, which never carry data-o', () => {
@@ -347,14 +365,16 @@ describe('translation number fidelity enforcement', () => {
       expect(enforceTranslatedNumberFidelity(forced.html).reviewWarnings).toEqual([]);
     });
 
-    it('never invents alignment: an unknown data-source-id stays unaligned and hard-fails', () => {
+    it('never invents alignment: an unknown data-source-id stays unaligned and warns', () => {
       const forced = forceAlignmentFromSource(
         '<p data-source-id="src-404">Teje 12 vueltas.</p>',
         new Map(),
       );
 
       expect(forced.forcedCount).toBe(0);
-      expect(() => enforceTranslatedNumberFidelity(forced.html)).toThrow(TranslationUnauditedNumbersError);
+      const result = enforceTranslatedNumberFidelity(forced.html);
+      expect(result.html).toBe(forced.html);
+      expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNVERIFIED']);
     });
 
     it('leaves prose-only and already-aligned blocks untouched', () => {

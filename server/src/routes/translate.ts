@@ -22,11 +22,10 @@ const translateRateLimit = rateLimit({ windowMs: 60_000, max: 20, name: 'transla
 
 const NDJSON_CONTENT_TYPE = 'application/x-ndjson';
 
-// The number-fidelity hard-fail carries locked product copy that already ends
-// with "You weren't charged." — appending the generic refund suffix would
-// break the exact string. Every other refunded failure keeps the suffix.
-function clientErrorMessage(details: { code: string; message: string }): string {
-  if (details.code === 'TRANSLATION_NEEDS_HUMAN_CHECK') return details.message;
+// Every refunded failure tells the user their credits came back. Number-
+// fidelity issues no longer fail jobs (Jaime override): they surface as
+// review warnings on a successful response instead of an error here.
+function clientErrorMessage(details: { message: string }): string {
   return `${details.message} Your StitchSpeak credits were refunded.`;
 }
 
@@ -224,7 +223,7 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
       return;
     }
     // A failed stream always ends with an `error` event — never a `done` with
-    // partial html — so the client can never soft-success on wrong numbers.
+    // partial html — so the client can never mistake a failure for success.
     writeEvent({
       type: 'error',
       message: clientErrorMessage(details),

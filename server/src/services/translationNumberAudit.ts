@@ -14,50 +14,24 @@ import type { TranslationTopologyWarning } from './translationTopology.js';
  * are surgically restored from the source INSIDE the already-translated
  * sentence: the surrounding target-language prose is never replaced with
  * source-language text. When a safe token-level restore is not possible
- * (token-count mismatch, ambiguous layout, unverifiable rebuild) the translate
- * path hard-fails with a "needs human check" error — silent number drift must
- * never reach the user as a quiet success.
+ * (token-count mismatch, ambiguous layout, unverifiable rebuild) the job is
+ * still delivered, with an explicit NUMBER_UNVERIFIED review warning pointing
+ * at the affected section — number drift is never silent, but it no longer
+ * blocks an otherwise usable translation (Jaime override of the US6
+ * hard-fail: soft path, warnings instead of 422 + refund).
  *
- * US6 closes the alignment blind spot: a block that contains sacred numbers
- * (stitch counts, needle sizes, gauge, sizes, repeats, measurements) but NO
- * data-o alignment cannot be audited at all, so it must never ship as a quiet
- * success either. Such blocks either get a deterministic alignment derived
- * from a KNOWN source (forceAlignmentFromSource, document pipeline only) or
- * hard-fail with the same "needs human check" + refund path. Alignment is
- * never invented from the translated text itself.
+ * US6 alignment blind spot: a block that contains sacred numbers (stitch
+ * counts, needle sizes, gauge, sizes, repeats, measurements) but NO data-o
+ * alignment cannot be audited at all. Such blocks either get a deterministic
+ * alignment derived from a KNOWN source (forceAlignmentFromSource, document
+ * pipeline only) or ship with the same NUMBER_UNVERIFIED review warning.
+ * Alignment is never invented from the translated text itself.
  */
 
 const SEGMENT_TAGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li', 'th', 'td'];
 
 /** Upper bound so a heavily repaired document cannot flood the UI/API. */
 const MAX_RESTORED_WARNINGS = 40;
-
-/**
- * Exact user-facing copy for the final number-fidelity hard-fail (product
- * US5 acceptance criteria — do not reword without a product sign-off).
- */
-export const NUMBER_FIDELITY_USER_MESSAGE =
-  'We couldn’t keep stitch, size, gauge, or needle numbers faithful to your pattern — this needs a human check. You weren’t charged.';
-
-/**
- * Thrown when translated numbers no longer match the source and a safe
- * token-level restore was not possible. The translate route surfaces it as a
- * client-visible "needs human check" error instead of a quiet success.
- */
-export class TranslationNumberFidelityError extends Error {
-  readonly status = 422;
-  readonly code = 'TRANSLATION_NEEDS_HUMAN_CHECK';
-  /** Locked product copy shown to the user; `message` keeps the technical detail for logs. */
-  readonly userMessage = NUMBER_FIDELITY_USER_MESSAGE;
-
-  constructor(detail: string) {
-    super(
-      `The translated numbers no longer match the source pattern and could not be safely restored (${detail}). `
-      + 'This translation needs a human check before it can be delivered.',
-    );
-    this.name = 'TranslationNumberFidelityError';
-  }
-}
 
 export interface AlignedNumberSegment {
   /** `seg-N` when the block carries data-seg; undefined for data-o-only cells. */
@@ -359,9 +333,12 @@ function displaySequence(tokens: string[]): string {
   return shown.join(', ') + (tokens.length > shown.length ? ', …' : '');
 }
 
-function segmentExcerpt(segment: AlignedNumberSegment): string {
-  const text = segment.sourceText;
+function textExcerpt(text: string): string {
   return text.length > 60 ? `${text.slice(0, 57)}…` : text;
+}
+
+function segmentExcerpt(segment: AlignedNumberSegment): string {
+  return textExcerpt(segment.sourceText);
 }
 
 interface SegmentFingerprints {
@@ -523,7 +500,7 @@ export interface UnrestorableNumberDrift {
   lockedNumbers: string[];
   /** Locked canonical source unit tokens, in order. */
   lockedUnits: string[];
-  /** Human-readable drift description used in hard-fail error messages. */
+  /** Human-readable drift description for server logs. */
   detail: string;
 }
 
@@ -740,34 +717,29 @@ export function collectUnauditedNumericBlocks(html: string): UnauditedNumericBlo
   }));
 }
 
-function unauditedDetail(blocks: readonly UnauditedNumericBlock[]): string {
-  const first = blocks[0];
-  const excerpt = first.text.length > 60 ? `${first.text.slice(0, 57)}…` : first.text;
-  const more = blocks.length > 1
-    ? ` (+${blocks.length - 1} more block${blocks.length === 2 ? '' : 's'})`
-    : '';
-  return `<${first.tagName}> "${excerpt}" carries numbers [${displaySequence(first.numbers)}] with no data-o source alignment${more}`;
+/**
+ * Review warning for a block whose numbers could not be checked against the
+ * source at all (no data-o alignment — product US6, soft path). User-visible
+ * copy: keep the "automated" wording, never "AI".
+ */
+function unauditedNumbersWarning(block: UnauditedNumericBlock): TranslationTopologyWarning {
+  return {
+    code: 'NUMBER_UNVERIFIED',
+    ...(block.sourceId ? { sourceId: block.sourceId } : {}),
+    message: `In "${textExcerpt(block.text)}": the numbers [${displaySequence(block.numbers)}] could not be checked against the source by the automated audit — compare this section with the original pattern.`,
+  };
 }
 
 /**
- * Thrown when a block carries sacred numbers but no data-o alignment, so its
- * number fidelity cannot be audited at all (product US6). Subclasses
- * TranslationNumberFidelityError so the existing 422
- * TRANSLATION_NEEDS_HUMAN_CHECK + refund handling applies unchanged — but the
- * recovery ladder must NOT retry it: without data-o there is no source
- * skeleton to lock, so a retry could only invent numbers.
+ * Review warning for a drifted segment the deterministic restore (and, when
+ * it ran, the recovery ladder) could not fix. User-visible copy.
  */
-export class TranslationUnauditedNumbersError extends TranslationNumberFidelityError {
-  readonly blocks: readonly UnauditedNumericBlock[];
-
-  constructor(blocks: readonly UnauditedNumericBlock[]) {
-    super(unauditedDetail(blocks));
-    this.name = 'TranslationUnauditedNumbersError';
-    this.message =
-      `The translation contains numeric content with no data-o source alignment, so its numbers cannot be audited (${unauditedDetail(blocks)}). `
-      + 'This translation needs a human check before it can be delivered.';
-    this.blocks = blocks;
-  }
+function unrestorableDriftWarning(drift: UnrestorableNumberDrift): TranslationTopologyWarning {
+  return {
+    code: 'NUMBER_UNVERIFIED',
+    ...(drift.sourceId ? { sourceId: drift.sourceId } : {}),
+    message: `In "${textExcerpt(drift.sourceText)}": the translated numbers [${displaySequence(canonicalNumberTokens(drift.translatedText))}] do not match the source numbers [${displaySequence(canonicalNumberTokens(drift.sourceText))}] and could not be restored automatically — check this section against the original pattern.`,
+  };
 }
 
 function escapeAttributeValue(value: string): string {
@@ -783,9 +755,10 @@ function escapeAttributeValue(value: string): string {
  * data-o an alignment derived from a KNOWN source — the annotated source
  * document, keyed by data-source-id. Only blocks that would otherwise fail
  * the unaudited-numbers gate are touched, and the injected data-o then flows
- * through the normal restore / recovery-ladder / hard-fail machinery. Blocks
- * without a source lookup stay unaligned and hard-fail downstream: alignment
- * is never invented from the translated text itself.
+ * through the normal restore / recovery-ladder / warning machinery. Blocks
+ * without a source lookup stay unaligned and surface a NUMBER_UNVERIFIED
+ * review warning downstream: alignment is never invented from the translated
+ * text itself.
  */
 export function forceAlignmentFromSource(
   html: string,
@@ -815,44 +788,45 @@ export function forceAlignmentFromSource(
   return { html: working, forcedCount: targets.length };
 }
 
+function capWarnings(
+  warnings: TranslationTopologyWarning[],
+  summary: (extra: number) => TranslationTopologyWarning,
+): TranslationTopologyWarning[] {
+  if (warnings.length <= MAX_RESTORED_WARNINGS) return warnings;
+  const extra = warnings.length - MAX_RESTORED_WARNINGS;
+  return [...warnings.slice(0, MAX_RESTORED_WARNINGS), summary(extra)];
+}
+
 /**
  * Enforce number fidelity over every aligned segment: restore drifted tokens
- * from the source in place, or throw TranslationNumberFidelityError when a
- * safe restore is impossible. Never returns HTML with unresolved number drift.
- *
- * US6 gate: blocks that carry numbers with no data-o alignment are
- * unauditable and hard-fail up front — unaudited numeric content must never
- * ship as a quiet success.
+ * from the source in place. Number issues the deterministic machinery cannot
+ * fix — unrestorable drift, and blocks carrying numbers with no data-o
+ * alignment (US6) — are surfaced as NUMBER_UNVERIFIED review warnings on a
+ * completed job instead of failing it (Jaime override: warnings, never a 422
+ * hard-fail). Number problems are never silent, but they never block delivery.
  */
 export function enforceTranslatedNumberFidelity(html: string): {
   html: string;
   reviewWarnings: TranslationTopologyWarning[];
 } {
-  const unaudited = collectUnauditedNumericBlocks(html);
-  if (unaudited.length > 0) {
-    throw new TranslationUnauditedNumbersError(unaudited);
-  }
+  const unverified = collectUnauditedNumericBlocks(html).map(unauditedNumbersWarning);
 
   const audit = auditNumberFidelity(html);
-  if (audit.unrestorable.length > 0) {
-    throw new TranslationNumberFidelityError(audit.unrestorable[0].detail);
-  }
-  const working = audit.html;
-  const restored = audit.restored;
-
-  if (restored.length > MAX_RESTORED_WARNINGS) {
-    const extra = restored.length - MAX_RESTORED_WARNINGS;
-    return {
-      html: working,
-      reviewWarnings: [
-        ...restored.slice(0, MAX_RESTORED_WARNINGS),
-        {
-          code: 'NUMBER_RESTORED',
-          message: `${extra} more segment${extra === 1 ? '' : 's'} had numbers restored from the source.`,
-        },
-      ],
-    };
+  for (const drift of audit.unrestorable) {
+    unverified.push(unrestorableDriftWarning(drift));
   }
 
-  return { html: working, reviewWarnings: restored };
+  return {
+    html: audit.html,
+    reviewWarnings: [
+      ...capWarnings(audit.restored, (extra) => ({
+        code: 'NUMBER_RESTORED',
+        message: `${extra} more segment${extra === 1 ? '' : 's'} had numbers restored from the source.`,
+      })),
+      ...capWarnings(unverified, (extra) => ({
+        code: 'NUMBER_UNVERIFIED',
+        message: `${extra} more section${extra === 1 ? '' : 's'} carried numbers the automated audit could not verify — review them against the original pattern.`,
+      })),
+    ],
+  };
 }
