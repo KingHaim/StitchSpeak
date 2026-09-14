@@ -8,6 +8,7 @@ import {
   enforceTranslatedNumberFidelity,
   extractAlignedSegments,
   forceAlignmentFromSource,
+  textMatchesNumberSkeleton,
 } from '../src/services/translationNumberAudit';
 
 describe('translation number fidelity enforcement', () => {
@@ -550,10 +551,10 @@ describe('translation number fidelity enforcement', () => {
     });
   });
 
-  // Prod repro (Celeste): source "M1L: …" carries the number 1 and no unit;
-  // the translated increase prose used to fingerprint as [1]/[g] and surface
-  // a loud NUMBER_UNRESTORABLE KEEP even though the numbers matched.
-  describe('M1L / lifting unit false positive', () => {
+  // US8 AC4 — prod repro (Celeste): source "M1L: …" carries the number 1 and
+  // no unit; the translated increase prose used to fingerprint as [1]/[g] and
+  // surface a loud NUMBER_UNRESTORABLE KEEP even though the numbers matched.
+  describe('US8 AC4: M1L / lifting unit false positive', () => {
     const M1L_HTML =
       '<p data-seg="3" data-o="M1L: lift the strand between two stitches.">'
       + 'Make 1 g lifting the strand between two stitches.</p>';
@@ -573,6 +574,27 @@ describe('translation number fidelity enforcement', () => {
       const drifts = collectUnrestorableNumberDrift(M1L_HTML);
       expect(drifts).toEqual([]);
       expect(buildUnrestorableDriftWarnings(drifts)).toEqual([]);
+    });
+
+    it('US8 AC4 boundary: real unit-system swaps still fail the skeleton gate', () => {
+      // Only the bare-g FP class clears. A genuine unit-system swap with
+      // matching numbers is real drift and must stay loud / unfixable-by-CLEAR.
+      expect(textMatchesNumberSkeleton('Yarn: 100 g', 'Lana: 100 oz')).toBe(false);
+      expect(textMatchesNumberSkeleton('Length: 10 cm', 'Largo: 10 in')).toBe(false);
+      // …while the lifting-prose FP maps to an identical skeleton (CLEAR).
+      expect(textMatchesNumberSkeleton(
+        'M1L: lift the strand between two stitches.',
+        'Make 1 g lifting the strand between two stitches.',
+      )).toBe(true);
+    });
+
+    it('US8 AC4 boundary: an unrestorable g↔oz swap surfaces a loud warning', () => {
+      // Token counts differ (an added conversion), so no safe restore exists —
+      // the segment must ship with a loud NUMBER_UNRESTORABLE, never CLEAR.
+      const html =
+        '<p data-seg="6" data-o="Yarn: 100 g per skein">Lana: 3.5 oz (100) por madeja</p>';
+      const result = enforceTranslatedNumberFidelity(html);
+      expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNRESTORABLE']);
     });
   });
 });

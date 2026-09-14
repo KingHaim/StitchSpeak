@@ -5,10 +5,13 @@ import express from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ExternalServiceTimeoutError } from '../src/services/externalDeadline';
 
-// Celeste incident: the translation deadline aborted mid-verifier and the
-// NDJSON stream closed without `done` or `error` — the client saw only
-// "connection interrupted while streaming". These tests lock the hard
-// guarantee: every streaming response ends with exactly one terminal event.
+// US8 AC1 — Celeste incident: the translation deadline aborted mid-verifier
+// and the NDJSON stream closed without `done` or `error` — the client saw
+// only "connection interrupted while streaming". These tests lock the hard
+// guarantee: every streaming response ends with exactly one terminal event
+// (`done` + warnings, or `error`) before the socket closes — never a bare
+// stream cut. AC5 rides along: the number path ships warnings on a 200
+// `done`, never an HTTP 422.
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stitchspeak-translate-stream-test-'));
 process.env.DATA_DIR = dataDir;
@@ -106,7 +109,7 @@ async function postStreamingTranslate(): Promise<Array<Record<string, unknown>>>
   return text.trim().split('\n').map((line) => JSON.parse(line));
 }
 
-describe('translate NDJSON stream terminal-event guarantee', () => {
+describe('US8 AC1: translate NDJSON stream terminal-event guarantee', () => {
   it('a completed job ends the stream with `done` carrying the settled warnings', async () => {
     mocks.translatePattern.mockImplementation(async (_buf, _mime, _lang, _src, options) => {
       options.onStatus?.({ stage: 'number_verify', message: 'Double-checking numbers…' });
@@ -129,9 +132,10 @@ describe('translate NDJSON stream terminal-event guarantee', () => {
     expect(mocks.refundPendingCharge).not.toHaveBeenCalled();
   });
 
-  it('a degraded job (verifier skipped/aborted internally) still settles and streams `done`', async () => {
+  it('US8 AC2/AC5: a degraded job (verifier skipped/aborted internally) still settles and streams `done` — never a 422', async () => {
     // The pipeline degraded instead of failing: translatePattern resolves
     // with the settled warnings even though its verifier was cut short.
+    // Number-path issues surface as warnings on a 200 `done`, never a 422.
     mocks.translatePattern.mockResolvedValue({
       html: '<p data-seg="1" data-o="Bust: 84 (92, 100, 108) cm">Pecho: 84 (92, 108) cm</p>',
       usage: null,

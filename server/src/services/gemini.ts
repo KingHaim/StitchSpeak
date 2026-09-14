@@ -69,11 +69,15 @@ const CHAT_DEADLINE_MS = 45 * 1000;
 const GLOSSARY_DEADLINE_MS = 20 * 1000;
 
 /**
- * US7 near-deadline guard: the post-translate number verifier never STARTS
- * with less deadline budget than this. Starting it any later means the
+ * US8 AC2 near-deadline guard: the post-translate number verifier never
+ * STARTS with less deadline budget than this. Starting it any later means the
  * translation deadline aborts mid-verifier and the stream can tear down
  * without a terminal event; instead the verifier is skipped and the job
  * delivers with the warnings exactly as they settled (US6b behavior).
+ *
+ * US8 AC3: this short-circuit is deliberately preferred over raising
+ * TRANSLATION_DEADLINE_MS — the 240s budget stays unless the main
+ * translation/recovery work itself starts starving.
  */
 export const VERIFIER_MIN_DEADLINE_BUDGET_MS = 25_000;
 

@@ -457,12 +457,13 @@ describe('US7 never hard-fails (US6b stays)', () => {
   });
 });
 
-// Celeste incident: the 4-minute translation deadline aborted mid-verifier
-// and the stream tore down without a terminal event. The verifier must never
-// START without enough deadline budget, must run under its own bounded abort
-// signal, and an abort must degrade to the settled warnings — never fail an
-// otherwise finished job.
-describe('US7 deadline budget', () => {
+// US8 AC2/AC3 — Celeste incident: the 4-minute translation deadline aborted
+// mid-verifier and the stream tore down without a terminal event. The
+// verifier must never START without enough deadline budget (short-circuit is
+// preferred over raising the 240s deadline), must run under its own bounded
+// abort signal, and an abort must degrade to the settled warnings — never
+// fail an otherwise finished job.
+describe('US8 verifier deadline budget (AC2/AC3)', () => {
   const settledOptions = {
     recoveryBudgetCredits: 10,
     // The recovery ladder runs but repairs nothing, so the flagged segment
@@ -560,10 +561,10 @@ describe('US7 deadline budget', () => {
   });
 });
 
-// Celeste incident, part 2 (M1L / "lifting"): a stale KEEP produced by the
-// old too-greedy bare-g tokenizer must clear at the same deterministic
+// US8 AC4 — Celeste incident, part 2 (M1L / "lifting"): a stale KEEP produced
+// by the old too-greedy bare-g tokenizer must clear at the same deterministic
 // identical-skeleton choke point as US7b — never re-emitted, never billed.
-describe('bare-g false positive clears at the choke point', () => {
+describe('US8 AC4: bare-g false positive clears at the choke point', () => {
   it('drops a stale M1L bare-g warning without a model call', async () => {
     const html =
       '<p data-seg="3" data-o="M1L: lift the strand between two stitches.">'
