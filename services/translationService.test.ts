@@ -6,6 +6,36 @@ import {
 
 afterEach(() => vi.unstubAllGlobals());
 
+/**
+ * Stub fetch for a streaming translate call. The first request the client
+ * makes is the US9 stream-token mint (`/translate/stream-token`); by default it
+ * answers 404 (old server / no direct origin) so the translate request falls
+ * back to the same-origin rewrite. Each translate request gets a fresh
+ * Response so bodies are never double-consumed.
+ */
+function stubStreamFetch(
+  ndjsonBody: string,
+  options: { tokenResponse?: () => Response } = {},
+) {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    if (String(input).includes('/translate/stream-token')) {
+      return options.tokenResponse?.() ?? new Response('Not found', { status: 404 });
+    }
+    return new Response(ndjsonBody, {
+      status: 200,
+      headers: { 'content-type': 'application/x-ndjson' },
+    });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+function translateCalls(fetchMock: ReturnType<typeof vi.fn>): Array<[string, RequestInit]> {
+  return fetchMock.mock.calls
+    .filter(([input]) => !String(input).includes('/translate/stream-token'))
+    .map(([input, init]) => [String(input), init as RequestInit]);
+}
+
 describe('translation error normalization', () => {
   it('does not expose nested Gemini billing JSON or provider links', () => {
     const raw = `{"error":{"message":"{\\n \\"error\\": {\\n \\"code\\": 429,\\n \\"message\\": \\"Your prepayment credits are depleted. Please go to AI Studio at https://ai.studio/projects to manage your project and billing.\\",\\n \\"status\\": \\"RESOURCE_EXHAUSTED\\"\\n }\\n}","code":429,"status":"Too Many Requests"}}`;
@@ -30,10 +60,7 @@ describe('translation error normalization', () => {
       JSON.stringify({ type: 'delta', text: '<p>Monta 20' }),
       JSON.stringify({ type: 'delta', text: ' puntos.</p>' }),
     ].join('\n');
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(`${deltas}\n`, {
-      status: 200,
-      headers: { 'content-type': 'application/x-ndjson' },
-    })));
+    stubStreamFetch(`${deltas}\n`);
 
     const file = new File(['pattern'], 'pattern.txt', { type: 'text/plain' });
     await expect(translatePatternStream(file, 'Spanish', null, 'English')).rejects.toEqual(
@@ -54,10 +81,7 @@ describe('translation error normalization', () => {
       }),
       JSON.stringify({ type: 'done', html: '<p>hola</p>', usage: null, cost: 7, balance: 3 }),
     ].join('\n');
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(`${events}\n`, {
-      status: 200,
-      headers: { 'content-type': 'application/x-ndjson' },
-    })));
+    stubStreamFetch(`${events}\n`);
 
     const statuses: Array<{ message: string; stage: string }> = [];
     const file = new File(['pattern'], 'pattern.txt', { type: 'text/plain' });
@@ -71,7 +95,7 @@ describe('translation error normalization', () => {
     expect(result.html).toBe('<p>hola</p>');
   });
 
-  it('US9: assembles `final` chunk events into the result when `done` carries no inline html', async () => {
+  it('US9 AC1: assembles `final` chunk events into the result when `done` carries no inline html', async () => {
     const events = [
       JSON.stringify({ type: 'delta', text: '<p>Monta' }),
       JSON.stringify({ type: 'final', chunk: '<p>Monta 20' }),
@@ -85,11 +109,7 @@ describe('translation error normalization', () => {
         reviewWarnings: [{ code: 'NUMBER_UNRESTORABLE', message: 'check' }],
       }),
     ].join('\n');
-    const fetchMock = vi.fn().mockResolvedValue(new Response(`${events}\n`, {
-      status: 200,
-      headers: { 'content-type': 'application/x-ndjson' },
-    }));
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = stubStreamFetch(`${events}\n`);
 
     const file = new File(['pattern'], 'pattern.txt', { type: 'text/plain' });
     const result = await translatePatternStream(file, 'Spanish', null, 'English');
@@ -100,32 +120,26 @@ describe('translation error normalization', () => {
 
     // The client asks for chunked final delivery so the terminal `done` event
     // is a small line the proxy can't cut mid-multi-megabyte write.
-    const sentBody = fetchMock.mock.calls[0][1]?.body as FormData;
-    expect(sentBody.get('streamFinalChunks')).toBe('true');
+    const [[, init]] = translateCalls(fetchMock);
+    expect((init.body as FormData).get('streamFinalChunks')).toBe('true');
   });
 
-  it('US9: an inline `done` html still wins over stray final chunks (old-server compatibility)', async () => {
+  it('US9 AC1: an inline `done` html still wins over stray final chunks (old-server compatibility)', async () => {
     const events = [
       JSON.stringify({ type: 'done', html: '<p>hola</p>', usage: null }),
     ].join('\n');
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(`${events}\n`, {
-      status: 200,
-      headers: { 'content-type': 'application/x-ndjson' },
-    })));
+    stubStreamFetch(`${events}\n`);
 
     const file = new File(['pattern'], 'pattern.txt', { type: 'text/plain' });
     const result = await translatePatternStream(file, 'Spanish', null, 'English');
     expect(result.html).toBe('<p>hola</p>');
   });
 
-  it('US9: a chunked `done` with no delivered chunks never soft-succeeds as an empty pattern', async () => {
+  it('US9 AC1: a chunked `done` with no delivered chunks never soft-succeeds as an empty pattern', async () => {
     const events = [
       JSON.stringify({ type: 'done', htmlChunked: true, usage: null }),
     ].join('\n');
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(`${events}\n`, {
-      status: 200,
-      headers: { 'content-type': 'application/x-ndjson' },
-    })));
+    stubStreamFetch(`${events}\n`);
 
     const file = new File(['pattern'], 'pattern.txt', { type: 'text/plain' });
     await expect(translatePatternStream(file, 'Spanish', null, 'English')).rejects.toEqual(
@@ -145,10 +159,7 @@ describe('translation error normalization', () => {
       status: 503,
       balance: 12.5,
     });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(`${event}\n`, {
-      status: 200,
-      headers: { 'content-type': 'application/x-ndjson' },
-    })));
+    stubStreamFetch(`${event}\n`);
 
     const file = new File(['pattern'], 'pattern.txt', { type: 'text/plain' });
     await expect(translatePatternStream(file, 'French', null, 'English')).rejects.toEqual(
@@ -159,5 +170,60 @@ describe('translation error normalization', () => {
         balance: 12.5,
       }),
     );
+  });
+});
+
+describe('US9 AC3: translate stream bypasses the Vercel 120s rewrite cap via a direct origin', () => {
+  const doneEvents = `${[
+    JSON.stringify({ type: 'final', chunk: '<p>fertig</p>' }),
+    JSON.stringify({ type: 'done', htmlChunked: true, usage: null, cost: 7, balance: 3 }),
+  ].join('\n')}\n`;
+
+  it('streams directly against the advertised origin using the minted stream token', async () => {
+    const fetchMock = stubStreamFetch(doneEvents, {
+      tokenResponse: () => new Response(
+        JSON.stringify({
+          token: 'sst_test-token',
+          expiresInSeconds: 300,
+          directOrigin: 'https://stitchspeak-production.up.railway.app',
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    });
+
+    const file = new File(['pattern'], 'pattern.txt', { type: 'text/plain' });
+    const result = await translatePatternStream(file, 'German', null, 'English');
+    expect(result.html).toBe('<p>fertig</p>');
+
+    const [[url, init]] = translateCalls(fetchMock);
+    expect(url).toBe('https://stitchspeak-production.up.railway.app/api/translate');
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer sst_test-token');
+  });
+
+  it('falls back to the same-origin rewrite when the server has no stream-token endpoint', async () => {
+    const fetchMock = stubStreamFetch(doneEvents);
+
+    const file = new File(['pattern'], 'pattern.txt', { type: 'text/plain' });
+    const result = await translatePatternStream(file, 'German', null, 'English');
+    expect(result.html).toBe('<p>fertig</p>');
+
+    const [[url]] = translateCalls(fetchMock);
+    expect(url).toBe('/api/translate');
+  });
+
+  it('falls back to the same-origin rewrite when no direct origin is configured server-side', async () => {
+    const fetchMock = stubStreamFetch(doneEvents, {
+      tokenResponse: () => new Response(
+        JSON.stringify({ token: 'sst_test-token', expiresInSeconds: 300, directOrigin: null }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    });
+
+    const file = new File(['pattern'], 'pattern.txt', { type: 'text/plain' });
+    const result = await translatePatternStream(file, 'German', null, 'English');
+    expect(result.html).toBe('<p>fertig</p>');
+
+    const [[url]] = translateCalls(fetchMock);
+    expect(url).toBe('/api/translate');
   });
 });

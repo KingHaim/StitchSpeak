@@ -251,6 +251,49 @@ export const translatePatternStream = async (
   }
 };
 
+interface StreamTarget {
+  url: string;
+  headers: Record<string, string>;
+}
+
+/**
+ * US9 AC3: where to send the long-running translate stream. The Vercel rewrite
+ * that proxies `/api/*` to Railway has a documented 120-second maximum that
+ * cannot cover a ~4-minute translation, so the client first mints a short-lived
+ * stream token over the rewrite (fast; HttpOnly cookie auth works same-origin)
+ * and, when the server advertises a direct origin, streams straight against it
+ * with the token as the Bearer credential. Any failure here — older server
+ * without the endpoint, no direct origin configured, network hiccup — falls
+ * back to the same-origin rewrite exactly as before.
+ */
+const resolveStreamTarget = async (idToken: string | null): Promise<StreamTarget> => {
+  const fallback: StreamTarget = { url: apiUrl('/translate'), headers: authHeaders(idToken) };
+  try {
+    const response = await fetch(apiUrl('/translate/stream-token'), {
+      method: 'POST',
+      headers: authHeaders(idToken),
+      credentials: 'include',
+    });
+    if (!response.ok) return fallback;
+    const data = await response.json().catch(() => null);
+    const token = typeof data?.token === 'string' ? data.token : null;
+    const directOrigin =
+      typeof data?.directOrigin === 'string' && /^https?:\/\//.test(data.directOrigin)
+        ? data.directOrigin.replace(/\/+$/, '')
+        : null;
+    if (token && directOrigin) {
+      return {
+        url: `${directOrigin}/api/translate`,
+        headers: { Authorization: `Bearer ${token}` },
+      };
+    }
+  } catch {
+    // Token minting is best-effort; the rewrite path still works for jobs
+    // that finish inside the proxy window.
+  }
+  return fallback;
+};
+
 const translatePatternStreamInner = async (
   file: File,
   language: string,
@@ -270,12 +313,13 @@ const translatePatternStreamInner = async (
   // and keep sending the full HTML inline on `done`.
   formData.append('streamFinalChunks', 'true');
 
+  const target = await resolveStreamTarget(idToken);
   const response = await checkedFetch(
-    apiUrl('/translate'),
+    target.url,
     {
       method: 'POST',
       headers: {
-        ...authHeaders(idToken),
+        ...target.headers,
         Accept: 'application/x-ndjson',
       },
       body: formData,
