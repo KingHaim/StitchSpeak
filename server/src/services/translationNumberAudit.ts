@@ -798,6 +798,20 @@ function capWarnings(
 }
 
 /**
+ * The exact NUMBER_UNRESTORABLE warning set (capped) for a list of drifts.
+ * Shared by the enforcement pass and the US7 post-translate verifier, which
+ * re-emits warnings only for the segments whose verdict stayed KEEP.
+ */
+export function buildUnrestorableDriftWarnings(
+  drifts: UnrestorableNumberDrift[],
+): TranslationTopologyWarning[] {
+  return capWarnings(drifts.map(unrestorableDriftWarning), (extra) => ({
+    code: 'NUMBER_UNRESTORABLE',
+    message: `${extra} more segment${extra === 1 ? '' : 's'} had translated numbers that do not match the source — review them against the original pattern.`,
+  }));
+}
+
+/**
  * Enforce number fidelity over every aligned segment: restore drifted tokens
  * from the source in place. Number issues the deterministic machinery cannot
  * fix are surfaced as review warnings on a completed job instead of failing
@@ -812,7 +826,6 @@ export function enforceTranslatedNumberFidelity(html: string): {
 } {
   const unaudited = collectUnauditedNumericBlocks(html).map(unauditedNumbersWarning);
   const audit = auditNumberFidelity(html);
-  const unrestorable = audit.unrestorable.map(unrestorableDriftWarning);
 
   return {
     html: audit.html,
@@ -825,10 +838,7 @@ export function enforceTranslatedNumberFidelity(html: string): {
         code: 'UNAUDITED_NUMBERS',
         message: `${extra} more section${extra === 1 ? '' : 's'} carried numbers that could not be checked against the source — review them against the original pattern.`,
       })),
-      ...capWarnings(unrestorable, (extra) => ({
-        code: 'NUMBER_UNRESTORABLE',
-        message: `${extra} more segment${extra === 1 ? '' : 's'} had translated numbers that do not match the source — review them against the original pattern.`,
-      })),
+      ...buildUnrestorableDriftWarnings(audit.unrestorable),
     ],
   };
 }
