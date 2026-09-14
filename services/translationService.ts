@@ -376,10 +376,10 @@ const translatePatternStreamInner = async (
   }
 
   if (!finalResult) {
-    // Server closed without a `done` event. Salvage what we have if anything.
-    if (accumulated.length > 0) {
-      return { html: accumulated, usage: null, reviewWarnings: [] };
-    }
+    // The stream ended without a `done` event. Never salvage the accumulated
+    // deltas as a success: raw streamed HTML has not passed number-fidelity
+    // enforcement (or any other finalization), so presenting it would risk
+    // exactly the silent wrong numbers the pipeline exists to prevent.
     throw new TranslationError(
       'Translation ended unexpectedly. Please try again.',
       'server',

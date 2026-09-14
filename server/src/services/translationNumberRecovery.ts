@@ -210,7 +210,8 @@ export async function recoverTranslatedNumberFidelity(
     {
       label: 'Gemini flash segment retry',
       stage: 'number_lock_retry',
-      statusMessage: 'Retrying with stricter number lock…',
+      // Exact product copy (US5) — do not reword without a product sign-off.
+      statusMessage: 'Retrying with a stricter number lock…',
       rates: GEMINI_FLASH_RETRY_RATES,
       run: options.geminiSegmentRetry,
     },

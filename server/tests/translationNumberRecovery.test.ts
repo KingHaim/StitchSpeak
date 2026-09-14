@@ -98,6 +98,8 @@ describe('recovery ladder', () => {
     ]);
     expect(openAI).not.toHaveBeenCalled();
     expect(statuses.map((status) => status.stage)).toEqual(['number_lock_retry']);
+    // Exact US5 progress copy.
+    expect(statuses[0].message).toBe('Retrying with a stricter number lock…');
     expect(result.reviewWarnings).toHaveLength(1);
     expect(result.reviewWarnings[0].code).toBe('NUMBER_RESTORED');
     expect(result.reviewWarnings[0].sourceId).toBe('seg-2');
@@ -165,8 +167,11 @@ describe('recovery ladder', () => {
     const details = externalErrorDetails(thrown);
     expect(details.status).toBe(422);
     expect(details.code).toBe('TRANSLATION_NEEDS_HUMAN_CHECK');
-    expect(details.message).toContain('human check');
-    expect(details.message).toContain('retries were exhausted');
+    // Exact US5 user-facing copy; the exhaustion detail stays in server logs.
+    expect(details.message).toBe(
+      'We couldn’t keep stitch, size, gauge, or needle numbers faithful to your pattern — this needs a human check. You weren’t charged.',
+    );
+    expect((thrown as Error).message).toContain('retries were exhausted');
   });
 
   it('never introduces model output that fails the locked-skeleton gate', async () => {

@@ -25,6 +25,13 @@ const SEGMENT_TAGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li', 'th', 'td']
 const MAX_RESTORED_WARNINGS = 40;
 
 /**
+ * Exact user-facing copy for the final number-fidelity hard-fail (product
+ * US5 acceptance criteria — do not reword without a product sign-off).
+ */
+export const NUMBER_FIDELITY_USER_MESSAGE =
+  'We couldn’t keep stitch, size, gauge, or needle numbers faithful to your pattern — this needs a human check. You weren’t charged.';
+
+/**
  * Thrown when translated numbers no longer match the source and a safe
  * token-level restore was not possible. The translate route surfaces it as a
  * client-visible "needs human check" error instead of a quiet success.
@@ -32,6 +39,8 @@ const MAX_RESTORED_WARNINGS = 40;
 export class TranslationNumberFidelityError extends Error {
   readonly status = 422;
   readonly code = 'TRANSLATION_NEEDS_HUMAN_CHECK';
+  /** Locked product copy shown to the user; `message` keeps the technical detail for logs. */
+  readonly userMessage = NUMBER_FIDELITY_USER_MESSAGE;
 
   constructor(detail: string) {
     super(

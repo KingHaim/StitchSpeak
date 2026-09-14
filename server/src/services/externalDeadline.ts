@@ -42,7 +42,9 @@ export function externalErrorDetails(error: unknown): ExternalErrorDetails {
     return { status: 504, code: 'EXTERNAL_SERVICE_TIMEOUT', message: error.message };
   }
   if (error instanceof TranslationNumberFidelityError) {
-    return { status: error.status, code: error.code, message: error.message };
+    // Client-visible copy is the locked product string; the technical segment
+    // detail stays on error.message for server logs only.
+    return { status: error.status, code: error.code, message: error.userMessage };
   }
 
   const text = errorText(error);
