@@ -19,6 +19,7 @@ import {
   normalizeSpanishMeasurementsInHtml,
   sanitizeMarkdownArtifactsInHtml,
 } from './translationSanitizers.js';
+import { auditTranslatedNumbers } from './translationNumberAudit.js';
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -1616,12 +1617,19 @@ function finalizeTranslatedHtml(
     finalized = normalizeSpanishMeasurementsInHtml(finalized);
   }
   const artifacts = findMarkdownArtifacts(finalized);
+  // Deterministic number-fidelity audit over data-seg/data-o aligned segments.
+  // Runs after Spanish measurement normalization so locale formatting cannot
+  // false-positive, and adds zero model cost.
+  const numberWarnings = auditTranslatedNumbers(finalized);
   return {
     html: finalized,
-    reviewWarnings: artifacts.map((artifact) => ({
-      code: 'LANGUAGE_QA_REVIEW' as const,
-      message: `A Markdown artifact (${artifact}) remains and needs manual review.`,
-    })),
+    reviewWarnings: [
+      ...artifacts.map((artifact) => ({
+        code: 'LANGUAGE_QA_REVIEW' as const,
+        message: `A Markdown artifact (${artifact}) remains and needs manual review.`,
+      })),
+      ...numberWarnings,
+    ],
   };
 }
 

@@ -8,7 +8,8 @@ export type TranslationTopologyWarningCode =
   | 'PAGE_BREAK_CHANGED'
   | 'LIST_LEVEL_CHANGED'
   | 'EMPTY_PARAGRAPH_CHANGED'
-  | 'LANGUAGE_QA_REVIEW';
+  | 'LANGUAGE_QA_REVIEW'
+  | 'NUMBER_CHANGED';
 
 export interface TranslationTopologyWarning {
   code: TranslationTopologyWarningCode;
