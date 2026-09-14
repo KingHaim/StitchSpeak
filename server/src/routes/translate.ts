@@ -174,6 +174,13 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
     writeEvent({ type: 'ping', t: Date.now() });
   }, HEARTBEAT_MS);
 
+  // Hard guarantee: every streaming path ends with a terminal NDJSON event —
+  // `done` or `error` — before the socket closes, never a silent drop. The
+  // success and failure paths below set this flag; the finally block emits a
+  // last-resort `error` if neither did (e.g. an exception thrown while
+  // emitting the terminal event itself).
+  let terminalEventSent = false;
+
   try {
     const result = await translatePattern(
       file.buffer,
@@ -207,6 +214,7 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
         balance,
       });
     }
+    terminalEventSent = true;
     res.end();
   } catch (err: any) {
     console.error('[translate] Error:', err);
@@ -215,6 +223,7 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
     if (!res.headersSent) {
       // Headers weren't flushed yet (rare — flushHeaders above runs before
       // translatePattern). Fall back to a regular JSON error.
+      terminalEventSent = true;
       res.status(details.status).json({
         error: clientErrorMessage(details),
         code: details.code,
@@ -231,9 +240,22 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
       status: details.status,
       balance: newBalance,
     });
+    terminalEventSent = true;
     res.end();
   } finally {
     clearInterval(heartbeat);
+    // Last-resort terminal event: no stream may ever close without `done` or
+    // `error`. Reaching this means the paths above failed while emitting
+    // their own terminal event, so keep the message generic.
+    if (!terminalEventSent) {
+      writeEvent({
+        type: 'error',
+        message: 'The translation was interrupted before it could finish. Please try again.',
+        code: 'STREAM_INTERRUPTED',
+        status: 500,
+      });
+    }
+    if (!res.writableEnded && !res.destroyed) res.end();
   }
   } finally {
     clearInterval(leaseHeartbeat);

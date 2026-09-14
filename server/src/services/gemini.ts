@@ -68,6 +68,26 @@ const TRANSLATION_DEADLINE_MS = 4 * 60 * 1000;
 const CHAT_DEADLINE_MS = 45 * 1000;
 const GLOSSARY_DEADLINE_MS = 20 * 1000;
 
+/**
+ * US8 AC2 near-deadline guard: the post-translate number verifier never
+ * STARTS with less deadline budget than this. Starting it any later means the
+ * translation deadline aborts mid-verifier and the stream can tear down
+ * without a terminal event; instead the verifier is skipped and the job
+ * delivers with the warnings exactly as they settled (US6b behavior).
+ *
+ * US8 AC3: this short-circuit is deliberately preferred over raising
+ * TRANSLATION_DEADLINE_MS — the 240s budget stays unless the main
+ * translation/recovery work itself starts starving.
+ */
+export const VERIFIER_MIN_DEADLINE_BUDGET_MS = 25_000;
+
+/**
+ * Tail margin the verifier's own abort signal leaves before the translation
+ * deadline, so an over-long verifier is cut short with enough time to settle
+ * the charge and stream `done`.
+ */
+export const VERIFIER_DEADLINE_TAIL_MS = 10_000;
+
 function isRetryableError(err: any): boolean {
   // Retrying cannot replenish the provider account and only delays the same
   // deterministic failure while consuming request capacity.
@@ -1892,22 +1912,45 @@ export async function finalizeTranslatedHtmlWithRecovery(
   let finalWarnings = [...recoveryWarnings, ...finalized.reviewWarnings];
 
   if (finalWarnings.some((warning) => warning.code === 'NUMBER_UNRESTORABLE')) {
-    try {
-      const verified = await verifyResidualNumberWarnings(finalHtml, finalWarnings, {
-        targetLanguage: language,
-        ...(sourceLanguage ? { sourceLanguage } : {}),
-        jobCredits: options.recoveryBudgetCredits ?? DEFAULT_RECOVERY_BUDGET_CREDITS,
-        signal,
-        onStatus: options.onStatus,
-        geminiVerify: createFlashSegmentNumberVerify(signal),
-      });
-      finalHtml = verified.html;
-      finalWarnings = verified.reviewWarnings;
-      usage = mergeTranslationUsage(usage, verified.usage);
-    } catch (err) {
-      // The verifier is strictly best-effort (US6b stays): any unexpected
-      // failure delivers the job with the warnings exactly as they settled.
-      console.warn('[gemini] number verifier failed; delivering with settled review warnings:', err);
+    const remainingMs = options.deadlineAt === undefined
+      ? Number.POSITIVE_INFINITY
+      : options.deadlineAt - Date.now();
+    if (remainingMs < VERIFIER_MIN_DEADLINE_BUDGET_MS) {
+      // Near-deadline skip: with this little budget the translation deadline
+      // would abort mid-verifier. Deliver with the settled warnings instead
+      // (US6b) so the job still settles its charge and streams `done`.
+      console.warn(
+        `[gemini] skipping number verifier: ~${Math.max(0, Math.round(remainingMs / 1000))}s of deadline budget left; delivering with settled review warnings.`,
+      );
+    } else {
+      // The verifier runs under its own abort signal bounded by the remaining
+      // deadline budget minus a tail margin: an over-long verifier aborts
+      // early enough for the job to settle the charge and stream `done`. An
+      // abort degrades to the settled warnings — it never fails the job.
+      const verifierSignal = Number.isFinite(remainingMs)
+        ? AbortSignal.any([
+            ...(signal ? [signal] : []),
+            AbortSignal.timeout(remainingMs - VERIFIER_DEADLINE_TAIL_MS),
+          ])
+        : signal;
+      try {
+        const verified = await verifyResidualNumberWarnings(finalHtml, finalWarnings, {
+          targetLanguage: language,
+          ...(sourceLanguage ? { sourceLanguage } : {}),
+          jobCredits: options.recoveryBudgetCredits ?? DEFAULT_RECOVERY_BUDGET_CREDITS,
+          signal: verifierSignal,
+          onStatus: options.onStatus,
+          geminiVerify: options.numberVerify ?? createFlashSegmentNumberVerify(verifierSignal),
+        });
+        finalHtml = verified.html;
+        finalWarnings = verified.reviewWarnings;
+        usage = mergeTranslationUsage(usage, verified.usage);
+      } catch (err) {
+        // The verifier is strictly best-effort (US6b stays): any unexpected
+        // failure — including an abort — delivers the job with the warnings
+        // exactly as they settled.
+        console.warn('[gemini] number verifier failed; delivering with settled review warnings:', err);
+      }
     }
   }
 
@@ -2115,6 +2158,19 @@ export interface TranslatePatternOptions {
    * Production callers never set this.
    */
   numberLockSegmentRetry?: SegmentRetryFn;
+  /**
+   * Test seam: overrides the Gemini flash number verifier (US7 step 1) so the
+   * near-deadline skip/degrade behavior can be exercised without a live model
+   * call. Production callers never set this.
+   */
+  numberVerify?: SegmentVerifyFn;
+  /**
+   * Epoch-ms timestamp when the external translation deadline aborts the
+   * job. Set by translatePattern; late best-effort phases (the US7 number
+   * verifier) use it to skip or bound themselves so the deadline can never
+   * fire mid-verifier and tear down the stream without a terminal event.
+   */
+  deadlineAt?: number;
   /** Approved, account-scoped human corrections for this language pair. */
   translationMemory?: Array<{
     sourceLanguage: string;
@@ -2544,8 +2600,14 @@ export async function translatePattern(
   const kind = detectSourceKind(fileBuffer, mimeType, fileName);
 
   if (kind === 'pdf') {
+    // The deadline timestamp rides along so late best-effort phases (the US7
+    // verifier) can skip or bound themselves against the remaining budget.
+    const deadlineOptions: TranslatePatternOptions = {
+      ...options,
+      deadlineAt: Date.now() + TRANSLATION_DEADLINE_MS,
+    };
     return withExternalDeadline('Gemini translation', TRANSLATION_DEADLINE_MS, (signal) =>
-      translatePdf(fileBuffer, mimeType, language, sourceLanguage, options, signal),
+      translatePdf(fileBuffer, mimeType, language, sourceLanguage, deadlineOptions, signal),
     );
   }
 
@@ -2556,8 +2618,12 @@ export async function translatePattern(
     );
   }
 
+  const deadlineOptions: TranslatePatternOptions = {
+    ...options,
+    deadlineAt: Date.now() + TRANSLATION_DEADLINE_MS,
+  };
   return withExternalDeadline('Gemini translation', TRANSLATION_DEADLINE_MS, (signal) =>
-    translateDocumentHtml(sourceHtml, language, sourceLanguage, options, signal),
+    translateDocumentHtml(sourceHtml, language, sourceLanguage, deadlineOptions, signal),
   );
 }
 

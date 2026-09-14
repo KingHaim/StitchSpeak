@@ -357,10 +357,55 @@ interface UnitMatch extends TokenMatch {
   canonical: string;
 }
 
+// Bare gram abbreviations are too greedy near stitch instructions: in
+// increase prose ("M1 g", "work 1 g lifting the strand between sts") a stray
+// `g` after a digit is knitting shorthand — an increase abbreviation or a
+// left/right marker — never a mass. Spelled-out gram words ("grams",
+// "gramos", …) are unambiguous and always tokenize.
+const BARE_GRAM_TOKENS = new Set(['g', 'gr', 'grs']);
+
+// Words that keep a bare `g` reading as grams when they follow it — yarn
+// quantities like "100 g of wool" / "100 g de lana" / "50 g per skein". Any
+// other letter-starting follower ("1 g lifting …") reads as knitting
+// shorthand rather than mass; end-of-text, punctuation, and digits keep the
+// gram reading ("Yarn: 100 g", "100 g (3.5 oz)").
+const MASS_CONTEXT_FOLLOWERS = new Set([
+  'of', 'de', 'di', 'da', 'af', 'av', 'van', 'von', 'per', 'pr', 'each',
+  'approx', 'aprox', 'ca', 'about',
+  'yarn', 'wool', 'lana', 'laine', 'garn', 'wolle', 'uld', 'ull',
+  'skein', 'skeins', 'ball', 'balls', 'hank', 'hanks',
+  'ovillo', 'ovillos', 'pelote', 'pelotes', 'nøgle', 'nøgler', 'madeja', 'madejas',
+]);
+
+/**
+ * True when the digit run ending right before `index` belongs to an increase
+ * abbreviation (M1/M1L/M1R and localized variants): the digits are directly
+ * preceded by the letter M, as in "M1 g" — that `g` is never a mass unit.
+ */
+function digitBelongsToIncreaseAbbreviation(text: string, index: number): boolean {
+  let cursor = index;
+  while (cursor > 0 && /\d/.test(text[cursor - 1])) cursor -= 1;
+  return cursor > 0 && (text[cursor - 1] === 'm' || text[cursor - 1] === 'M');
+}
+
+/**
+ * True when what follows a bare gram token reads as a mass measurement: end
+ * of text, punctuation, a digit — or a known mass-context word. A
+ * letter-starting follower outside that list ("1 g lifting the bar") means
+ * the `g` is knitting prose, not grams.
+ */
+function hasMassContextAfter(text: string, index: number): boolean {
+  const followingWord = text.slice(index).match(/^\s*(\p{L}+)/u)?.[1];
+  if (!followingWord) return true;
+  return MASS_CONTEXT_FOLLOWERS.has(followingWord.toLocaleLowerCase());
+}
+
 /**
  * Measurement units directly attached to a number. Prose like "join 20 sts in
- * the round" (digit not adjacent) never matches, and bare "in" followed by a
- * known English function word is treated as a preposition rather than inches.
+ * the round" (digit not adjacent) never matches, bare "in" followed by a
+ * known English function word is treated as a preposition rather than inches,
+ * and bare `g`/`gr`/`grs` only counts as grams outside increase-abbreviation
+ * prose (M1/M1L/M1R, "lifting …") — see BARE_GRAM_TOKENS above.
  */
 function unitMatches(text: string): UnitMatch[] {
   const pattern = new RegExp(`(?<=\\d)\\s*(${UNIT_ALTERNATIVES})(?![\\p{L}\\p{N}])`, 'giu');
@@ -372,6 +417,10 @@ function unitMatches(text: string): UnitMatch[] {
     if (lowered === 'in') {
       const followingWord = text.slice(pattern.lastIndex).match(/^\s+(\p{L}+)/u)?.[1];
       if (followingWord && IN_PREPOSITION_FOLLOWERS.has(followingWord.toLocaleLowerCase())) continue;
+    }
+    if (BARE_GRAM_TOKENS.has(lowered)) {
+      if (digitBelongsToIncreaseAbbreviation(text, match.index)) continue;
+      if (!hasMassContextAfter(text, pattern.lastIndex)) continue;
     }
     // Report the unit token itself, not the leading whitespace consumed by \s*.
     const start = match.index + match[0].length - raw.length;
