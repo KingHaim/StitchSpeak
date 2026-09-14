@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  NUMBER_FIDELITY_USER_MESSAGE,
   TranslationNumberFidelityError,
+  TranslationUnauditedNumbersError,
   canonicalNumberTokens,
   canonicalUnitTokens,
+  collectUnauditedNumericBlocks,
   enforceTranslatedNumberFidelity,
   extractAlignedSegments,
+  forceAlignmentFromSource,
 } from '../src/services/translationNumberAudit';
 import { externalErrorDetails } from '../src/services/externalDeadline';
 
@@ -188,12 +192,181 @@ describe('translation number fidelity enforcement', () => {
       expect(result.reviewWarnings).toEqual([]);
     });
 
-    it('ignores blocks without data-o alignment', () => {
-      const html = '<p>Monta 999 puntos.</p><p data-seg="1" data-o="">Texto sin fuente 42.</p>';
+    it('ignores prose-only blocks without data-o alignment', () => {
+      const html = '<p>Notas del patrón, sin números.</p><h2>Materiales</h2>';
       const result = enforceTranslatedNumberFidelity(html);
 
       expect(result.html).toBe(html);
       expect(result.reviewWarnings).toEqual([]);
+    });
+  });
+
+  // US6: sacred numbers with no data-o alignment must never ship as a quiet
+  // success — the block is unauditable, so the job hard-fails (or the caller
+  // forces a deterministic alignment first; see forceAlignmentFromSource).
+  describe('hard-fail on unaudited numeric blocks (US6)', () => {
+    it('hard-fails a numeric paragraph with no data-o instead of shipping silently', () => {
+      const html = '<p>Monta 999 puntos.</p>';
+
+      expect(() => enforceTranslatedNumberFidelity(html)).toThrow(TranslationUnauditedNumbersError);
+      expect(() => enforceTranslatedNumberFidelity(html)).toThrow(/no data-o source alignment/);
+      expect(() => enforceTranslatedNumberFidelity(html)).toThrow(/999/);
+      expect(() => enforceTranslatedNumberFidelity(html)).toThrow(/human check/);
+    });
+
+    it('hard-fails a numeric block whose data-o is empty', () => {
+      const html = '<p data-seg="1" data-o="">Texto sin fuente 42.</p>';
+
+      expect(() => enforceTranslatedNumberFidelity(html)).toThrow(TranslationUnauditedNumbersError);
+    });
+
+    it('hard-fails numeric table cells without data-o', () => {
+      const html = '<table><tr><td data-o="Size">Talla</td><td>45.5</td></tr></table>';
+
+      expect(() => enforceTranslatedNumberFidelity(html)).toThrow(TranslationUnauditedNumbersError);
+    });
+
+    it('maps to the same locked 422 human-check response as number drift', () => {
+      let caught: unknown = null;
+      try {
+        enforceTranslatedNumberFidelity('<p>Teje 12 vueltas.</p>');
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(TranslationUnauditedNumbersError);
+      // Subclasses the drift error so every existing instanceof check
+      // (refund path, locked client copy) applies unchanged.
+      expect(caught).toBeInstanceOf(TranslationNumberFidelityError);
+      const details = externalErrorDetails(caught);
+      expect(details.status).toBe(422);
+      expect(details.code).toBe('TRANSLATION_NEEDS_HUMAN_CHECK');
+      expect(details.message).toBe(NUMBER_FIDELITY_USER_MESSAGE);
+      // The technical detail stays server-side.
+      expect(details.message).not.toContain('data-o');
+      expect((caught as Error).message).toContain('data-o');
+    });
+
+    it('allows image and row marker paragraphs, which never carry data-o', () => {
+      const html = '<p>[IMG_1]</p><p>[ROW_2]</p><p>[IMG 3]</p>';
+      const result = enforceTranslatedNumberFidelity(html);
+
+      expect(result.html).toBe(html);
+      expect(result.reviewWarnings).toEqual([]);
+    });
+
+    it('does not count numbers hidden in tag attributes', () => {
+      const html = '<p><img src="/photo-3.png" width="240" alt="IMG_3" /></p>';
+      const result = enforceTranslatedNumberFidelity(html);
+
+      expect(result.html).toBe(html);
+    });
+
+    it('accepts numeric content covered by an audited ancestor block', () => {
+      const html = '<li data-o="Cast on 20 sts."><p>Monta 20 pts.</p></li>';
+      const result = enforceTranslatedNumberFidelity(html);
+
+      expect(result.html).toBe(html);
+      expect(result.reviewWarnings).toEqual([]);
+    });
+
+    it('still audits drift through an audited ancestor covering an unaligned child', () => {
+      const html = '<li data-o="Cast on 20 sts."><p>Monta 22 pts.</p></li>';
+      const result = enforceTranslatedNumberFidelity(html);
+
+      expect(result.html).toContain('Monta 20 pts.');
+      expect(result.reviewWarnings).toHaveLength(1);
+      expect(result.reviewWarnings[0].code).toBe('NUMBER_RESTORED');
+    });
+
+    it('attributes numbers to the innermost unaligned block', () => {
+      const html = '<li>Prosa exterior: <p>20 sts</p></li>';
+
+      expect(collectUnauditedNumericBlocks(html)).toEqual([
+        { tagName: 'p', text: '20 sts', numbers: ['20'] },
+      ]);
+    });
+
+    it('reports each unaudited numeric block with its identity and numbers', () => {
+      const html = `<div>
+        <p>Monta 24 puntos.</p>
+        <p>Solo prosa.</p>
+        <p data-seg="7">Teje 8 vueltas.</p>
+        <table><tr><td data-source-id="src-9">45,5 cm</td></tr></table>
+      </div>`;
+
+      expect(collectUnauditedNumericBlocks(html)).toEqual([
+        { tagName: 'p', text: 'Monta 24 puntos.', numbers: ['24'] },
+        { tagName: 'p', sourceId: 'seg-7', text: 'Teje 8 vueltas.', numbers: ['8'] },
+        { tagName: 'td', dataSourceId: 'src-9', text: '45,5 cm', numbers: ['45.5'] },
+      ]);
+    });
+  });
+
+  describe('force alignment from a known source (US6)', () => {
+    it('injects data-o derived from the annotated source and feeds the normal restore', () => {
+      const html = '<p data-source-id="src-2">Monta 20 (26, 28) puntos.</p>';
+      const forced = forceAlignmentFromSource(
+        html,
+        new Map([['src-2', 'Cast on 20 (24, 28) stitches.']]),
+      );
+
+      expect(forced.forcedCount).toBe(1);
+      expect(forced.html).toContain('data-o="Cast on 20 (24, 28) stitches."');
+
+      // The forced alignment flows through the existing #18 preserve-from-source
+      // restore: the drifted 26 comes back as 24 instead of shipping silently.
+      const result = enforceTranslatedNumberFidelity(forced.html);
+      expect(result.html).toContain('Monta 20 (24, 28) puntos.');
+      expect(result.reviewWarnings).toHaveLength(1);
+      expect(result.reviewWarnings[0].code).toBe('NUMBER_RESTORED');
+    });
+
+    it('replaces an empty data-o instead of duplicating the attribute', () => {
+      const html = '<p data-source-id="src-3" data-o="">Teje 8 vueltas.</p>';
+      const forced = forceAlignmentFromSource(html, new Map([['src-3', 'Knit 8 rows.']]));
+
+      expect(forced.forcedCount).toBe(1);
+      expect(forced.html).toBe('<p data-source-id="src-3" data-o="Knit 8 rows.">Teje 8 vueltas.</p>');
+      expect(enforceTranslatedNumberFidelity(forced.html).reviewWarnings).toEqual([]);
+    });
+
+    it('escapes source text safely into the attribute', () => {
+      const html = '<p data-source-id="src-4">Monta 10 "20" puntos &amp; más.</p>';
+      const forced = forceAlignmentFromSource(html, new Map([['src-4', 'Cast on 10 "20" sts & more.']]));
+
+      expect(forced.html).toContain('data-o="Cast on 10 &quot;20&quot; sts &amp; more."');
+      expect(enforceTranslatedNumberFidelity(forced.html).reviewWarnings).toEqual([]);
+    });
+
+    it('strips [IMG_N] markers from the derived source text', () => {
+      const html = '<p data-source-id="src-5">Monta 20 pts.</p>';
+      const forced = forceAlignmentFromSource(html, new Map([['src-5', 'Cast on 20 sts. [IMG_3]']]));
+
+      expect(forced.html).toContain('data-o="Cast on 20 sts."');
+      expect(enforceTranslatedNumberFidelity(forced.html).reviewWarnings).toEqual([]);
+    });
+
+    it('never invents alignment: an unknown data-source-id stays unaligned and hard-fails', () => {
+      const forced = forceAlignmentFromSource(
+        '<p data-source-id="src-404">Teje 12 vueltas.</p>',
+        new Map(),
+      );
+
+      expect(forced.forcedCount).toBe(0);
+      expect(() => enforceTranslatedNumberFidelity(forced.html)).toThrow(TranslationUnauditedNumbersError);
+    });
+
+    it('leaves prose-only and already-aligned blocks untouched', () => {
+      const html = '<p data-source-id="src-1">Sin números.</p>'
+        + '<p data-source-id="src-2" data-o="Knit 8 rows.">Teje 8 vueltas.</p>';
+      const forced = forceAlignmentFromSource(
+        html,
+        new Map([['src-1', 'No numbers.'], ['src-2', 'Knit 8 rows.']]),
+      );
+
+      expect(forced.forcedCount).toBe(0);
+      expect(forced.html).toBe(html);
     });
   });
 
