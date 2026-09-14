@@ -15,9 +15,11 @@ import { ExternalServiceTimeoutError } from '../src/services/externalDeadline';
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stitchspeak-translate-stream-test-'));
 process.env.DATA_DIR = dataDir;
-// US9: shrink the quiet-stream status keep-alive interval so tests can observe
-// it without waiting the production ~20s.
+// US9 AC2: shrink the quiet-stream status keep-alive interval so tests can
+// observe it without waiting the production ~20s.
 process.env.TRANSLATE_STATUS_KEEPALIVE_MS = '40';
+// US9 AC3: the direct origin advertised for rewrite-bypass streaming.
+process.env.TRANSLATE_DIRECT_ORIGIN = 'https://stitchspeak-production.up.railway.app';
 
 const mocks = vi.hoisted(() => ({
   translatePattern: vi.fn(),
@@ -93,7 +95,7 @@ beforeEach(() => {
 });
 
 async function postStreamingTranslate(
-  options: { streamFinalChunks?: boolean } = {},
+  options: { streamFinalChunks?: boolean; authorization?: string; expectStatus?: number } = {},
 ): Promise<Array<Record<string, unknown>>> {
   const form = new FormData();
   form.append(
@@ -107,10 +109,13 @@ async function postStreamingTranslate(
 
   const response = await fetch(`${base}/api/translate`, {
     method: 'POST',
-    headers: { accept: 'application/x-ndjson' },
+    headers: {
+      accept: 'application/x-ndjson',
+      ...(options.authorization ? { authorization: options.authorization } : {}),
+    },
     body: form,
   });
-  expect(response.status).toBe(200);
+  expect(response.status).toBe(options.expectStatus ?? 200);
   const text = await response.text();
   return text.trim().split('\n').map((line) => JSON.parse(line));
 }
@@ -197,8 +202,8 @@ describe('US8 AC1: translate NDJSON stream terminal-event guarantee', () => {
   });
 });
 
-describe('US9: terminal flush ordering and quiet-stream keep-alive', () => {
-  it('opted-in clients get the final HTML as bounded `final` chunks, then a small terminal `done` last', async () => {
+describe('US9 AC1/AC2: terminal flush ordering and quiet-stream keep-alive', () => {
+  it('US9 AC1: opted-in clients get the final HTML as bounded `final` chunks, then a small terminal `done` last', async () => {
     // Larger than one 64 KiB chunk so the payload must split — the shape a
     // base64-image-inlined result takes in production.
     const bigHtml = `<p>Monta ${'x'.repeat(150_000)} 20 puntos.</p>`;
@@ -227,7 +232,7 @@ describe('US9: terminal flush ordering and quiet-stream keep-alive', () => {
     expect(mocks.settlePendingCharge).toHaveBeenCalledWith('charge-1');
   });
 
-  it('clients that do not opt in keep receiving the full HTML inline on `done`', async () => {
+  it('US9 AC1: clients that do not opt in keep receiving the full HTML inline on `done`', async () => {
     mocks.translatePattern.mockResolvedValue({ html: '<p>ok</p>', usage: null, reviewWarnings: [] });
     const events = await postStreamingTranslate();
     const last = events[events.length - 1];
@@ -237,7 +242,7 @@ describe('US9: terminal flush ordering and quiet-stream keep-alive', () => {
     expect(last.html).toBe('<p>ok</p>');
   });
 
-  it('a long quiet phase (recovery/verifier) emits keep-alive `status` ticks so proxies never see an idle stream', async () => {
+  it('US9 AC2: a long quiet phase (recovery/verifier) emits keep-alive `status` ticks so proxies never see an idle stream', async () => {
     mocks.translatePattern.mockImplementation(async () => {
       // No deltas or statuses at all — the worst case: a stream that would
       // otherwise be silent until the terminal event.
@@ -257,5 +262,64 @@ describe('US9: terminal flush ordering and quiet-stream keep-alive', () => {
       expect(tick.message as string).not.toMatch(/\bAI\b/);
     }
     expect(events[events.length - 1].type).toBe('done');
+  });
+});
+
+describe('US9 AC3: stream-token bypass of the Vercel 120s proxied-rewrite cap', () => {
+  it('mints a short-lived stream token and advertises the direct origin over the same-origin path', async () => {
+    const response = await fetch(`${base}/api/translate/stream-token`, { method: 'POST' });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+
+    expect(typeof body.token).toBe('string');
+    expect(body.token.startsWith('sst_')).toBe(true);
+    expect(body.expiresInSeconds).toBe(300);
+    expect(body.directOrigin).toBe('https://stitchspeak-production.up.railway.app');
+  });
+
+  it('the translate stream accepts the minted token as its Bearer credential (direct call, no cookie)', async () => {
+    const { createTranslationStreamToken } = await import('../src/services/translationStreamToken');
+    const token = createTranslationStreamToken('user-direct-stream', 'google');
+    mocks.translatePattern.mockResolvedValue({ html: '<p>ok</p>', usage: null, reviewWarnings: [] });
+
+    const events = await postStreamingTranslate({ authorization: `Bearer ${token}` });
+
+    expect(events[events.length - 1].type).toBe('done');
+    // The job was billed to the token's subject — proof the token (not the
+    // mocked cookie/session auth) authenticated the direct call.
+    expect(mocks.chargeCreditsForJob).toHaveBeenCalledWith('user-direct-stream', 5, 'translation');
+  });
+
+  it('rejects a tampered stream token with 401 before any billing happens', async () => {
+    const { createTranslationStreamToken } = await import('../src/services/translationStreamToken');
+    const token = createTranslationStreamToken('user-direct-stream', 'google');
+    const tampered = `${token.slice(0, -4)}XXXX`;
+
+    const events = await postStreamingTranslate({
+      authorization: `Bearer ${tampered}`,
+      expectStatus: 401,
+    });
+
+    expect(typeof events[0].error).toBe('string');
+    expect(mocks.chargeCreditsForJob).not.toHaveBeenCalled();
+  });
+
+  it('rejects an expired stream token with 401', async () => {
+    const { createTranslationStreamToken, TRANSLATION_STREAM_TOKEN_TTL_MS } = await import(
+      '../src/services/translationStreamToken'
+    );
+    const expired = createTranslationStreamToken(
+      'user-direct-stream',
+      'google',
+      Date.now() - TRANSLATION_STREAM_TOKEN_TTL_MS - 1000,
+    );
+
+    const events = await postStreamingTranslate({
+      authorization: `Bearer ${expired}`,
+      expectStatus: 401,
+    });
+
+    expect(typeof events[0].error).toBe('string');
+    expect(mocks.chargeCreditsForJob).not.toHaveBeenCalled();
   });
 });

@@ -14,12 +14,20 @@ import {
 } from '../services/translationLeaseStore.js';
 import { recordAiProcessingAcknowledgement } from '../services/legalAcknowledgementStore.js';
 import { getTranslationMemoryForPrompt } from '../services/translationMemoryStore.js';
+import {
+  createTranslationStreamToken,
+  isTranslationStreamToken,
+  translationStreamDirectOrigin,
+  TRANSLATION_STREAM_TOKEN_TTL_MS,
+  verifyTranslationStreamToken,
+} from '../services/translationStreamToken.js';
 
 const router = Router();
 
 // Translation invokes Gemini on uploaded documents — the most expensive call in
 // the app. Cap per user/IP to contain cost and quota-exhaustion abuse.
 const translateRateLimit = rateLimit({ windowMs: 60_000, max: 20, name: 'translate' });
+const streamTokenRateLimit = rateLimit({ windowMs: 60_000, max: 30, name: 'translate-stream-token' });
 
 const NDJSON_CONTENT_TYPE = 'application/x-ndjson';
 
@@ -68,7 +76,45 @@ function uploadPatternSafe(req: Request, res: Response, next: NextFunction): voi
   });
 }
 
-router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req: Request, res: Response) => {
+// US9 AC3: auth for the translate stream itself. A short-lived stream token
+// (minted below over the same-origin rewrite) authenticates the direct-to-
+// Railway call that bypasses Vercel's 120s proxied-rewrite cap; every other
+// credential falls through to the regular auth middleware.
+function requireTranslateAuth(req: Request, res: Response, next: NextFunction): void {
+  const header = req.headers.authorization;
+  if (header?.startsWith('Bearer ') && isTranslationStreamToken(header.slice(7))) {
+    const claims = verifyTranslationStreamToken(header.slice(7));
+    if (!claims) {
+      res.status(401).json({
+        error: 'Your translation session expired. Please start the translation again.',
+      });
+      return;
+    }
+    const authenticated = req as AuthenticatedRequest;
+    authenticated.userSub = claims.sub;
+    authenticated.identityProvider = claims.identityProvider;
+    authenticated.emailVerified = false;
+    next();
+    return;
+  }
+  void requireAuth(req, res, next);
+}
+
+// US9 AC3 bypass, step 1: mint a short-lived, single-purpose stream token over
+// the same-origin rewrite (where HttpOnly cookie auth works). The client then
+// starts the long-running NDJSON stream directly against `directOrigin`, out
+// of reach of Vercel's documented 120s proxied-request maximum. When no direct
+// origin is configured the client keeps using the rewrite (status quo).
+router.post('/stream-token', requireAuth, streamTokenRateLimit, (req: Request, res: Response) => {
+  const { userSub, identityProvider } = req as AuthenticatedRequest;
+  res.json({
+    token: createTranslationStreamToken(userSub, identityProvider),
+    expiresInSeconds: Math.floor(TRANSLATION_STREAM_TOKEN_TTL_MS / 1000),
+    directOrigin: translationStreamDirectOrigin(),
+  });
+});
+
+router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, async (req: Request, res: Response) => {
   const { userSub } = req as AuthenticatedRequest;
   const file = req.file;
   const language = req.body?.language;
