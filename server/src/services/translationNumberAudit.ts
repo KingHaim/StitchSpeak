@@ -207,6 +207,22 @@ function normalizeVulgarFractions(text: string): string {
     .replace(/[½¼¾⅛⅜⅝⅞]/g, (fraction) => `0${VULGAR_FRACTIONS[fraction]}`);
 }
 
+/**
+ * Gauge/dimension separators ("10 x 10 cm", "10×10", "22 sts * 30 rows") are
+ * layout, not numbers (CTO brief): an x ↔ × ↔ * respelling between two
+ * numbers must never register as drift, so they collapse to whitespace before
+ * token extraction. Only separators BETWEEN digits are touched — "repeat 2x
+ * more" keeps its multiplier untouched.
+ */
+function normalizeGaugeSeparators(text: string): string {
+  return text.replace(/(?<=\d)\s*[x×*]\s*(?=\d)/gi, ' ');
+}
+
+/** Shared pre-tokenization normalization for numbers, units, and skeletons. */
+function normalizeTokenText(text: string): string {
+  return normalizeGaugeSeparators(normalizeVulgarFractions(text));
+}
+
 // Mirrors extractProtectedNumbers in gemini.ts: plain numbers with optional
 // decimal part, optional dash range, optional fraction suffix.
 const NUMBER_TOKEN_SOURCE = '\\d+(?:[.,]\\d+)?(?:\\s*[‐‑‒–—-]\\s*\\d+(?:[.,]\\d+)?)?(?:\\/\\d+(?:[.,]\\d+)?)?';
@@ -241,7 +257,7 @@ function canonicalNumberToken(token: string): string {
 
 /** Canonical numeric token sequence of a text. */
 export function canonicalNumberTokens(text: string): string[] {
-  return numberMatches(normalizeVulgarFractions(text)).map((match) => canonicalNumberToken(match.raw));
+  return numberMatches(normalizeTokenText(text)).map((match) => canonicalNumberToken(match.raw));
 }
 
 // Localized spellings collapse to one canonical unit so "10\"" vs "10 in" vs
@@ -366,7 +382,7 @@ function unitMatches(text: string): UnitMatch[] {
 
 /** Canonical measurement-unit sequence of a text. */
 export function canonicalUnitTokens(text: string): string[] {
-  return unitMatches(normalizeVulgarFractions(text)).map((match) => match.canonical);
+  return unitMatches(normalizeTokenText(text)).map((match) => match.canonical);
 }
 
 function displaySequence(tokens: string[]): string {
@@ -411,7 +427,7 @@ function hasDrift(prints: SegmentFingerprints): boolean {
  * 1:1 token mapping does not exist.
  */
 function restoreSegmentInnerHtml(segment: PositionedSegment, prints: SegmentFingerprints): string | null {
-  const sourceNumberTokens = numberMatches(normalizeVulgarFractions(segment.sourceText));
+  const sourceNumberTokens = numberMatches(normalizeTokenText(segment.sourceText));
 
   // Split into text/tag parts so replacements can never touch markup.
   const parts = segment.innerHtml.split(/(<[^>]*>)/);
@@ -549,7 +565,7 @@ export interface UnrestorableNumberDrift {
 /** Locked numeric skeleton of a source text: raw number tokens + canonical units. */
 export function sourceNumberSkeleton(sourceText: string): { numbers: string[]; units: string[] } {
   return {
-    numbers: numberMatches(normalizeVulgarFractions(sourceText)).map((match) => match.raw),
+    numbers: numberMatches(normalizeTokenText(sourceText)).map((match) => match.raw),
     units: canonicalUnitTokens(sourceText),
   };
 }
@@ -843,11 +859,20 @@ function capWarnings(
  * The exact NUMBER_UNRESTORABLE warning set (capped) for a list of drifts.
  * Shared by the enforcement pass and the US7 post-translate verifier, which
  * re-emits warnings only for the segments whose verdict stayed KEEP.
+ *
+ * CTO-brief invariant, enforced at this single choke point before anything is
+ * emitted: a segment whose translated number AND unit token lists already
+ * match the source skeleton is CLEAR by definition — it can never surface as
+ * an unrestorable warning (or later stay KEEP), no matter how it was flagged
+ * upstream.
  */
 export function buildUnrestorableDriftWarnings(
   drifts: UnrestorableNumberDrift[],
 ): TranslationTopologyWarning[] {
-  return capWarnings(drifts.map(unrestorableDriftWarning), (extra) => ({
+  const loud = drifts.filter(
+    (drift) => !textMatchesNumberSkeleton(drift.sourceText, drift.translatedText),
+  );
+  return capWarnings(loud.map(unrestorableDriftWarning), (extra) => ({
     code: 'NUMBER_UNRESTORABLE',
     message: `${extra} more segment${extra === 1 ? '' : 's'} had translated numbers that do not match the source — review them against the original pattern.`,
   }));

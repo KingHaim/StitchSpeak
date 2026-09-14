@@ -221,6 +221,19 @@ interface VerifierStep {
 }
 
 /**
+ * The drift that may stay loud: segments the deterministic audit still flags
+ * AND whose translated token lists genuinely fail the source skeleton. The
+ * explicit skeleton gate mirrors buildUnrestorableDriftWarnings — identical
+ * token lists are CLEAR by definition (CTO brief) and are never sent to a
+ * model, never billed, and never kept.
+ */
+function residualNumberDrift(html: string): UnrestorableNumberDrift[] {
+  return collectUnrestorableNumberDrift(html).filter(
+    (drift) => !textMatchesNumberSkeleton(drift.sourceText, drift.translatedText),
+  );
+}
+
+/**
  * Verify the still-flagged NUMBER_UNRESTORABLE segments of a finished job and
  * quiet the review strip: CLEAR and gate-passing FIX verdicts drop their
  * warnings (FIX also splices the corrected text into the document); KEEP —
@@ -240,18 +253,20 @@ export async function verifyResidualNumberWarnings(
   reviewWarnings: TranslationTopologyWarning[],
   options: VerifyResidualNumberWarningsOptions,
 ): Promise<NumberVerifyResult> {
-  // Flagged input = drifted data-o-aligned segments only. Unaudited blocks
-  // (no source) are KEEP by definition and never reach a model.
-  let flagged = collectUnrestorableNumberDrift(html);
+  // Flagged input = drifted data-o-aligned segments whose token lists still
+  // fail the source skeleton (CTO brief: identical lists are CLEAR by
+  // definition and never reach a model or stay KEEP). Unaudited blocks (no
+  // source) are KEEP by definition and never reach a model.
+  let flagged = residualNumberDrift(html);
 
   // Deterministic pre-verdict reconciliation: a NUMBER_UNRESTORABLE warning
   // may only stay loud while the delivered document still fails the
   // deterministic audit for its segment. A flagged segment whose current
   // number/unit token lists are identical to the source skeleton (locale
-  // formatting and localized unit spellings are canonicalized away) is CLEAR
-  // by definition — its stale warning drops right here, before any model
-  // verdict and at zero model cost. Only segments the audit still fails can
-  // ever reach a model or stay KEEP.
+  // formatting, localized unit spellings, and gauge separators are
+  // canonicalized away) is CLEAR by definition — its stale warning drops
+  // right here, before any model verdict and at zero model cost. Only
+  // segments the audit still fails can ever reach a model or stay KEEP.
   const settledWarnings: TranslationTopologyWarning[] = [
     ...reviewWarnings.filter((warning) => warning.code !== 'NUMBER_UNRESTORABLE'),
     ...buildUnrestorableDriftWarnings(flagged),
@@ -345,13 +360,13 @@ export async function verifyResidualNumberWarnings(
     // Re-audit so every FIX is re-verified end-to-end before its warning may
     // drop; whatever still drifts (minus CLEARed segments) goes to the next
     // step or stays KEEP.
-    flagged = collectUnrestorableNumberDrift(working).filter((drift) => !cleared.has(drift.key));
+    flagged = residualNumberDrift(working).filter((drift) => !cleared.has(drift.key));
   }
 
   // Nothing verified and nothing spent → keep the reconciled settled warnings.
   if (spentCredits === 0 && cleared.size === 0 && working === html) return unchanged;
 
-  const residual = collectUnrestorableNumberDrift(working)
+  const residual = residualNumberDrift(working)
     .filter((drift) => !cleared.has(drift.key));
   if (residual.length > 0) {
     console.warn(
