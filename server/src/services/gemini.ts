@@ -20,6 +20,7 @@ import {
   sanitizeMarkdownArtifactsInHtml,
 } from './translationSanitizers.js';
 import { enforceTranslatedNumberFidelity } from './translationNumberAudit.js';
+import { auditTranslatedGlossary, buildGlossaryPromptSection } from './translationGlossary.js';
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -116,7 +117,17 @@ const TITLE_REPAIR_MODEL = 'gemini-3.5-flash';
 // latency and reliably lands inside the timeout window.
 const TRANSLATION_THINKING_CONFIG = { thinkingLevel: ThinkingLevel.LOW } as const;
 
-function getLanguageSpecificRules(language: string): string {
+function getLanguageSpecificRules(language: string, sourceLanguage?: string): string {
+  const handcrafted = getHandcraftedLanguageRules(language);
+  // Locked terminology bank (US2): the full StitchSpeak glossary for this
+  // language pair rides along with every translate prompt so freestyle craft
+  // terms never replace a locked equivalent. Handcrafted native-reviewed rules
+  // above stay authoritative where they overlap.
+  const glossaryBank = buildGlossaryPromptSection(language, sourceLanguage);
+  return [handcrafted, glossaryBank].filter(Boolean).join('\n\n');
+}
+
+function getHandcraftedLanguageRules(language: string): string {
   const normalized = language.toLowerCase();
   if (normalized === 'spanish') {
     return `
@@ -1188,7 +1199,7 @@ const localizedQaRepairSchema = {
   required: ['repairs', 'manualReview'],
 };
 export const createSystemInstruction = (language: string, sourceLanguage?: string) => {
-  const specificRules = getLanguageSpecificRules(language);
+  const specificRules = getLanguageSpecificRules(language, sourceLanguage);
 
   const sourceClause = sourceLanguage
     ? `The source pattern is written in ${sourceLanguage}. `
@@ -1626,6 +1637,11 @@ function finalizeTranslatedHtml(
     finalized = normalizeSpanishMeasurementsInHtml(finalized);
   }
   const artifacts = findMarkdownArtifacts(finalized);
+  // Locked-glossary post-check (US2): warn when English craft terms with a
+  // locked equivalent survive into the translation, or when an English target
+  // freestyle-mixes US/UK variants. Warn-only by design — see
+  // translationGlossary.ts for why this never hard-fails like number drift.
+  const glossaryWarnings = auditTranslatedGlossary(finalized, language);
   return {
     html: finalized,
     reviewWarnings: [
@@ -1634,6 +1650,7 @@ function finalizeTranslatedHtml(
         message: `A Markdown artifact (${artifact}) remains and needs manual review.`,
       })),
       ...numberFidelity.reviewWarnings,
+      ...glossaryWarnings,
     ],
   };
 }
@@ -1980,7 +1997,7 @@ async function translatePdf(
 }
 
 export const createDocumentSystemInstruction = (language: string, sourceLanguage?: string) => {
-  const specificRules = getLanguageSpecificRules(language);
+  const specificRules = getLanguageSpecificRules(language, sourceLanguage);
   const sourceClause = sourceLanguage
     ? `The source pattern is written in ${sourceLanguage}. `
     : 'Auto-detect the source language of the pattern. ';
@@ -2336,7 +2353,7 @@ export async function glossaryLookup(
   sourceLang: string,
   targetLang: string,
 ): Promise<GlossaryTermResult> {
-  const targetLanguageRules = getLanguageSpecificRules(targetLang);
+  const targetLanguageRules = getLanguageSpecificRules(targetLang, sourceLang);
   const prompt = `You are a multilingual knitting and crochet terminology expert.
 
 Translate the following knitting/crochet term from ${sourceLang} to ${targetLang}.
