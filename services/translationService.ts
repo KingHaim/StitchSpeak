@@ -173,11 +173,25 @@ interface NdjsonDeltaEvent {
 
 interface NdjsonDoneEvent {
   type: 'done';
-  html: string;
+  /** Full final HTML — present unless the server streamed it as `final` chunks. */
+  html?: string;
+  /** True when the final HTML arrived as `final` chunk events before `done`. */
+  htmlChunked?: boolean;
   usage: TranslationResult['usage'];
   cost?: number;
   balance?: number;
   reviewWarnings?: TranslationResult['reviewWarnings'];
+}
+
+/**
+ * A bounded slice of the settled final HTML. The server streams the (possibly
+ * multi-megabyte, image-inlined) result as these chunks followed by a small
+ * terminal `done`, so the terminal event is never one huge late write that a
+ * proxy can cut mid-flight.
+ */
+interface NdjsonFinalEvent {
+  type: 'final';
+  chunk: string;
 }
 
 interface NdjsonErrorEvent {
@@ -194,7 +208,12 @@ interface NdjsonStatusEvent {
   message: string;
 }
 
-type NdjsonEvent = NdjsonDeltaEvent | NdjsonDoneEvent | NdjsonErrorEvent | NdjsonStatusEvent;
+type NdjsonEvent =
+  | NdjsonDeltaEvent
+  | NdjsonDoneEvent
+  | NdjsonErrorEvent
+  | NdjsonStatusEvent
+  | NdjsonFinalEvent;
 
 /**
  * Streaming variant of translatePattern. Sends `Accept: application/x-ndjson`
@@ -232,6 +251,49 @@ export const translatePatternStream = async (
   }
 };
 
+interface StreamTarget {
+  url: string;
+  headers: Record<string, string>;
+}
+
+/**
+ * US9 AC3: where to send the long-running translate stream. The Vercel rewrite
+ * that proxies `/api/*` to Railway has a documented 120-second maximum that
+ * cannot cover a ~4-minute translation, so the client first mints a short-lived
+ * stream token over the rewrite (fast; HttpOnly cookie auth works same-origin)
+ * and, when the server advertises a direct origin, streams straight against it
+ * with the token as the Bearer credential. Any failure here — older server
+ * without the endpoint, no direct origin configured, network hiccup — falls
+ * back to the same-origin rewrite exactly as before.
+ */
+const resolveStreamTarget = async (idToken: string | null): Promise<StreamTarget> => {
+  const fallback: StreamTarget = { url: apiUrl('/translate'), headers: authHeaders(idToken) };
+  try {
+    const response = await fetch(apiUrl('/translate/stream-token'), {
+      method: 'POST',
+      headers: authHeaders(idToken),
+      credentials: 'include',
+    });
+    if (!response.ok) return fallback;
+    const data = await response.json().catch(() => null);
+    const token = typeof data?.token === 'string' ? data.token : null;
+    const directOrigin =
+      typeof data?.directOrigin === 'string' && /^https?:\/\//.test(data.directOrigin)
+        ? data.directOrigin.replace(/\/+$/, '')
+        : null;
+    if (token && directOrigin) {
+      return {
+        url: `${directOrigin}/api/translate`,
+        headers: { Authorization: `Bearer ${token}` },
+      };
+    }
+  } catch {
+    // Token minting is best-effort; the rewrite path still works for jobs
+    // that finish inside the proxy window.
+  }
+  return fallback;
+};
+
 const translatePatternStreamInner = async (
   file: File,
   language: string,
@@ -246,13 +308,18 @@ const translatePatternStreamInner = async (
     formData.append('sourceLanguage', sourceLanguage);
   }
   formData.append('aiAcknowledged', 'true');
+  // Ask the server to deliver the final HTML as bounded `final` chunk events
+  // followed by a small terminal `done` (US9). Older servers ignore the flag
+  // and keep sending the full HTML inline on `done`.
+  formData.append('streamFinalChunks', 'true');
 
+  const target = await resolveStreamTarget(idToken);
   const response = await checkedFetch(
-    apiUrl('/translate'),
+    target.url,
     {
       method: 'POST',
       headers: {
-        ...authHeaders(idToken),
+        ...target.headers,
         Accept: 'application/x-ndjson',
       },
       body: formData,
@@ -282,6 +349,7 @@ const translatePatternStreamInner = async (
 
   let buffer = '';
   let accumulated = '';
+  let finalHtmlChunks = '';
   let finalResult: TranslationResult | null = null;
   let streamError: NdjsonErrorEvent | null = null;
 
@@ -294,9 +362,20 @@ const translatePatternStreamInner = async (
         callbacks.onDelta?.(text, accumulated);
         return;
       }
+      case 'final': {
+        if (typeof event.chunk === 'string') finalHtmlChunks += event.chunk;
+        return;
+      }
       case 'done': {
+        // The final HTML arrives either inline on `done` (older servers) or as
+        // the `final` chunks streamed just before it. An empty result in both
+        // is treated like a missing `done`: never a silent empty success.
+        const html = typeof event.html === 'string' && event.html.length > 0
+          ? event.html
+          : finalHtmlChunks;
+        if (html.length === 0) return;
         finalResult = {
-          html: event.html,
+          html,
           usage: event.usage ?? null,
           cost: event.cost,
           balance: event.balance,

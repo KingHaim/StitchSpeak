@@ -1,3 +1,4 @@
+import { once } from 'node:events';
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { uploadPattern } from '../middleware/upload.js';
@@ -13,14 +14,41 @@ import {
 } from '../services/translationLeaseStore.js';
 import { recordAiProcessingAcknowledgement } from '../services/legalAcknowledgementStore.js';
 import { getTranslationMemoryForPrompt } from '../services/translationMemoryStore.js';
+import {
+  createTranslationStreamToken,
+  isTranslationStreamToken,
+  translationStreamDirectOrigin,
+  TRANSLATION_STREAM_TOKEN_TTL_MS,
+  verifyTranslationStreamToken,
+} from '../services/translationStreamToken.js';
 
 const router = Router();
 
 // Translation invokes Gemini on uploaded documents — the most expensive call in
 // the app. Cap per user/IP to contain cost and quota-exhaustion abuse.
 const translateRateLimit = rateLimit({ windowMs: 60_000, max: 20, name: 'translate' });
+const streamTokenRateLimit = rateLimit({ windowMs: 60_000, max: 30, name: 'translate-stream-token' });
 
 const NDJSON_CONTENT_TYPE = 'application/x-ndjson';
+
+// US9: the terminal `done` payload can be huge (final HTML with base64-inlined
+// images). Clients that opt in receive it as bounded `final` chunk events
+// followed by a small terminal `done`, so the terminal event itself is never a
+// single multi-megabyte write racing a proxy cut.
+const FINAL_HTML_CHUNK_CHARS = 64 * 1024;
+
+// US9 keep-alive: during long recovery/verifier phases nothing substantive
+// flows for minutes. On top of the tiny `ping` heartbeat, emit a user-visible
+// `status` tick whenever the stream has been quiet for this long, so proxies
+// see regular traffic and the user sees the job is alive. Env override exists
+// for tests only.
+const STATUS_KEEPALIVE_MS = (() => {
+  const raw = Number(process.env.TRANSLATE_STATUS_KEEPALIVE_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 20_000;
+})();
+
+const STATUS_KEEPALIVE_MESSAGE =
+  'Still working on your translation — large patterns can take a few minutes.';
 
 // Every refunded failure tells the user their credits came back. Number-
 // fidelity issues no longer fail jobs (Jaime override): they surface as
@@ -48,7 +76,45 @@ function uploadPatternSafe(req: Request, res: Response, next: NextFunction): voi
   });
 }
 
-router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req: Request, res: Response) => {
+// US9 AC3: auth for the translate stream itself. A short-lived stream token
+// (minted below over the same-origin rewrite) authenticates the direct-to-
+// Railway call that bypasses Vercel's 120s proxied-rewrite cap; every other
+// credential falls through to the regular auth middleware.
+function requireTranslateAuth(req: Request, res: Response, next: NextFunction): void {
+  const header = req.headers.authorization;
+  if (header?.startsWith('Bearer ') && isTranslationStreamToken(header.slice(7))) {
+    const claims = verifyTranslationStreamToken(header.slice(7));
+    if (!claims) {
+      res.status(401).json({
+        error: 'Your translation session expired. Please start the translation again.',
+      });
+      return;
+    }
+    const authenticated = req as AuthenticatedRequest;
+    authenticated.userSub = claims.sub;
+    authenticated.identityProvider = claims.identityProvider;
+    authenticated.emailVerified = false;
+    next();
+    return;
+  }
+  void requireAuth(req, res, next);
+}
+
+// US9 AC3 bypass, step 1: mint a short-lived, single-purpose stream token over
+// the same-origin rewrite (where HttpOnly cookie auth works). The client then
+// starts the long-running NDJSON stream directly against `directOrigin`, out
+// of reach of Vercel's documented 120s proxied-request maximum. When no direct
+// origin is configured the client keeps using the rewrite (status quo).
+router.post('/stream-token', requireAuth, streamTokenRateLimit, (req: Request, res: Response) => {
+  const { userSub, identityProvider } = req as AuthenticatedRequest;
+  res.json({
+    token: createTranslationStreamToken(userSub, identityProvider),
+    expiresInSeconds: Math.floor(TRANSLATION_STREAM_TOKEN_TTL_MS / 1000),
+    directOrigin: translationStreamDirectOrigin(),
+  });
+});
+
+router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, async (req: Request, res: Response) => {
   const { userSub } = req as AuthenticatedRequest;
   const file = req.file;
   const language = req.body?.language;
@@ -146,9 +212,36 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders?.();
 
+  // US9: new clients ask for the final HTML as bounded chunk events instead of
+  // one giant terminal line. Old clients that don't send the flag keep getting
+  // the full HTML inline on `done` (no version-skew breakage either way).
+  const wantsChunkedFinal = req.body?.streamFinalChunks === 'true';
+
+  // Timestamp of the last substantive event (delta/status/final/done). The
+  // keep-alive status tick below only fires when the stream has been quiet.
+  let lastSubstantiveEventAt = Date.now();
+
   const writeEvent = (event: Record<string, unknown>): void => {
     if (res.writableEnded || res.destroyed) return;
     res.write(`${JSON.stringify(event)}\n`);
+  };
+
+  const writeSubstantiveEvent = (event: Record<string, unknown>): void => {
+    lastSubstantiveEventAt = Date.now();
+    writeEvent(event);
+  };
+
+  // Backpressure-aware write for the large end-of-job payload: when the socket
+  // buffer is full, wait for it to drain (or the connection to die) before
+  // writing more, so the whole settled result is flushed toward the client as
+  // fast as the connection allows — never parked in memory behind res.end().
+  const writeEventFlushed = async (event: Record<string, unknown>): Promise<void> => {
+    if (res.writableEnded || res.destroyed) return;
+    lastSubstantiveEventAt = Date.now();
+    const ok = res.write(`${JSON.stringify(event)}\n`);
+    if (!ok && !res.destroyed) {
+      await Promise.race([once(res, 'drain'), once(res, 'close')]);
+    }
   };
 
   // Best-effort: detect a real client disconnect so we can stop pushing deltas.
@@ -174,6 +267,20 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
     writeEvent({ type: 'ping', t: Date.now() });
   }, HEARTBEAT_MS);
 
+  // US9 keep-alive status ticks: long recovery/verifier phases can go minutes
+  // without a delta. When the stream has been quiet, emit a user-visible
+  // `status` event so intermediaries keep seeing meaningful traffic and the
+  // client can show that the job is still alive.
+  const statusKeepalive = setInterval(() => {
+    if (clientGone || res.writableEnded || res.destroyed) return;
+    if (Date.now() - lastSubstantiveEventAt < STATUS_KEEPALIVE_MS) return;
+    writeSubstantiveEvent({
+      type: 'status',
+      stage: 'working',
+      message: STATUS_KEEPALIVE_MESSAGE,
+    });
+  }, STATUS_KEEPALIVE_MS);
+
   // Hard guarantee: every streaming path ends with a terminal NDJSON event —
   // `done` or `error` — before the socket closes, never a silent drop. The
   // success and failure paths below set this flag; the finally block emits a
@@ -192,27 +299,57 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
         recoveryBudgetCredits: cost,
         onDelta: (text) => {
           if (clientGone) return;
-          writeEvent({ type: 'delta', text });
+          writeSubstantiveEvent({ type: 'delta', text });
         },
         // Surface recovery-ladder progress ("retrying with stricter number
         // lock…") so the client can show it instead of a silent stall.
         onStatus: (status) => {
           if (clientGone) return;
-          writeEvent({ type: 'status', stage: status.stage, message: status.message });
+          writeSubstantiveEvent({ type: 'status', stage: status.stage, message: status.message });
         },
       },
       file.originalname,
     );
     if (chargeId) settlePendingCharge(chargeId);
     if (!clientGone) {
-      writeEvent({
-        type: 'done',
-        html: result.html,
-        usage: result.usage,
-        reviewWarnings: result.reviewWarnings,
-        cost,
-        balance,
-      });
+      // US9: flush the settled result the moment translate+verifier finish.
+      if (wantsChunkedFinal) {
+        // The final HTML goes out as bounded `final` chunks with backpressure
+        // honored, so bytes flow steadily while it drains and the terminal
+        // `done` line itself stays tiny — it can't be a single multi-megabyte
+        // write left racing an idle cut.
+        writeSubstantiveEvent({
+          type: 'status',
+          stage: 'delivering',
+          message: 'Delivering the translated pattern…',
+        });
+        for (let offset = 0; offset < result.html.length; offset += FINAL_HTML_CHUNK_CHARS) {
+          if (clientGone) break;
+          await writeEventFlushed({
+            type: 'final',
+            chunk: result.html.slice(offset, offset + FINAL_HTML_CHUNK_CHARS),
+          });
+        }
+        if (!clientGone) {
+          await writeEventFlushed({
+            type: 'done',
+            htmlChunked: true,
+            usage: result.usage,
+            reviewWarnings: result.reviewWarnings,
+            cost,
+            balance,
+          });
+        }
+      } else {
+        await writeEventFlushed({
+          type: 'done',
+          html: result.html,
+          usage: result.usage,
+          reviewWarnings: result.reviewWarnings,
+          cost,
+          balance,
+        });
+      }
     }
     terminalEventSent = true;
     res.end();
@@ -244,6 +381,7 @@ router.post('/', requireAuth, translateRateLimit, uploadPatternSafe, async (req:
     res.end();
   } finally {
     clearInterval(heartbeat);
+    clearInterval(statusKeepalive);
     // Last-resort terminal event: no stream may ever close without `done` or
     // `error`. Reaching this means the paths above failed while emitting
     // their own terminal event, so keep the message generic.

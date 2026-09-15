@@ -50,6 +50,7 @@ StitchSpeak is a React 19 + TypeScript + Tailwind CSS v4 frontend (Vite) with an
 | `POSTHOG_API_HOST` | `server/.env` | PostHog private API host (default `https://us.posthog.com`) |
 | `CREDIT_LEDGER_RETENTION_DAYS` | `server/.env` | Days of per-user credit movement history kept for dispute resolution (default 365; pruned automatically) |
 | `AUTH_EMAIL_FROM` | `server/.env` | Verified sender address used for authentication emails |
+| `TRANSLATE_DIRECT_ORIGIN` | `server/.env` | Public server origin advertised to clients for direct (rewrite-bypassing) translate streams (US9); falls back to `https://$RAILWAY_PUBLIC_DOMAIN`, and when neither is set clients stay on the same-origin rewrite |
 | `VITE_GOOGLE_CLIENT_ID` | `.env` | Google OAuth Web client ID for sign-in |
 | `VITE_API_URL` | `.env` | Backend origin the frontend calls (e.g. `http://localhost:3001`) |
 
@@ -58,5 +59,6 @@ Without `VITE_API_URL`, the frontend will call `/api/*` relative to its own orig
 ### Key notes
 
 - Tailwind CSS v4 uses the `@tailwindcss/vite` plugin — there is no `tailwind.config.js`. Custom theme tokens (brand colors, animations) are defined via `@theme` and `@utility` in `src/index.css`.
+- **Vercel proxied-rewrite timeout (US9)**: on stitchspeak.com / *.vercel.app, `/api/*` reaches Railway through the external rewrite in `vercel.json`. Vercel documents a **maximum proxied request timeout of 120 seconds** for rewrites to external destinations ([docs/limits](https://vercel.com/docs/limits#proxied-request-timeout)) and exposes **no `vercel.json` knob to raise it** — it cannot cover a ~240s PDF+recovery+verifier job. The translate stream therefore **bypasses the rewrite**: the client mints a short-lived single-purpose token via `POST /api/translate/stream-token` over the same-origin rewrite (where HttpOnly session cookies work), then streams `POST /api/translate` directly against `TRANSLATE_DIRECT_ORIGIN` with that Bearer token. All other endpoints stay on the same-origin rewrite (required for Safari cookie auth). In-stream mitigations (12s `ping` heartbeats, quiet-stream `status` keep-alive ticks, chunked final delivery with a small terminal `done`) protect jobs on the fallback rewrite path and slow connections.
 - The app deploys to both **Vercel** (`vercel.json`) and **GitHub Pages** (`.github/workflows/deploy.yml`).
 - TypeScript strict mode is enabled.
