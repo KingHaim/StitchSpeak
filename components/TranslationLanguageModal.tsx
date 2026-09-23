@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { LanguageSelector } from './LanguageSelector';
 import { CloseIcon } from './icons/CloseIcon';
 import { PricePreview } from './PricePreview';
+import { EmptyCreditsBanner } from './EmptyCreditsBanner';
+import { isDisplayedBalanceEmpty } from '../utils/creditsDisplay';
 import { LANGUAGES, SOURCE_LANGUAGES } from '../constants';
 import type { Language, PdfMetrics, PriceEstimate } from '../types';
 import { useModalA11y } from '../hooks/useModalA11y';
@@ -15,6 +17,7 @@ interface TranslationLanguageModalProps {
   pdfMetrics: PdfMetrics | null;
   priceEstimate: PriceEstimate | null;
   creditBalance?: number;
+  onBuyCredits?: () => void;
   sourceLanguage: Language;
   targetLanguage: Language;
   onSourceChange: (lang: Language) => void;
@@ -49,6 +52,7 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
   pdfMetrics,
   priceEstimate,
   creditBalance,
+  onBuyCredits,
   sourceLanguage,
   targetLanguage,
   onSourceChange,
@@ -73,6 +77,13 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
 
   const fileCount = fileNames.length;
   const isBatch = fileCount > 1;
+  const estimateReady = Boolean(pdfMetrics && priceEstimate && !isAnalyzing);
+  const showEmptyBalanceBeforeEstimate =
+    typeof creditBalance === 'number' &&
+    isDisplayedBalanceEmpty(creditBalance) &&
+    fileCount > 0 &&
+    !estimateReady &&
+    Boolean(onBuyCredits);
 
   return (
     <div
@@ -177,9 +188,21 @@ export const TranslationLanguageModal: React.FC<TranslationLanguageModalProps> =
             </div>
           </div>
 
-          {pdfMetrics && priceEstimate && !isAnalyzing && (
+          {showEmptyBalanceBeforeEstimate && onBuyCredits && (
+            <EmptyCreditsBanner
+              onBuyCredits={onBuyCredits}
+              message="You're out of credits. Buy credits to translate this pattern."
+            />
+          )}
+
+          {estimateReady && pdfMetrics && priceEstimate && (
             <div className="border-t border-outline-variant/20 pt-6">
-              <PricePreview metrics={pdfMetrics} estimate={priceEstimate} creditBalance={creditBalance} />
+              <PricePreview
+                metrics={pdfMetrics}
+                estimate={priceEstimate}
+                creditBalance={creditBalance}
+                onBuyCredits={onBuyCredits}
+              />
               {isBatch && (
                 <p className="text-xs text-on-surface-variant -mt-6 mb-8 px-1">
                   Total shown for {fileCount} patterns. Each pattern will be translated and saved separately.

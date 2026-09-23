@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TranslationLanguageModal } from './TranslationLanguageModal';
 import { AUTO_DETECT_LANGUAGE, LANGUAGES } from '../constants';
 
@@ -72,6 +72,51 @@ describe('TranslationLanguageModal authentication action', () => {
       checkbox.click();
     });
     expect(start.disabled).toBe(false);
+    await act(async () => root.unmount());
+  });
+
+  it('shows a Buy credits banner when files are selected and the balance is empty', async () => {
+    const onBuyCredits = vi.fn();
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <TranslationLanguageModal
+          isOpen
+          fileNames={['pattern.pdf']}
+          isAnalyzing
+          analyzeError={null}
+          pdfMetrics={null}
+          priceEstimate={null}
+          creditBalance={0}
+          onBuyCredits={onBuyCredits}
+          sourceLanguage={AUTO_DETECT_LANGUAGE}
+          targetLanguage={LANGUAGES[0]}
+          onSourceChange={() => undefined}
+          onTargetChange={() => undefined}
+          onClose={() => undefined}
+          onStart={() => undefined}
+          startLabel="Buy credits to continue"
+          startDisabled={false}
+          requiresSignIn={false}
+          googleIdentityReady
+        />,
+      );
+    });
+
+    const banner = container.querySelector('[data-testid="empty-credits-banner"]');
+    expect(banner?.textContent).toContain("You're out of credits");
+    const button = Array.from(banner?.querySelectorAll('button') ?? []).find((item) =>
+      item.textContent?.includes('Buy credits'),
+    );
+    expect(button).toBeDefined();
+    await act(async () => {
+      button?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(onBuyCredits).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('Buy credits to continue');
+
     await act(async () => root.unmount());
   });
 });
