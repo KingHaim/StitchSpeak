@@ -37,7 +37,7 @@ export const ENGLISH_WEBSITE_COPY = {
   },
   trustPoints: [
     { title: '14 markets, one upload', text: 'Translate into any supported language' },
-    { title: 'Made for patterns', text: 'Reviewed by knitters, not generic prose' },
+    { title: 'Made for patterns', text: 'Craft-aware terminology, not generic prose' },
     { title: 'Credits never expire', text: 'Use them when your next release is ready' },
   ],
   journey: {
@@ -113,7 +113,7 @@ export const ENGLISH_WEBSITE_COPY = {
     title: 'Pattern translation that speaks knitting and crochet',
     body: 'Purpose-built for independent designers who want to publish and sell patterns beyond one language.',
     featureTitle: 'Pattern language, not generic prose',
-    featureBody: 'StitchSpeak understands rows, repeats, abbreviations, and terms such as “yarn over” and “slip stitch”. Its terminology has been reviewed by knitters.',
+    featureBody: 'StitchSpeak understands rows, repeats, abbreviations, and terms such as “yarn over” and “slip stitch”. Terminology is treated as pattern instructions, not generic prose.',
     sampleOne: 'Japanese to English',
     sampleTwo: 'German to US',
     workspaceTitle: 'Your translation workspace',
@@ -257,7 +257,7 @@ export const SPANISH_WEBSITE_COPY: WebsiteCopy = {
   },
   trustPoints: [
     { title: '14 mercados, una sola subida', text: 'Traduce a cualquier idioma compatible' },
-    { title: 'Pensado para patrones', text: 'Revisado por tejedores, sin prosa genérica' },
+    { title: 'Pensado para patrones', text: 'Terminología textil, sin prosa genérica' },
     { title: 'Los créditos no caducan', text: 'Úsalos cuando tu próximo lanzamiento esté listo' },
   ],
   journey: {
@@ -333,7 +333,7 @@ export const SPANISH_WEBSITE_COPY: WebsiteCopy = {
     title: 'Traducción que entiende los patrones de punto y ganchillo',
     body: 'Diseñado específicamente para creadores independientes que quieren publicar y vender patrones en más de un idioma.',
     featureTitle: 'Lenguaje de patrones, no prosa genérica',
-    featureBody: 'StitchSpeak entiende de vueltas, repeticiones, abreviaturas y términos como «hebra» o «punto deslizado». Su terminología ha sido revisada por tejedores.',
+    featureBody: 'StitchSpeak entiende de vueltas, repeticiones, abreviaturas y términos como «hebra» o «punto deslizado». La terminología se trata como instrucciones de patrón, no como prosa genérica.',
     sampleOne: 'De japonés a inglés',
     sampleTwo: 'De alemán a inglés (EE. UU.)',
     workspaceTitle: 'Tu espacio de trabajo de traducción',
