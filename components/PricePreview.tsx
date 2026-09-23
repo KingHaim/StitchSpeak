@@ -7,9 +7,15 @@ interface PricePreviewProps {
   metrics: PdfMetrics;
   estimate: PriceEstimate;
   creditBalance?: number;
+  onBuyCredits?: () => void;
 }
 
-export const PricePreview: React.FC<PricePreviewProps> = ({ metrics, estimate, creditBalance }) => {
+export const PricePreview: React.FC<PricePreviewProps> = ({
+  metrics,
+  estimate,
+  creditBalance,
+  onBuyCredits,
+}) => {
   const { isAuthenticated } = useAuth();
   const costDisplay = isAuthenticated
     ? `${estimate.translationCost.toFixed(1)} credits`
@@ -21,6 +27,7 @@ export const PricePreview: React.FC<PricePreviewProps> = ({ metrics, estimate, c
   const balanceAfter = showBalance
     ? Math.max(0, creditBalance - estimate.translationCost)
     : null;
+  const isInsufficient = showBalance && typeof creditBalance === 'number' && creditBalance < estimate.translationCost;
 
   return (
     <div className="bg-surface-container-lowest p-5 rounded-2xl shadow-sm border border-outline-variant/20 mb-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -54,9 +61,18 @@ export const PricePreview: React.FC<PricePreviewProps> = ({ metrics, estimate, c
         )}
       </div>
 
-      {showBalance && creditBalance < estimate.translationCost && (
+      {isInsufficient && typeof creditBalance === 'number' && (
         <div className="mb-4 rounded-xl border border-error/20 bg-error-container/40 px-4 py-3 text-sm text-on-error-container">
-          You have {creditBalance.toFixed(1)} credits. Add credits before starting this translation.
+          <p>You have {creditBalance.toFixed(1)} credits. Add credits before starting this translation.</p>
+          {onBuyCredits && (
+            <button
+              type="button"
+              onClick={onBuyCredits}
+              className="mt-3 w-full sm:w-auto inline-flex items-center justify-center px-5 py-2.5 rounded-lg bg-primary hover:bg-primary-container text-on-primary font-bold text-sm shadow-md shadow-primary/15 transition-all"
+            >
+              Buy credits
+            </button>
+          )}
         </div>
       )}
 

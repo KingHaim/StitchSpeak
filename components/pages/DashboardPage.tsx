@@ -6,6 +6,8 @@ import { BilingualViewer } from '../BilingualViewer';
 import { AiTechEditNotice } from '../AiTechEditNotice';
 import { Chatbot } from '../Chatbot';
 import { BuyCreditsModal } from '../BuyCreditsModal';
+import { EmptyCreditsBanner } from '../EmptyCreditsBanner';
+import { isDisplayedBalanceEmpty } from '../../utils/creditsDisplay';
 import { TranslationLanguageModal } from '../TranslationLanguageModal';
 import { TranslationJobCard } from '../TranslationJobCard';
 import { FileThumbnail } from '../FileThumbnail';
@@ -138,9 +140,15 @@ export const DashboardPage: React.FC = () => {
   const [modalFlowId, setModalFlowId] = useState('');
 
   const [isBuyCreditsOpen, setIsBuyCreditsOpen] = useState(false);
+  const [buyCreditsPlacement, setBuyCreditsPlacement] = useState<string | undefined>(undefined);
   const [buyCreditsInitialIdx, setBuyCreditsInitialIdx] = useState<number | undefined>(undefined);
   const [modalStartError, setModalStartError] = useState<string | null>(null);
   const [isStartingFromModal, setIsStartingFromModal] = useState(false);
+
+  const openBuyCredits = useCallback((placement: string) => {
+    setBuyCreditsPlacement(placement);
+    setIsBuyCreditsOpen(true);
+  }, []);
 
   const [isChatSending, setIsChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
@@ -233,11 +241,11 @@ export const DashboardPage: React.FC = () => {
       }
       sessionStorage.removeItem(PENDING_BUY_CREDITS_PACK_INDEX_KEY);
       setBuyCreditsInitialIdx(idx);
-      setIsBuyCreditsOpen(true);
+      openBuyCredits('buy_credits_modal');
     } catch {
       /* ignore */
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, openBuyCredits]);
 
   useEffect(() => {
     if (selectedJobId && !jobs.some((j) => j.id === selectedJobId)) {
@@ -633,7 +641,7 @@ export const DashboardPage: React.FC = () => {
 
         if (status === 402) {
           // Server-computed cost exceeded the balance — prompt a top-up.
-          setIsBuyCreditsOpen(true);
+          openBuyCredits('estimate_insufficient');
         }
 
         const message =
@@ -647,7 +655,7 @@ export const DashboardPage: React.FC = () => {
         );
       }
     },
-    [idToken, applyBalance, refreshBalance, refreshSavedPatterns],
+    [idToken, applyBalance, refreshBalance, refreshSavedPatterns, openBuyCredits],
   );
 
   const beginTranslationBatch = useCallback(
@@ -692,7 +700,7 @@ export const DashboardPage: React.FC = () => {
       // early; the server computes and charges the authoritative amount.
       const cost = modalPriceEstimate.translationCost;
       if (balance < cost - 0.001) {
-        setIsBuyCreditsOpen(true);
+        openBuyCredits('estimate_insufficient');
         return;
       }
 
@@ -733,6 +741,7 @@ export const DashboardPage: React.FC = () => {
     beginTranslationBatch,
     closeLanguageModal,
     isStartingFromModal,
+    openBuyCredits,
   ]);
 
   const handleCreditPurchase = useCallback(
@@ -741,10 +750,10 @@ export const DashboardPage: React.FC = () => {
       // after payment; on return the user can re-initiate their translation.
       await startCheckout(pack.id, {
         flowId: modalFlowId || undefined,
-        placement: modalFlowId ? 'translation_top_up' : 'buy_credits_modal',
+        placement: buyCreditsPlacement ?? (modalFlowId ? 'translation_top_up' : 'buy_credits_modal'),
       });
     },
-    [startCheckout, modalFlowId],
+    [startCheckout, modalFlowId, buyCreditsPlacement],
   );
 
   const handleSendMessage = useCallback(
@@ -837,18 +846,24 @@ export const DashboardPage: React.FC = () => {
       void refreshBalance();
     } catch (err) {
       if ((err as { status?: number }).status === 402) {
-        setIsBuyCreditsOpen(true);
+        openBuyCredits('chat_unlock');
       } else {
         console.warn('[chat] Failed to unlock chat allowance:', err);
       }
     }
-  }, [selectedJobId, jobs, idToken, refreshBalance]);
+  }, [selectedJobId, jobs, idToken, refreshBalance, openBuyCredits]);
 
   const modalCreditCost = modalPriceEstimate?.translationCost ?? 0;
   const modalFileCount = modalFiles.length;
-  const modalStartLabel = isAuthenticated
-    ? `Start ${modalFileCount > 1 ? `${modalFileCount} translations` : 'translation'} (${modalCreditCost.toFixed(1)} credits)`
-    : `Start ${modalFileCount > 1 ? `${modalFileCount} translations` : 'translation'}`;
+  const modalInsufficientCredits =
+    isAuthenticated &&
+    Boolean(modalPriceEstimate) &&
+    balance < modalCreditCost - 0.001;
+  const modalStartLabel = modalInsufficientCredits
+    ? 'Buy credits to continue'
+    : isAuthenticated
+      ? `Start ${modalFileCount > 1 ? `${modalFileCount} translations` : 'translation'} (${modalCreditCost.toFixed(1)} credits)`
+      : `Start ${modalFileCount > 1 ? `${modalFileCount} translations` : 'translation'}`;
 
   const modalStartDisabled =
     modalFileCount === 0 ||
@@ -940,6 +955,11 @@ export const DashboardPage: React.FC = () => {
   const showBilingual =
     selectedJob?.status === 'complete' && hasAlignment(selectedJob.translatedHtml ?? '');
 
+  const hasInProgressJob = jobs.some((job) => job.status === 'translating');
+  const showEmptyBalanceBanner =
+    isAuthenticated && isDisplayedBalanceEmpty(balance) && !hasInProgressJob;
+  const postTranslateLowBalance = isDisplayedBalanceEmpty(balance) || balance < 5;
+
   return (
     <>
       <div className="max-w-6xl mx-auto text-on-background antialiased pb-8">
@@ -1008,6 +1028,10 @@ export const DashboardPage: React.FC = () => {
                 </div>
               </div>
             )}
+
+          {showEmptyBalanceBanner && (
+            <EmptyCreditsBanner onBuyCredits={() => openBuyCredits('dashboard_empty_balance')} />
+          )}
 
           <div
             id="new-translation"
@@ -1213,13 +1237,14 @@ export const DashboardPage: React.FC = () => {
 
                 {selectedJob.status === 'complete' && <AiTechEditNotice />}
 
-                {canStudioExport && (
+                {(canStudioExport || selectedJob.status === 'complete') && (
                   <div
                     className={`flex flex-col md:flex-row items-center pt-8 border-t border-outline-variant/20 gap-6 ${
                       selectedJob.chatSessionId ? 'md:justify-between' : 'md:justify-start'
                     }`}
                   >
-                    <div className="flex flex-wrap gap-3 justify-center md:justify-start">
+                    <div className="flex flex-wrap gap-3 justify-center md:justify-start w-full md:w-auto">
+                      {canStudioExport && (
                       <div ref={studioExportMenuRef} className="relative">
                         <button
                           type="button"
@@ -1266,6 +1291,20 @@ export const DashboardPage: React.FC = () => {
                           </div>
                         )}
                       </div>
+                      )}
+                      {selectedJob.status === 'complete' && (
+                        <button
+                          type="button"
+                          onClick={() => openBuyCredits('post_translate')}
+                          className={
+                            postTranslateLowBalance
+                              ? 'bg-primary hover:bg-primary-container text-on-primary px-6 py-3 rounded-full flex items-center justify-center gap-2 font-bold text-sm shadow-md shadow-primary/15 transition-all w-full md:w-auto'
+                              : 'border-2 border-primary text-primary hover:bg-primary/10 px-6 py-3 rounded-full flex items-center justify-center gap-2 font-medium text-sm transition-colors w-full md:w-auto'
+                          }
+                        >
+                          {isDisplayedBalanceEmpty(balance) ? 'Buy credits' : 'Top up credits'}
+                        </button>
+                      )}
                     </div>
                     {selectedJob.chatSessionId && (
                       <button
@@ -1314,6 +1353,7 @@ export const DashboardPage: React.FC = () => {
         pdfMetrics={modalPdfMetrics}
         priceEstimate={modalPriceEstimate}
         creditBalance={balance}
+        onBuyCredits={() => openBuyCredits('estimate_insufficient')}
         sourceLanguage={modalSourceLanguage}
         targetLanguage={modalTargetLanguage}
         onSourceChange={setModalSourceLanguage}
@@ -1331,6 +1371,7 @@ export const DashboardPage: React.FC = () => {
       <BuyCreditsModal
         isOpen={isBuyCreditsOpen}
         initialSelectedIndex={buyCreditsInitialIdx}
+        placement={buyCreditsPlacement}
         onClose={() => {
           try {
             sessionStorage.removeItem(PENDING_BUY_CREDITS_PACK_INDEX_KEY);
@@ -1339,6 +1380,7 @@ export const DashboardPage: React.FC = () => {
           }
           setIsBuyCreditsOpen(false);
           setBuyCreditsInitialIdx(undefined);
+          setBuyCreditsPlacement(undefined);
         }}
         onPurchase={handleCreditPurchase}
       />

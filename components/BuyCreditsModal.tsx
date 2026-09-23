@@ -13,6 +13,8 @@ interface BuyCreditsModalProps {
   onPurchase: (pack: CreditPackage) => void | Promise<void>;
   /** When set (e.g. after landing pricing → sign-in), pre-select this package in the grid. */
   initialSelectedIndex?: number;
+  /** Analytics placement for `credit_pack_viewed` / `credit_pack_selected`. */
+  placement?: string;
 }
 
 export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({
@@ -20,6 +22,7 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({
   onClose,
   onPurchase,
   initialSelectedIndex,
+  placement = 'buy_credits_modal',
 }) => {
   const dialogRef = useModalA11y(isOpen, onClose);
   const [selectedIdx, setSelectedIdx] = useState(1);
@@ -31,7 +34,7 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      captureEvent('credit_pack_viewed', { placement: 'buy_credits_modal' });
+      captureEvent('credit_pack_viewed', { placement });
       let nextIdx = 1;
       const initialIdx = initialIdxRef.current;
       if (initialIdx !== undefined && initialIdx >= 0 && initialIdx < CREDIT_PACKAGES.length) {
@@ -41,7 +44,7 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({
       setIsProcessing(false);
       setError(null);
     }
-  }, [isOpen]);
+  }, [isOpen, placement]);
 
   if (!isOpen) return null;
 
@@ -54,7 +57,7 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({
     setIsProcessing(true);
     captureEvent('credit_pack_selected', {
       pack_id: selectedPack.id,
-      placement: 'buy_credits_modal',
+      placement,
       credits: selectedPack.credits,
       amount_eur: selectedPack.price,
     });
