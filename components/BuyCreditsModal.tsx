@@ -28,6 +28,7 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({
   const [selectedIdx, setSelectedIdx] = useState(1);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [legalAccepted, setLegalAccepted] = useState(false);
   const initialIdxRef = useRef(initialSelectedIndex);
 
   initialIdxRef.current = initialSelectedIndex;
@@ -43,6 +44,7 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({
       setSelectedIdx(nextIdx);
       setIsProcessing(false);
       setError(null);
+      setLegalAccepted(false);
     }
   }, [isOpen, placement]);
 
@@ -53,6 +55,7 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({
 
   const handleBuy = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!legalAccepted) return;
     setError(null);
     setIsProcessing(true);
     captureEvent('credit_pack_selected', {
@@ -136,6 +139,45 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({
             converted amount before confirming.
           </div>
 
+          <p className="mb-4 text-xs leading-relaxed text-on-surface-variant">
+            Payment is processed by Lemon Squeezy, the merchant of record for this purchase.
+            StitchSpeak does not store your card details. Statutory refund and withdrawal
+            rights still apply where the law requires them, and are handled under applicable
+            law and Lemon Squeezy&apos;s process.
+          </p>
+
+          <label className="mb-4 flex items-start gap-3 text-xs leading-relaxed text-on-surface">
+            <input
+              type="checkbox"
+              checked={legalAccepted}
+              onChange={(event) => setLegalAccepted(event.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+            />
+            <span>
+              I agree to the{' '}
+              <a
+                href="https://stitchspeak.com/terms.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-2 hover:text-primary"
+              >
+                Terms of Service
+              </a>{' '}
+              and the{' '}
+              <a
+                href="https://stitchspeak.com/privacy.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-2 hover:text-primary"
+              >
+                Privacy Policy
+              </a>
+              . I request immediate access to these credits and understand that, once they
+              are delivered, I lose the 14-day right of withdrawal for this purchase,
+              except where the law does not allow that.
+            </span>
+          </label>
+
           {error && (
             <div className="text-red-500 text-sm text-center bg-red-50 py-2 rounded-lg mb-4">
               {error}
@@ -144,7 +186,7 @@ export const BuyCreditsModal: React.FC<BuyCreditsModalProps> = ({
 
           <button
             type="submit"
-            disabled={isProcessing}
+            disabled={isProcessing || !legalAccepted}
             className="w-full flex items-center justify-center py-4 px-4 bg-primary hover:bg-primary-container text-on-primary font-bold rounded-lg shadow-md shadow-primary/15 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
           >
             {isProcessing ? (

@@ -8,6 +8,7 @@ import { CreditProvider } from './contexts/CreditContext';
 import { TechEditJobProvider } from './contexts/TechEditJobContext';
 import { getGoogleOAuthClientId } from './auth/googleConfig';
 import { HomepagePrototypePage } from './components/prototype/homepage/HomepagePrototypePage';
+import { AnalyticsConsentBanner } from './components/AnalyticsConsentBanner';
 import { initAnalytics } from './services/analytics';
 import './src/index.css';
 
@@ -31,7 +32,10 @@ const appTree = isHomepagePrototype() ? (
   <AuthProvider>
     <CreditProvider>
       <TechEditJobProvider>
-        <App />
+        <>
+          <App />
+          <AnalyticsConsentBanner />
+        </>
       </TechEditJobProvider>
     </CreditProvider>
   </AuthProvider>

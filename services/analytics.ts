@@ -3,6 +3,10 @@ import type { AuthenticatedUser } from '../auth/types';
 
 const ANALYTICS_SCHEMA_VERSION = 2;
 const ATTRIBUTION_STORAGE_KEY = 'ss_analytics_first_touch';
+export const ANALYTICS_CONSENT_STORAGE_KEY = 'ss_analytics_consent';
+const POSTHOG_EU_HOST = 'https://eu.i.posthog.com';
+
+export type AnalyticsConsent = 'granted' | 'denied';
 
 type AuthState = 'anonymous' | 'authenticated';
 type ExportFormat = 'pdf' | 'doc' | 'html' | 'txt';
@@ -110,6 +114,33 @@ interface Attribution {
 let initialized = false;
 let authState: AuthState = 'anonymous';
 let firstTouch: Attribution = {};
+let pendingUser: AuthenticatedUser | null = null;
+
+export function getAnalyticsConsent(): AnalyticsConsent | null {
+  try {
+    const stored = localStorage.getItem(ANALYTICS_CONSENT_STORAGE_KEY);
+    if (stored === 'granted' || stored === 'denied') return stored;
+  } catch {
+    /* Storage can be unavailable in privacy-focused browsing contexts. */
+  }
+  return null;
+}
+
+function persistAnalyticsConsent(consent: AnalyticsConsent): void {
+  try {
+    localStorage.setItem(ANALYTICS_CONSENT_STORAGE_KEY, consent);
+  } catch {
+    /* Consent still applies to this page load when storage is unavailable. */
+  }
+}
+
+function enableSignedInRecording(user: AuthenticatedUser): void {
+  posthog.identify(user.sub, {
+    email: user.email,
+    name: user.name,
+  });
+  posthog.startSessionRecording();
+}
 
 function bounded(value: string | null, max = 120): string | undefined {
   const trimmed = value?.trim();
@@ -154,17 +185,24 @@ function loadFirstTouch(): Attribution {
   return attribution;
 }
 
-/** No-ops when VITE_POSTHOG_KEY is unset (e.g. local dev without analytics). */
+/**
+ * Loads PostHog only after analytics consent is granted.
+ * No-ops when VITE_POSTHOG_KEY is unset (e.g. local dev without analytics)
+ * or when the visitor has not accepted analytics.
+ */
 export function initAnalytics(): void {
+  if (getAnalyticsConsent() !== 'granted') return;
   const key = import.meta.env.VITE_POSTHOG_KEY;
   if (!key || initialized) return;
   firstTouch = loadFirstTouch();
   posthog.init(key, {
-    api_host: import.meta.env.VITE_POSTHOG_HOST || 'https://us.i.posthog.com',
+    api_host: import.meta.env.VITE_POSTHOG_HOST || POSTHOG_EU_HOST,
     person_profiles: 'identified_only',
     // The app owns SPA pageviews so internal pushState navigation is measured once.
     capture_pageview: false,
     capture_pageleave: true,
+    // Recording starts only for signed-in use after identifyUser().
+    disable_session_recording: true,
     session_recording: { maskAllInputs: true },
   });
   posthog.register({
@@ -174,16 +212,24 @@ export function initAnalytics(): void {
     ),
   });
   initialized = true;
+  if (pendingUser) enableSignedInRecording(pendingUser);
+}
+
+export function grantAnalyticsConsent(): void {
+  persistAnalyticsConsent('granted');
+  initAnalytics();
+}
+
+export function denyAnalyticsConsent(): void {
+  persistAnalyticsConsent('denied');
 }
 
 /** Ties the current session to the signed-in user so anonymous acquisition events are merged. */
 export function identifyUser(user: AuthenticatedUser): void {
+  pendingUser = user;
   authState = 'authenticated';
   if (!initialized) return;
-  posthog.identify(user.sub, {
-    email: user.email,
-    name: user.name,
-  });
+  enableSignedInRecording(user);
 }
 
 export function setAnalyticsAuthState(isAuthenticated: boolean): void {
@@ -192,8 +238,10 @@ export function setAnalyticsAuthState(isAuthenticated: boolean): void {
 
 /** Call on sign-out so the next session isn't attributed to the previous tester. */
 export function resetAnalyticsIdentity(): void {
+  pendingUser = null;
   authState = 'anonymous';
   if (!initialized) return;
+  posthog.stopSessionRecording();
   posthog.reset();
 }
 
