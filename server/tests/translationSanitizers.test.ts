@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   findMarkdownArtifacts,
   normalizeSpanishMeasurementsInHtml,
+  restoreFrenchRepeatAsterisksInHtml,
   sanitizeMarkdownArtifactsInHtml,
 } from '../src/services/translationSanitizers';
 
@@ -14,6 +15,18 @@ describe('translation output sanitizers', () => {
       '<p data-o="Keep **source** markdown"><strong>Nota:</strong> Usa <strong>el cabo</strong> y pm.</p>',
     );
     expect(findMarkdownArtifacts(sanitized)).toEqual([]);
+  });
+
+  it('keeps knitting repeat asterisks instead of turning them into emphasis', () => {
+    const html = '<p>répéter de * à *; * k2tog, yo; repeat from *</p>';
+    expect(sanitizeMarkdownArtifactsInHtml(html)).toBe(html);
+  });
+
+  it('restores dropped French repeat asterisks', () => {
+    const html = '<p data-o="repeat from * to *">répéter de à, puis continuer.</p>';
+    expect(restoreFrenchRepeatAsterisksInHtml(html)).toBe(
+      '<p data-o="repeat from * to *">répéter de * à *, puis continuer.</p>',
+    );
   });
 
   it('normalizes Spanish decimals, spacing, ranges, points, and inch notation in visible text only', () => {

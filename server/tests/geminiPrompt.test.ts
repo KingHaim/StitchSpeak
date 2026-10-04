@@ -487,6 +487,21 @@ describe('Gemini translation prompts', () => {
     expect(prompt).toMatch(/verrez.*trouverez.*utilise.*possède.*établi.*indiqué/i);
     expect(prompt).toMatch(/remesurer.*mesurer à nouveau/i);
     expect(prompt).toMatch(/le bon échantillon/i);
+    expect(prompt).toContain('répéter de * à *');
+    expect(prompt).toContain('répéter de à');
+    expect(prompt).toContain('Voir cette vidéo');
+    expect(prompt).toContain('Le col replié en côtes 1×1 est tricoté en dernier.');
+    expect(prompt).toContain(
+      'Vous avez maintenant trois mailles endroit tricotées dans la maille du rang inférieur, qui se suivent de part et d’autre du marqueur de début de tour : deux au début du tour et une à la fin.',
+    );
+    expect(prompt).toMatch(/never.*glisser, glisser, tricoter/i);
+    expect(prompt).toMatch(/Never write "côtes doubles"/i);
+    expect(prompt).toMatch(/Never write "fil lace"/i);
+    expect(prompt).toMatch(/Never "rang de montage"/i);
+    expect(prompt).toMatch(/never "côtes anglaises perlées"/i);
+    expect(prompt).toMatch(/never "rabat"/i);
+    expect(prompt).toMatch(/never "tricoter à l’envers devant et derrière"/i);
+    expect(prompt).not.toMatch(/LOCKED TERMINOLOGY BANK[\s\S]*répéter de \* à \*/);
   });
 
   it('requires the French QA pass to compare complete segments and remove repetition', () => {
@@ -499,6 +514,11 @@ describe('Gemini translation prompts', () => {
     expect(prompt).toMatch(/untranslated English notes/i);
     expect(prompt).toMatch(/terminology.*prose.*abbreviations.*glossary.*charts/i);
     expect(prompt).toMatch(/low-confidence terminology.*manual review/i);
+    expect(prompt).toContain('répéter de * à *');
+    expect(prompt).toContain('Voir cette vidéo');
+    expect(prompt).toContain('Le col replié en côtes 1×1 est tricoté en dernier.');
+    expect(prompt).toMatch(/French verb continue/i);
+    expect(prompt).toMatch(/Do not invent or require table data-source-id/i);
   });
 
   it('treats imported human corrections as context-bound translation memory', () => {

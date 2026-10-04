@@ -43,7 +43,19 @@ describe('buildGlossaryPromptSection', () => {
 
   it.each([
     ['Danish', ['2 ret sammen [2 r sm]', 'Placer markør [pm]']],
-    ['French', ['monter les mailles [MO]', 'jeté']],
+    ['French', [
+      'monter les mailles [MO]',
+      'jeté',
+      'glisser, glisser, tricoter les deux mailles ensemble [GGT]',
+      'slip 1, knit 1, pass slipped stitch over -> glisser 1 maille, tricoter 1 maille endroit, passer la maille glissée par-dessus',
+      'folded 1×1 rib collar -> col replié en côtes 1×1',
+      'lace-weight yarn -> fil de grosseur dentelle',
+      'inches [in] -> pouces',
+      'set-up row -> rang de préparation [tour de préparation]',
+      'half fisherman\'s rib -> demi-côtes anglaises',
+      'bind off / cast off [BO] -> rabattage [rabattre]',
+      'purl front and back [pfb] -> tricoter la même maille à l\'envers dans le brin avant, puis dans le brin arrière',
+    ]],
     ['Korean', ['코잡기 [코잡]', '바늘비우기']],
   ])('emits a locked bank for %s', (language, expectedTerms) => {
     const section = buildGlossaryPromptSection(language);
@@ -202,6 +214,14 @@ describe('auditTranslatedGlossary — English term leakage', () => {
     </div>`;
 
     expect(auditTranslatedGlossary(html, 'Danish')).toEqual([]);
+  });
+
+  it('does not flag French continue in an already-French sentence', () => {
+    const html = `<div>
+      <p data-seg="1" data-o="Continue in stockinette.">On continue en jersey endroit.</p>
+    </div>`;
+
+    expect(auditTranslatedGlossary(html, 'French')).toEqual([]);
   });
 
   it('does not flag English tokens that are everyday words in the target language', () => {

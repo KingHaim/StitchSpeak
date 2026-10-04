@@ -5,15 +5,28 @@ function mapVisibleText(html: string, transform: (text: string) => string): stri
     .join('');
 }
 
+function isKnittingRepeatAsteriskPair(inner: string): boolean {
+  const trimmed = inner.trim().toLocaleLowerCase();
+  return trimmed === 'to' || trimmed === 'à' || trimmed === 'a'
+    || /\b(?:repeat|répéter|rep|rép)\b/i.test(inner);
+}
+
 function sanitizeMarkdownText(text: string): string {
   return text
     .replace(/(^|\n)(\s*)#{1,6}\s+/g, '$1$2')
     .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
     .replace(/__([^_\n]+)__/g, '<strong>$1</strong>')
-    .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>')
+    .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, (full, inner: string) => (
+      isKnittingRepeatAsteriskPair(inner) ? full : `<em>${inner}</em>`
+    ))
     .replace(/(?<![\p{L}\p{N}_])_([^_\n]+)_(?![\p{L}\p{N}_])/gu, '<em>$1</em>')
     .replace(/`([^`\n]+)`/g, '$1')
     .replace(/\*\*|__|`/g, '');
+}
+
+/** Restore the locked French repeat wording when asterisks were dropped. */
+export function restoreFrenchRepeatAsterisksInHtml(html: string): string {
+  return mapVisibleText(html, (text) => text.replace(/répéter de à/gi, 'répéter de * à *'));
 }
 
 export function sanitizeMarkdownArtifactsInHtml(html: string): string {
