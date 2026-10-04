@@ -21,12 +21,14 @@ export const AnalyticsConsentBanner: React.FC = () => {
     setChoice('denied');
   };
 
+  // Stay below AuthDialog (z-120) and BuyCreditsModal (z-110) so mobile
+  // bottom-sheet controls such as "Sign in with email" remain tappable.
   return (
     <div
-      role="dialog"
+      role="region"
       aria-labelledby="analytics-consent-title"
       aria-describedby="analytics-consent-copy"
-      className="fixed inset-x-0 bottom-0 z-[120] border-t border-outline-variant/30 bg-surface-container-lowest/95 px-4 py-4 shadow-[0_-8px_24px_rgba(45,36,28,0.12)] backdrop-blur-sm sm:px-6"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-outline-variant/30 bg-surface-container-lowest/95 px-4 py-4 shadow-[0_-8px_24px_rgba(45,36,28,0.12)] backdrop-blur-sm sm:px-6"
     >
       <div className="mx-auto flex max-w-5xl flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="max-w-3xl">
