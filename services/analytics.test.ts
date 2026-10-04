@@ -7,6 +7,8 @@ const posthog = vi.hoisted(() => ({
   capture: vi.fn(),
   identify: vi.fn(),
   reset: vi.fn(),
+  startSessionRecording: vi.fn(),
+  stopSessionRecording: vi.fn(),
 }));
 
 vi.mock('posthog-js', () => ({ default: posthog }));
@@ -24,12 +26,16 @@ beforeEach(() => {
 describe('analytics funnel contract', () => {
   it('owns SPA pageviews and attaches safe common funnel properties', async () => {
     const analytics = await import('./analytics');
-    analytics.initAnalytics();
+    analytics.grantAnalyticsConsent();
     analytics.capturePageView('/translate');
 
     expect(posthog.init).toHaveBeenCalledWith(
       'phc_test',
-      expect.objectContaining({ capture_pageview: false }),
+      expect.objectContaining({
+        capture_pageview: false,
+        api_host: 'https://eu.i.posthog.com',
+        disable_session_recording: true,
+      }),
     );
     expect(posthog.register).toHaveBeenCalledWith(expect.objectContaining({
       schema_version: 2,
@@ -46,10 +52,15 @@ describe('analytics funnel contract', () => {
 
   it('changes auth state after identification without exposing raw error messages', async () => {
     const analytics = await import('./analytics');
-    analytics.initAnalytics();
-    analytics.identifyUser({ sub: 'user-1', email: 'designer@example.com' });
+    analytics.grantAnalyticsConsent();
+    analytics.identifyUser({ sub: 'user-1', email: 'designer@example.com', name: 'Ada' });
     analytics.captureEvent('signup_completed', { method: 'google' });
 
+    expect(posthog.identify).toHaveBeenCalledWith('user-1', {
+      email: 'designer@example.com',
+      name: 'Ada',
+    });
+    expect(posthog.startSessionRecording).toHaveBeenCalled();
     expect(posthog.capture).toHaveBeenCalledWith('signup_completed', expect.objectContaining({
       auth_state: 'authenticated',
       method: 'google',
@@ -61,5 +72,48 @@ describe('analytics funnel contract', () => {
     const { analyticsBucket } = await import('./analytics');
     expect(analyticsBucket(7.2, [1, 5, 10, 25], ' MB')).toBe('<=10 MB');
     expect(analyticsBucket(60, [1, 5, 10, 25], ' credits')).toBe('>25 credits');
+  });
+});
+
+describe('analytics consent gate', () => {
+  it('does not init, identify, or start recording before consent', async () => {
+    const analytics = await import('./analytics');
+    analytics.initAnalytics();
+    analytics.identifyUser({ sub: 'user-1', email: 'designer@example.com', name: 'Ada' });
+    analytics.capturePageView('/translate');
+
+    expect(posthog.init).not.toHaveBeenCalled();
+    expect(posthog.identify).not.toHaveBeenCalled();
+    expect(posthog.startSessionRecording).not.toHaveBeenCalled();
+    expect(posthog.capture).not.toHaveBeenCalled();
+  });
+
+  it('identifies a signed-in user only after consent is granted', async () => {
+    const analytics = await import('./analytics');
+    analytics.identifyUser({ sub: 'user-1', email: 'designer@example.com', name: 'Ada' });
+    expect(posthog.init).not.toHaveBeenCalled();
+    expect(posthog.identify).not.toHaveBeenCalled();
+
+    analytics.grantAnalyticsConsent();
+
+    expect(posthog.init).toHaveBeenCalledTimes(1);
+    expect(posthog.identify).toHaveBeenCalledWith('user-1', {
+      email: 'designer@example.com',
+      name: 'Ada',
+    });
+    expect(posthog.startSessionRecording).toHaveBeenCalled();
+  });
+
+  it('does not contact PostHog after a reject', async () => {
+    const analytics = await import('./analytics');
+    analytics.denyAnalyticsConsent();
+    analytics.initAnalytics();
+    analytics.identifyUser({ sub: 'user-1', email: 'designer@example.com', name: 'Ada' });
+    analytics.captureEvent('signup_completed', { method: 'google' });
+
+    expect(posthog.init).not.toHaveBeenCalled();
+    expect(posthog.identify).not.toHaveBeenCalled();
+    expect(posthog.startSessionRecording).not.toHaveBeenCalled();
+    expect(posthog.capture).not.toHaveBeenCalled();
   });
 });
