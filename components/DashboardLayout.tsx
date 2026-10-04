@@ -23,7 +23,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
     activePage !== 'techedit' && !!job && (job.status === 'running' || job.status === 'complete');
 
   return (
-    <div className="flex h-[100dvh] overflow-hidden bg-background">
+    <div className="flex h-full overflow-hidden bg-background">
       <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}

@@ -41,7 +41,7 @@ describe('AnalyticsConsentBanner', () => {
       button.textContent?.includes('Reject'),
     );
     const banner = container.querySelector('[role="region"]');
-    expect(banner?.className).toContain('z-40');
+    expect(banner?.className).not.toContain('fixed');
     expect(banner?.className).not.toContain('z-[120]');
     expect(reject).toBeDefined();
 

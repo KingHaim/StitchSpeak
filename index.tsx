@@ -32,10 +32,12 @@ const appTree = isHomepagePrototype() ? (
   <AuthProvider>
     <CreditProvider>
       <TechEditJobProvider>
-        <>
-          <App />
+        <div className="flex h-dvh flex-col">
           <AnalyticsConsentBanner />
-        </>
+          <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+            <App />
+          </div>
+        </div>
       </TechEditJobProvider>
     </CreditProvider>
   </AuthProvider>
