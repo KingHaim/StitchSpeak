@@ -86,7 +86,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     en: { abbreviation: 'BO', full: 'bind off / cast off' },
     es: { abbreviation: 'Rem', full: 'rematar / cerrar' },
     de: { abbreviation: 'abk', full: 'abketten' },
-    fr: { abbreviation: 'rab', full: 'rabattre' },
+    fr: { abbreviation: 'rabattre', full: 'rabattage' },
     pt: { abbreviation: 'Arr', full: 'arrematar' },
     it: { abbreviation: 'chiud', full: 'chiudere le maglie' },
     nl: { abbreviation: 'afk', full: 'afkanten' },
@@ -408,7 +408,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     en: { abbreviation: 'SSK', full: 'slip slip knit' },
     es: { abbreviation: 'ddD', full: 'deslizar, deslizar, derecho' },
     de: { abbreviation: '2 re überz', full: '2 rechts überzogen zusammenstricken' },
-    fr: { abbreviation: 'GGT', full: 'glisser, glisser, tricoter' },
+    fr: { abbreviation: 'GGT', full: 'glisser, glisser, tricoter les deux mailles ensemble' },
     pt: { abbreviation: 'DDE', full: 'deslizar, deslizar, tricotar na frente' },
     it: { abbreviation: 'SSD', full: 'scivolare, scivolare, diritto' },
     nl: { abbreviation: 'afr', full: 'afhalen, afhalen, recht' },
@@ -532,6 +532,10 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     ko: { abbreviation: '앞뒤겉뜨기늘', full: '앞뒤겉뜨기늘리기' },
     ru: { abbreviation: 'лиц пер/зад', full: 'лицевой за переднюю и заднюю стенки' },
   } },
+  { id: 'pfb', category: 'stitch', terms: {
+    en: { abbreviation: 'pfb', full: 'purl front and back' },
+    fr: { abbreviation: '', full: 'tricoter la même maille à l\'envers dans le brin avant, puis dans le brin arrière' },
+  } },
   { id: 'tbl', category: 'stitch', terms: {
     en: { abbreviation: 'tbl', full: 'through back loop' },
     es: { abbreviation: 'htras', full: 'por la hebra trasera' },
@@ -632,7 +636,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     en: { abbreviation: 'SKP', full: 'slip, knit, pass' },
     es: { abbreviation: 'DTP', full: 'deslizar, tejer, pasar' },
     de: { abbreviation: 'abh str überz', full: 'abheben, stricken, überziehen' },
-    fr: { abbreviation: 'GTP', full: 'glisser, tricoter, passer' },
+    fr: { abbreviation: 'GTP', full: 'glisser 1 maille, tricoter 1 maille endroit, passer la maille glissée par-dessus' },
     pt: { abbreviation: 'DTP', full: 'deslizar, tricotar, passar' },
     it: { abbreviation: 'SDP', full: 'scivolare, diritto, passare' },
     nl: { abbreviation: 'afr overh', full: 'afhalen, recht, overhalen' },
@@ -643,6 +647,10 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     ja: { abbreviation: '滑表越', full: 'すべり目、表編み、かぶせる' },
     ko: { abbreviation: 'SKP', full: '걸러뜨기, 겉뜨기, 덮어씌우기' },
     ru: { abbreviation: 'сн лиц протян', full: 'снять, лицевая, протянуть' },
+  } },
+  { id: 'sl1_k1_psso', category: 'stitch', terms: {
+    en: { abbreviation: '', full: 'slip 1, knit 1, pass slipped stitch over' },
+    fr: { abbreviation: '', full: 'glisser 1 maille, tricoter 1 maille endroit, passer la maille glissée par-dessus' },
   } },
   { id: 'k3tog', category: 'stitch', terms: {
     en: { abbreviation: 'K3tog', full: 'knit three together' },
@@ -821,6 +829,10 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     ja: { abbreviation: '', full: 'ゴム編み' },
     ko: { abbreviation: '', full: '고무뜨기 / 고무단' },
     ru: { abbreviation: '', full: 'резинка' },
+  } },
+  { id: 'half_fishermans_rib', category: 'technique', terms: {
+    en: { abbreviation: '', full: 'half fisherman\'s rib' },
+    fr: { abbreviation: '', full: 'demi-côtes anglaises' },
   } },
   { id: 'moss_st', category: 'technique', terms: {
     en: { abbreviation: '', full: 'moss stitch' },
@@ -1236,6 +1248,10 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     ko: { abbreviation: '', full: '인치당 단 수' },
     ru: { abbreviation: '', full: 'рядов на дюйм' },
   } },
+  { id: 'inches', category: 'measurement', terms: {
+    en: { abbreviation: 'in', full: 'inches' },
+    fr: { abbreviation: '', full: 'pouces' },
+  } },
   { id: 'needle_size', category: 'measurement', terms: {
     en: { abbreviation: '', full: 'needle size' },
     es: { abbreviation: '', full: 'tamaño de aguja' },
@@ -1267,6 +1283,10 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     ja: { abbreviation: '', full: '糸の太さ' },
     ko: { abbreviation: '', full: '실 굵기' },
     ru: { abbreviation: '', full: 'толщина пряжи' },
+  } },
+  { id: 'lace_weight_yarn', category: 'measurement', terms: {
+    en: { abbreviation: '', full: 'lace-weight yarn' },
+    fr: { abbreviation: '', full: 'fil de grosseur dentelle' },
   } },
   { id: 'fingering', category: 'measurement', terms: {
     en: { abbreviation: '', full: 'fingering weight' },
@@ -1462,6 +1482,10 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     ko: { abbreviation: '', full: '원형뜨기' },
     ru: { abbreviation: '', full: 'по кругу' },
   } },
+  { id: 'setup_row', category: 'construction', terms: {
+    en: { abbreviation: '', full: 'set-up row' },
+    fr: { abbreviation: 'tour de préparation', full: 'rang de préparation' },
+  } },
   { id: 'armhole', category: 'construction', terms: {
     en: { abbreviation: '', full: 'armhole' },
     es: { abbreviation: '', full: 'sisa' },
@@ -1493,6 +1517,10 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     ja: { abbreviation: '', full: '首ぐり' },
     ko: { abbreviation: '', full: '네크라인' },
     ru: { abbreviation: '', full: 'горловина' },
+  } },
+  { id: 'folded_1x1_rib_collar', category: 'construction', terms: {
+    en: { abbreviation: '', full: 'folded 1×1 rib collar' },
+    fr: { abbreviation: '', full: 'col replié en côtes 1×1' },
   } },
   { id: 'hem', category: 'construction', terms: {
     en: { abbreviation: '', full: 'hem' },

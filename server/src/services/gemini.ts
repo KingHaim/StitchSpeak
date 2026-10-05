@@ -18,6 +18,7 @@ import {
 import {
   findMarkdownArtifacts,
   normalizeSpanishMeasurementsInHtml,
+  restoreFrenchRepeatAsterisksInHtml,
   sanitizeMarkdownArtifactsInHtml,
 } from './translationSanitizers.js';
 import {
@@ -264,6 +265,22 @@ function getHandcraftedLanguageRules(language: string): string {
     - Make cross-references natural in the complete sentence: choose partie/section and dans/pour/du/pour le from sentence context, never isolated word substitution.
     - Preserve meaningful source emphasis and keep it attached to the equivalent translated phrase, including "en utilisant le petit bout du fil" when emphasized.
     - Review complete instructional sentences, prefer idiomatic French over English calques, and do not leave untranslated English notes.
+
+    ### FRENCH LOCKED-TERM DISAMBIGUATION (GLOSSARY TARGETS WIN; THESE ARE NEVER-RULES ONLY):
+    - slip 1, knit 1, pass slipped stitch over / SKP is never "glisser, glisser, tricoter". That GGT wording is only for ssk.
+    - Never write "côtes doubles" for 1×1 rib. "Côtes doubles" only if the source is actually 2×2 / double rib.
+    - Never write "fil lace" for lace-weight yarn. Bare "dentelle" stays the stitch/fabric, not the yarn weight.
+    - Never leave a bare inch unit as "in"; use the locked glossary form.
+    - set-up row worked flat uses rang de préparation; when the same set-up is in the round, use tour de préparation. Never "rang de montage" for set-up (that is cast on).
+    - half fisherman’s rib is never "côtes anglaises perlées" and never plain "côtes anglaises" (that is full fisherman’s rib).
+    - bind-off is never "rabat".
+    - purl front and back is never "tricoter à l’envers devant et derrière".
+
+    ### FRENCH STRUCTURE RULES (NOT GLOSSARY ENTRIES):
+    - Keep knitting-repeat asterisks. Translate "repeat from * to *" as "répéter de * à *". Never output "répéter de à". The asterisks are stitch-repeat markers, not Markdown.
+    - When the source hyperlinks a video instruction (for example "See this video"), keep the same <a href="…"> on the translated words "Voir cette vidéo". The words without the link are a failure.
+    - Collar sentence, exact when the source says the folded 1×1 rib collar is worked last: "Le col replié en côtes 1×1 est tricoté en dernier."
+    - Knit-below across the beginning-of-round marker, one-off, exact when the source describes three knit-below stitches on either side of BOR: "Vous avez maintenant trois mailles endroit tricotées dans la maille du rang inférieur, qui se suivent de part et d’autre du marqueur de début de tour : deux au début du tour et une à la fin."
     `;
   }
   if (normalized === 'korean') {
@@ -1148,6 +1165,13 @@ export function createFrenchQaSystemInstruction(sourceLanguage?: string): string
 Required terminology:
 - Use la bordure, maille in explanatory prose, tour for knitting in the round, ouvrage/partie du corps by context, aiguille à laine, rang de montage, Prendre les aiguilles…, pré-bloquez, and QR code.
 - Prefer idiomatic French: trouverez, possède, indiqué, regroupées, mesurer à nouveau. Check agreement, articles, and use le bon échantillon.
+- Apply the locked StitchSpeak French glossary. Never "glisser, glisser, tricoter" for slip-1-knit-1-psso/SKP (that GGT wording is only for ssk). Never "côtes doubles" for 1×1. Never "fil lace". Never bare "in" for inches. Never "rang de montage" for a set-up row/round. Never "côtes anglaises perlées" or plain "côtes anglaises" for half fisherman’s rib. Never "rabat" for bind-off. Never "tricoter à l’envers devant et derrière" for purl front and back.
+
+Required structure (not glossary entries):
+- Keep knitting-repeat asterisks. The required wording is "répéter de * à *". Never "répéter de à".
+- Keep the hyperlink on "Voir cette vidéo". If a block already has that link, do not strip the URL or rewrite the words to unlink them. Words without the link are a failure.
+- Collar sentence, exact when the source says the folded 1×1 rib collar is worked last: "Le col replié en côtes 1×1 est tricoté en dernier."
+- Knit-below across the beginning-of-round marker, one-off, exact when the source describes three knit-below stitches on either side of BOR: "Vous avez maintenant trois mailles endroit tricotées dans la maille du rang inférieur, qui se suivent de part et d’autre du marqueur de début de tour : deux au début du tour et une à la fin."
 
 Required validation:
 - Compare every translated segment with its English source to detect omissions, incomplete phrases, and missing articles, nouns, and connectors.
@@ -1156,6 +1180,8 @@ Required validation:
 - Make cross-references natural in their complete sentence.
 - Preserve meaningful emphasis on the equivalent translated phrase.
 - Low-confidence terminology must be marked for manual review; keep the safest source-faithful wording and never silently choose a literal calque.
+- The French verb continue / continuer in an already-French sentence is not leftover English. Do not rewrite a block only because it contains "continue".
+- Do not invent or require table data-source-id attributes.
 - Return complete corrected plain text per block, never HTML. Return only changed blocks and do not add explanations or translator notes.`;
 }
 
@@ -1712,6 +1738,9 @@ function finalizeTranslatedHtml(
   finalized = numberFidelity.html;
   if (reviewedLanguage(language) === 'spanish') {
     finalized = normalizeSpanishMeasurementsInHtml(finalized);
+  }
+  if (reviewedLanguage(language) === 'french') {
+    finalized = restoreFrenchRepeatAsterisksInHtml(finalized);
   }
   const artifacts = findMarkdownArtifacts(finalized);
   // Locked-glossary post-check (US2): warn when English craft terms with a

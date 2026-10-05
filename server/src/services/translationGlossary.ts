@@ -146,7 +146,7 @@ const GLOBALLY_PRESERVED_ENGLISH_FORMS = new Set([
 // so finding them in the translated text proves nothing.
 const AMBIGUOUS_NATURAL_WORDS: Record<string, readonly string[]> = {
   es: ['yo'],
-  fr: ['pu', 'tension'],
+  fr: ['pu', 'tension', 'continue'],
   da: ['tog', 'alt', 'hank', 'rem', 'bo'],
   no: ['tog', 'alt', 'hank', 'rem', 'bo'],
   sv: ['tog', 'alt', 'hem', 'rem', 'bo'],
