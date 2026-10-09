@@ -1,5 +1,6 @@
 import mammoth from 'mammoth';
 import sharp from 'sharp';
+import { PDFExtract } from 'pdf.js-extract';
 // @iarna/rtf-to-html ships no type declarations; it exposes { fromString, fromStream }.
 // @ts-expect-error - no bundled types
 import rtfToHTML from '@iarna/rtf-to-html';
@@ -138,8 +139,54 @@ export async function extractDocumentHtml(
       return plainTextToHtml(buffer.toString('utf8'));
     }
     case 'pdf':
+      return extractPdfHtml(buffer);
     default:
-      // PDFs are handled by the multimodal pipeline, not this extractor.
       return '';
   }
+}
+
+const pdfExtract = new PDFExtract();
+
+/**
+ * Text-only PDF extract used by the US10 preview cut (and resume). Visual
+ * reconstruction still uses the multimodal PDF path for a paid full job.
+ */
+export async function extractPdfHtml(buffer: Buffer): Promise<string> {
+  const data = await pdfExtract.extractBuffer(buffer, {});
+  const pages = data.pages.length > 0 ? data.pages : [];
+  if (pages.length === 0) return '';
+
+  return pages
+    .map((page, index) => {
+      const pageNumber = index + 1;
+      const lines = new Map<number, string[]>();
+      for (const item of page.content ?? []) {
+        const text = typeof item.str === 'string' ? item.str.trim() : '';
+        if (!text) continue;
+        const key = Math.round((item.y ?? 0) / 2) * 2;
+        const existing = lines.get(key) ?? [];
+        existing.push(text);
+        lines.set(key, existing);
+      }
+      const ordered = [...lines.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([, words]) => words.join(' ').replace(/\s+/g, ' ').trim())
+        .filter(Boolean);
+      if (ordered.length === 0) return '';
+      return ordered
+        .map((line) => `<p data-page="${pageNumber}">${escapeHtml(line)}</p>`)
+        .join('\n');
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
+export async function extractSourceHtml(
+  buffer: Buffer,
+  mimeType?: string,
+  fileName?: string,
+): Promise<{ html: string; kind: SourceKind }> {
+  const kind = detectSourceKind(buffer, mimeType, fileName);
+  const html = await extractDocumentHtml(buffer, kind);
+  return { html, kind };
 }

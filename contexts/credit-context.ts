@@ -5,6 +5,7 @@ export type CheckoutReturnStatus = 'confirming' | 'confirmed' | 'delayed' | null
 export type CreditContextValue = {
   balance: number;
   betaAccess: boolean;
+  freePreviewAvailable: boolean;
   isLoading: boolean;
   applyBalance: (balance: number) => void;
   refreshBalance: () => Promise<void>;

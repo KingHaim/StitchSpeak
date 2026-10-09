@@ -63,8 +63,9 @@ describe('LandingPage FAQ', () => {
 
     const faq = container.querySelector('#faq');
     expect(faq).not.toBeNull();
-    expect(faq?.querySelectorAll('details')).toHaveLength(8);
+    expect(faq?.querySelectorAll('details')).toHaveLength(9);
     expect(faq?.textContent).toContain('How is a translation priced?');
+    expect(faq?.textContent).toContain('Do I get a free preview?');
     expect(faq?.textContent).toContain('What happens if a translation fails?');
     expect(faq?.textContent).toContain('Will the translated file look exactly like my original?');
     expect(faq?.textContent).toContain('Built for patterns. Still reviewed by you.');

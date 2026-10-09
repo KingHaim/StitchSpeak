@@ -6,6 +6,7 @@ import {
   listPaymentOrders,
   userOwnsPaymentOrder,
 } from '../services/creditStore.js';
+import { hasFreePreviewAvailable } from '../services/translationPreviewStore.js';
 import { CREDIT_PACKS, getCreditPack } from '../services/pricing.js';
 import { hasActiveBetaAccess } from '../services/betaApplicationStore.js';
 import {
@@ -24,7 +25,11 @@ const receiptRateLimit = rateLimit({ windowMs: 60_000, max: 30, name: 'billing-r
 
 router.get('/', (req, res: Response) => {
   const { userSub, userEmail } = req as AuthenticatedRequest;
-  res.json({ balance: getBalance(userSub), betaAccess: hasActiveBetaAccess(userEmail) });
+  res.json({
+    balance: getBalance(userSub),
+    betaAccess: hasActiveBetaAccess(userEmail),
+    freePreviewAvailable: hasFreePreviewAvailable(userSub),
+  });
 });
 
 // Public catalogue of purchasable credit packs (server is the source of truth).

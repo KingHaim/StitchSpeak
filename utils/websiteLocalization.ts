@@ -42,7 +42,7 @@ export const ENGLISH_WEBSITE_COPY = {
   ],
   journey: {
     title: 'From one pattern to a wider market',
-    body: 'One upload, 14 language options, and a clear price before translation begins.',
+    body: 'One upload, 14 language options, a free opening preview, and a clear price before you unlock the rest.',
     steps: [
       {
         title: 'Upload once',
@@ -53,8 +53,8 @@ export const ENGLISH_WEBSITE_COPY = {
         description: 'See the translation estimate and your remaining balance before anything starts.',
       },
       {
-        title: 'Translate and publish',
-        description: 'Review the translated copy, save it to your library, then place it in your own pattern layout.',
+        title: 'Preview, then unlock',
+        description: 'Signed-in designers get one free preview of the opening section. Unlock the full translation and export when you are ready.',
       },
     ],
   },
@@ -85,7 +85,7 @@ export const ENGLISH_WEBSITE_COPY = {
       {
         kicker: 'Your eye stays in the loop',
         title: 'Review source and translation together.',
-        body: 'Compare the translated copy with the original, check the details that matter, and revisit the result from your saved pattern library.',
+        body: 'Compare the translated copy with the original in a bilingual review, starting with a free preview of the opening section. Unlock the rest when you are ready to export.',
         status: 'Ready to review',
       },
       {
@@ -130,8 +130,8 @@ export const ENGLISH_WEBSITE_COPY = {
         body: 'Sign in with Google or email, then upload your pattern file.',
       },
       {
-        title: 'Buy credits, then confirm the estimate',
-        body: 'Translation costs credits. You see the price before anything is charged.',
+        title: 'Preview first, then unlock with credits',
+        body: 'Signed-in designers get one free preview of the opening section. The estimate stays visible before you unlock the full translation and export.',
       },
       {
         title: 'Reuse one upload',
@@ -168,6 +168,11 @@ export const ENGLISH_WEBSITE_COPY = {
         topic: 'Pricing',
         question: 'How is a translation priced?',
         answer: 'Upload your pattern and choose a language to see the exact credit estimate before you commit. Nothing is deducted until you confirm. There is no subscription: buy credits when you need them, and purchased credits do not expire.',
+      },
+      {
+        topic: 'Preview',
+        question: 'Do I get a free preview?',
+        answer: 'Yes. When you are signed in and upload your own pattern, your first translation includes a free preview of the opening section—the cast-on and the first numbered rows—with bilingual review. Unlock the full translation and export with credits. The estimate stays visible before checkout. One free preview per account.',
       },
       {
         topic: 'Files',
@@ -262,7 +267,7 @@ export const SPANISH_WEBSITE_COPY: WebsiteCopy = {
   ],
   journey: {
     title: 'De un solo patrón a un mercado más amplio',
-    body: 'Una sola subida, 14 idiomas disponibles y un precio claro antes de empezar a traducir.',
+    body: 'Una sola subida, 14 idiomas disponibles, una vista previa gratuita de la apertura y un precio claro antes de desbloquear el resto.',
     steps: [
       {
         title: 'Sube tu archivo una vez',
@@ -273,8 +278,8 @@ export const SPANISH_WEBSITE_COPY: WebsiteCopy = {
         description: 'Consulta la estimación de la traducción y tu saldo restante antes de empezar.',
       },
       {
-        title: 'Traduce y publica',
-        description: 'Revisa el texto traducido, guárdalo en tu biblioteca y aplícalo a la maquetación de tu propio patrón.',
+        title: 'Vista previa y desbloqueo',
+        description: 'Si has iniciado sesión, la primera traducción incluye una vista previa gratuita de la sección inicial. Desbloquea la traducción completa y la exportación cuando quieras.',
       },
     ],
   },
@@ -305,7 +310,7 @@ export const SPANISH_WEBSITE_COPY: WebsiteCopy = {
       {
         kicker: 'Tu criterio sigue dentro del proceso',
         title: 'Revisa original y traducción juntos.',
-        body: 'Compara el texto traducido con el original, comprueba los detalles importantes y vuelve al resultado desde tu biblioteca de patrones.',
+        body: 'Compara el texto traducido con el original en una revisión bilingüe, empezando por una vista previa gratuita de la sección inicial. Desbloquea el resto cuando quieras exportar.',
         status: 'Listo para revisar',
       },
       {
@@ -350,8 +355,8 @@ export const SPANISH_WEBSITE_COPY: WebsiteCopy = {
         body: 'Inicia sesión con Google o por correo electrónico y sube el archivo de tu patrón.',
       },
       {
-        title: 'Compra créditos y confirma el presupuesto',
-        body: 'La traducción consume créditos. Verás el coste exacto antes de que se realice ningún cargo.',
+        title: 'Primero la vista previa; luego desbloquea con créditos',
+        body: 'Si has iniciado sesión, la primera traducción incluye una vista previa gratuita de la sección inicial. La estimación sigue visible antes de desbloquear la traducción completa y la exportación.',
       },
       {
         title: 'Reutiliza una misma subida',
@@ -388,6 +393,11 @@ export const SPANISH_WEBSITE_COPY: WebsiteCopy = {
         topic: 'Precios',
         question: '¿Cómo se calcula el precio de una traducción?',
         answer: 'Sube tu patrón y elige un idioma para ver la estimación exacta de créditos antes de comprometerte. No se descontará nada hasta que confirmes. Sin suscripciones: compra créditos cuando los necesites y no te preocupes, porque no caducan.',
+      },
+      {
+        topic: 'Vista previa',
+        question: '¿Hay una vista previa gratuita?',
+        answer: 'Sí. Si has iniciado sesión y subes tu propio patrón, la primera traducción incluye una vista previa gratuita de la sección inicial —el montaje de puntos y las primeras vueltas con números— con revisión bilingüe. Desbloquea la traducción completa y la exportación con créditos. La estimación sigue visible antes del pago. Una vista previa gratuita por cuenta.',
       },
       {
         topic: 'Archivos',

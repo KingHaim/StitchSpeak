@@ -49,12 +49,12 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
             >
               <div>
                 <p className="font-semibold">
-                  {checkoutReturnStatus === 'confirming' && 'Confirming your payment'}
+                  {checkoutReturnStatus === 'confirming' && 'Payment received, adding credits…'}
                   {checkoutReturnStatus === 'confirmed' && 'Credits added'}
                   {checkoutReturnStatus === 'delayed' && 'Payment confirmation is taking longer'}
                 </p>
                 <p className="text-on-surface-variant">
-                  {checkoutReturnStatus === 'confirming' && 'We’re refreshing your balance. This usually takes a few seconds.'}
+                  {checkoutReturnStatus === 'confirming' && 'We’re adding your credits now. This usually takes a few seconds.'}
                   {checkoutReturnStatus === 'confirmed' && 'Your payment was confirmed and your balance is up to date.'}
                   {checkoutReturnStatus === 'delayed' && 'Your payment may still be processing. Retry now or check again in a few minutes.'}
                 </p>
