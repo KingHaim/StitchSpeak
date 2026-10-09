@@ -35,9 +35,17 @@ async function apiFetch(
   return data;
 }
 
-export async function getCreditState(idToken: string): Promise<{ balance: number; betaAccess: boolean }> {
+export async function getCreditState(idToken: string): Promise<{
+  balance: number;
+  betaAccess: boolean;
+  freePreviewAvailable: boolean;
+}> {
   const data = await apiFetch('/', idToken);
-  return { balance: typeof data.balance === 'number' ? data.balance : 0, betaAccess: data.betaAccess === true };
+  return {
+    balance: typeof data.balance === 'number' ? data.balance : 0,
+    betaAccess: data.betaAccess === true,
+    freePreviewAvailable: data.freePreviewAvailable === true,
+  };
 }
 
 export interface CreditPackagesResponse {

@@ -42,12 +42,14 @@ vi.mock('../src/services/gemini', () => ({
 vi.mock('../src/services/pricing', () => ({
   computeDocumentMetrics: async () => ({ pages: 1 }),
   translationCostFromMetrics: () => 5,
+  metricsFromHtml: () => ({ pages: 1, characters: 10, estimatedInputTokens: 10, estimatedOutputTokens: 10 }),
 }));
 
 vi.mock('../src/services/creditStore', () => ({
   chargeCreditsForJob: mocks.chargeCreditsForJob,
   settlePendingCharge: mocks.settlePendingCharge,
   refundPendingCharge: mocks.refundPendingCharge,
+  getBalance: () => 95,
 }));
 
 vi.mock('../src/services/translationLeaseStore', () => ({
@@ -62,6 +64,18 @@ vi.mock('../src/services/legalAcknowledgementStore', () => ({
 
 vi.mock('../src/services/translationMemoryStore', () => ({
   getTranslationMemoryForPrompt: () => [],
+}));
+
+vi.mock('../src/services/translationPreviewStore', () => ({
+  hasFreePreviewAvailable: () => false,
+  claimFreePreview: () => false,
+  releaseFreePreview: () => {},
+  createTranslationJobId: () => 'job-test',
+  saveTranslationJob: () => ({}),
+  getOwnedTranslationJob: () => null,
+  getLatestOpenTranslationJob: () => null,
+  completeTranslationJob: () => null,
+  publicJobView: () => ({}),
 }));
 
 let server: import('node:http').Server;

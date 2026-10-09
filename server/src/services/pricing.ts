@@ -97,6 +97,16 @@ export interface DocumentMetrics {
   estimatedOutputTokens: number;
 }
 
+export function metricsFromPlainText(text: string, pages?: number): DocumentMetrics {
+  const words = text.split(/\s+/).filter(Boolean).length;
+  return metricsFromText(text, pages ?? Math.max(1, Math.ceil(words / 250)));
+}
+
+export function metricsFromHtml(html: string, pages?: number): DocumentMetrics {
+  const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return metricsFromPlainText(text, pages);
+}
+
 function metricsFromText(text: string, pages: number): DocumentMetrics {
   const { charsPerToken, systemPromptTokens, outputMultiplier } = PRICING.tokenEstimation;
   const characters = text.length;

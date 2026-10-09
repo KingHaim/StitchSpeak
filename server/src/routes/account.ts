@@ -16,6 +16,7 @@ import {
 } from '../services/patternStore.js';
 import { deleteAllTechEdits } from '../services/techEditStore.js';
 import { deleteTranslationMemory, listTranslationMemory } from '../services/translationMemoryStore.js';
+import { deleteTranslationPreviewData } from '../services/translationPreviewStore.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -78,6 +79,7 @@ router.delete('/', rateLimit({ windowMs: 60 * 60 * 1000, max: 5, name: 'account-
   // Each operation is idempotent, so an interrupted request can be retried safely.
   // Financial ledgers are retained under an irreversible pseudonymous identifier.
   const financial = deleteCreditAccount(userSub);
+  deleteTranslationPreviewData(userSub);
   const patternsDeleted = deleteAllPatterns(userSub);
   deleteAllTechEdits(userSub);
   const translationMemoryDeleted = deleteTranslationMemory(userSub);

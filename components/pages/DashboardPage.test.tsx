@@ -56,6 +56,7 @@ function credits(balance: number): CreditContextValue {
   return {
     balance,
     betaAccess: false,
+    freePreviewAvailable: false,
     isLoading: false,
     applyBalance: vi.fn(),
     refreshBalance: vi.fn(),

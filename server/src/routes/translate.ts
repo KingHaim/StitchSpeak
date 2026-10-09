@@ -4,8 +4,21 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { uploadPattern } from '../middleware/upload.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 import { translatePattern } from '../services/gemini.js';
-import { chargeCreditsForJob, refundPendingCharge, settlePendingCharge } from '../services/creditStore.js';
-import { computeDocumentMetrics, translationCostFromMetrics } from '../services/pricing.js';
+import { chargeCreditsForJob, getBalance, refundPendingCharge, settlePendingCharge } from '../services/creditStore.js';
+import { computeDocumentMetrics, metricsFromHtml, translationCostFromMetrics } from '../services/pricing.js';
+import { extractSourceHtml } from '../services/documentExtract.js';
+import { cutPreviewHtml, remainingSourceHasContent } from '../services/previewCut.js';
+import {
+  claimFreePreview,
+  completeTranslationJob,
+  createTranslationJobId,
+  getLatestOpenTranslationJob,
+  getOwnedTranslationJob,
+  hasFreePreviewAvailable,
+  publicJobView,
+  releaseFreePreview,
+  saveTranslationJob,
+} from '../services/translationPreviewStore.js';
 import { externalErrorDetails } from '../services/externalDeadline.js';
 import {
   acquireTranslationLease,
@@ -105,6 +118,310 @@ function requireTranslateAuth(req: Request, res: Response, next: NextFunction): 
 // starts the long-running NDJSON stream directly against `directOrigin`, out
 // of reach of Vercel's documented 120s proxied-request maximum. When no direct
 // origin is configured the client keeps using the rewrite (status quo).
+interface TranslationPayload {
+  html: string;
+  usage: { promptTokens: number; candidateTokens: number; totalTokens: number } | null;
+  reviewWarnings: unknown[];
+  cost: number;
+  balance: number;
+  preview?: boolean;
+  locked?: boolean;
+  jobId?: string;
+  remainingCost?: number;
+  fullCost?: number;
+}
+
+function extraResultFields(payload: TranslationPayload): Record<string, unknown> {
+  if (!payload.preview && !payload.jobId) return {};
+  return {
+    preview: payload.preview === true,
+    locked: payload.locked === true,
+    jobId: payload.jobId,
+    remainingCost: payload.remainingCost,
+    fullCost: payload.fullCost,
+  };
+}
+
+async function deliverTranslation(
+  req: Request,
+  res: Response,
+  run: (hooks: {
+    onDelta?: (text: string) => void;
+    onStatus?: (status: { stage: string; message: string }) => void;
+  }) => Promise<TranslationPayload>,
+  refund: () => number,
+): Promise<void> {
+  if (!clientWantsStream(req)) {
+    try {
+      const payload = await run({});
+      res.json(payload);
+    } catch (err: unknown) {
+      console.error('[translate] Error:', err);
+      const newBalance = refund();
+      const details = externalErrorDetails(err);
+      res.status(details.status).json({
+        error: clientErrorMessage(details),
+        code: details.code,
+        balance: newBalance,
+      });
+    }
+    return;
+  }
+
+  res.status(200);
+  res.setHeader('Content-Type', `${NDJSON_CONTENT_TYPE}; charset=utf-8`);
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+
+  const wantsChunkedFinal = req.body?.streamFinalChunks === 'true';
+  let lastSubstantiveEventAt = Date.now();
+
+  const writeEvent = (event: Record<string, unknown>): void => {
+    if (res.writableEnded || res.destroyed) return;
+    res.write(`${JSON.stringify(event)}\n`);
+  };
+  const writeSubstantiveEvent = (event: Record<string, unknown>): void => {
+    lastSubstantiveEventAt = Date.now();
+    writeEvent(event);
+  };
+  const writeEventFlushed = async (event: Record<string, unknown>): Promise<void> => {
+    if (res.writableEnded || res.destroyed) return;
+    lastSubstantiveEventAt = Date.now();
+    const ok = res.write(`${JSON.stringify(event)}\n`);
+    if (!ok && !res.destroyed) {
+      await Promise.race([once(res, 'drain'), once(res, 'close')]);
+    }
+  };
+
+  let clientGone = false;
+  req.on('aborted', () => {
+    clientGone = true;
+  });
+  res.on('close', () => {
+    if (!res.writableEnded) clientGone = true;
+  });
+
+  const heartbeat = setInterval(() => {
+    if (clientGone || res.writableEnded || res.destroyed) return;
+    writeEvent({ type: 'ping', t: Date.now() });
+  }, 12000);
+  const statusKeepalive = setInterval(() => {
+    if (clientGone || res.writableEnded || res.destroyed) return;
+    if (Date.now() - lastSubstantiveEventAt < STATUS_KEEPALIVE_MS) return;
+    writeSubstantiveEvent({
+      type: 'status',
+      stage: 'working',
+      message: STATUS_KEEPALIVE_MESSAGE,
+    });
+  }, STATUS_KEEPALIVE_MS);
+
+  let terminalEventSent = false;
+  try {
+    const payload = await run({
+      onDelta: (text) => {
+        if (!clientGone) writeSubstantiveEvent({ type: 'delta', text });
+      },
+      onStatus: (status) => {
+        if (!clientGone) writeSubstantiveEvent({ type: 'status', stage: status.stage, message: status.message });
+      },
+    });
+    if (!clientGone) {
+      if (wantsChunkedFinal) {
+        writeSubstantiveEvent({
+          type: 'status',
+          stage: 'delivering',
+          message: 'Delivering the translated pattern…',
+        });
+        for (let offset = 0; offset < payload.html.length; offset += FINAL_HTML_CHUNK_CHARS) {
+          if (clientGone) break;
+          await writeEventFlushed({
+            type: 'final',
+            chunk: payload.html.slice(offset, offset + FINAL_HTML_CHUNK_CHARS),
+          });
+        }
+        if (!clientGone) {
+          await writeEventFlushed({
+            type: 'done',
+            htmlChunked: true,
+            usage: payload.usage,
+            reviewWarnings: payload.reviewWarnings,
+            cost: payload.cost,
+            balance: payload.balance,
+            ...extraResultFields(payload),
+          });
+        }
+      } else {
+        await writeEventFlushed({
+          type: 'done',
+          html: payload.html,
+          usage: payload.usage,
+          reviewWarnings: payload.reviewWarnings,
+          cost: payload.cost,
+          balance: payload.balance,
+          ...extraResultFields(payload),
+        });
+      }
+    }
+    terminalEventSent = true;
+    res.end();
+  } catch (err: unknown) {
+    console.error('[translate] Error:', err);
+    const newBalance = refund();
+    const details = externalErrorDetails(err);
+    if (!res.headersSent) {
+      terminalEventSent = true;
+      res.status(details.status).json({
+        error: clientErrorMessage(details),
+        code: details.code,
+        balance: newBalance,
+      });
+      return;
+    }
+    writeEvent({
+      type: 'error',
+      message: clientErrorMessage(details),
+      code: details.code,
+      status: details.status,
+      balance: newBalance,
+    });
+    terminalEventSent = true;
+    res.end();
+  } finally {
+    clearInterval(heartbeat);
+    clearInterval(statusKeepalive);
+    if (!terminalEventSent) {
+      writeEvent({
+        type: 'error',
+        message: 'The translation was interrupted before it could finish. Please try again.',
+        code: 'STREAM_INTERRUPTED',
+        status: 500,
+      });
+    }
+    if (!res.writableEnded && !res.destroyed) res.end();
+  }
+}
+
+router.get('/jobs/:id', requireAuth, (req: Request, res: Response) => {
+  const { userSub } = req as AuthenticatedRequest;
+  const id = req.params.id === 'latest' ? null : req.params.id;
+  const job = id ? getOwnedTranslationJob(userSub, id) : getLatestOpenTranslationJob(userSub);
+  if (!job) {
+    res.status(404).json({ error: 'Translation job not found.' });
+    return;
+  }
+  res.json({
+    ...publicJobView(job),
+    html: job.previewHtml,
+    reviewWarnings: job.reviewWarnings,
+    preview: job.status === 'preview',
+    cost: job.status === 'preview' ? 0 : job.fullCost,
+    balance: getBalance(userSub),
+  });
+});
+
+router.post('/unlock', requireTranslateAuth, translateRateLimit, async (req: Request, res: Response) => {
+  const { userSub } = req as AuthenticatedRequest;
+  const jobId = typeof req.body?.jobId === 'string' ? req.body.jobId : '';
+  if (!jobId) {
+    res.status(400).json({ error: 'Missing jobId.' });
+    return;
+  }
+
+  const job = getOwnedTranslationJob(userSub, jobId);
+  if (!job) {
+    res.status(404).json({ error: 'Translation job not found.' });
+    return;
+  }
+  if (job.status === 'complete') {
+    res.json({
+      html: job.previewHtml,
+      usage: null,
+      reviewWarnings: job.reviewWarnings,
+      cost: 0,
+      balance: getBalance(userSub),
+      preview: false,
+      locked: false,
+      jobId: job.id,
+      remainingCost: 0,
+      fullCost: job.fullCost,
+    });
+    return;
+  }
+
+  const leaseId = acquireTranslationLease(userSub);
+  if (!leaseId) {
+    res.status(409).json({
+      error: 'A translation is already running for this account. Wait for it to finish before starting another.',
+      code: 'TRANSLATION_IN_PROGRESS',
+    });
+    return;
+  }
+  const leaseHeartbeat = setInterval(() => renewTranslationLease(userSub, leaseId), 60_000);
+  leaseHeartbeat.unref();
+
+  try {
+    const remainingCost = job.remainingCost;
+    const { ok, balance, chargeId } = chargeCreditsForJob(userSub, remainingCost, 'translation');
+    if (!ok) {
+      res.status(402).json({
+        error: 'Insufficient credits.',
+        balance,
+        cost: remainingCost,
+        jobId: job.id,
+        remainingCost,
+      });
+      return;
+    }
+    const refund = (): number => (chargeId ? refundPendingCharge(chargeId, userSub) : balance);
+
+    const runUnlock = async () => {
+      const remainingHtml = job.remainingSourceHtml;
+      let html = job.previewHtml;
+      let usage = null;
+      let reviewWarnings = job.reviewWarnings;
+      if (remainingSourceHasContent(remainingHtml)) {
+        const translationMemory = getTranslationMemoryForPrompt(userSub, job.sourceLanguage ?? undefined, job.language);
+        const result = await translatePattern(
+          Buffer.from(''),
+          'text/html',
+          job.language,
+          job.sourceLanguage ?? undefined,
+          {
+            translationMemory,
+            recoveryBudgetCredits: remainingCost,
+            sourceHtml: remainingHtml,
+          },
+          job.fileName,
+        );
+        html = `${job.previewHtml}\n${result.html}`;
+        usage = result.usage;
+        reviewWarnings = [...(job.reviewWarnings ?? []), ...(result.reviewWarnings ?? [])];
+      }
+      if (chargeId) settlePendingCharge(chargeId);
+      completeTranslationJob(job.id, html, reviewWarnings);
+      return {
+        html,
+        usage,
+        reviewWarnings,
+        cost: remainingCost,
+        balance,
+        preview: false,
+        locked: false,
+        jobId: job.id,
+        remainingCost: 0,
+        fullCost: job.fullCost,
+      } satisfies TranslationPayload;
+    };
+
+    await deliverTranslation(req, res, runUnlock, refund);
+  } finally {
+    clearInterval(leaseHeartbeat);
+    releaseTranslationLease(userSub, leaseId);
+  }
+});
+
 router.post('/stream-token', requireAuth, streamTokenRateLimit, (req: Request, res: Response) => {
   const { userSub, identityProvider } = req as AuthenticatedRequest;
   res.json({
@@ -155,23 +472,93 @@ router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, as
   // deduct credits BEFORE doing any expensive Gemini work. The client never
   // decides the amount, and a request without enough credits is rejected here.
   let cost: number;
+  let fullCost: number;
   try {
     const metrics = await computeDocumentMetrics(file.buffer, file.mimetype, file.originalname);
     cost = translationCostFromMetrics(metrics);
+    fullCost = cost;
   } catch (err) {
     console.error('[translate] Failed to analyze document for pricing:', err);
     res.status(400).json({ error: 'Could not read the document.' });
     return;
   }
 
-  const { ok, balance, chargeId } = chargeCreditsForJob(userSub, cost, 'translation');
+  // US10: a signed-in account gets one free preview of the opening section.
+  // The grant is claimed only after we know we can cut a source slice; if
+  // extract/cut fails we fall through to the paid full job.
+  let previewJobId: string | null = null;
+  let previewSourceHtml: string | null = null;
+  let remainingSourceHtml = '';
+  let remainingCost = 0;
+  if (hasFreePreviewAvailable(userSub)) {
+    try {
+      const extracted = await extractSourceHtml(file.buffer, file.mimetype, file.originalname);
+      if (extracted.html.replace(/<[^>]+>/g, '').trim()) {
+        const cut = cutPreviewHtml(extracted.html);
+        if (cut.previewHtml.replace(/<[^>]+>/g, '').trim()) {
+          const jobId = createTranslationJobId();
+          if (claimFreePreview(userSub, jobId)) {
+            previewJobId = jobId;
+            previewSourceHtml = cut.previewHtml;
+            remainingSourceHtml = cut.remainingHtml;
+            const previewCost = translationCostFromMetrics(metricsFromHtml(cut.previewHtml));
+            remainingCost = Math.max(0, Math.round((fullCost - previewCost) * 100) / 100);
+            cost = 0;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[translate] Preview extract failed; continuing with a full job:', err);
+    }
+  }
+
+  const { ok, balance, chargeId } = previewJobId
+    ? { ok: true as const, balance: getBalance(userSub), chargeId: null }
+    : chargeCreditsForJob(userSub, cost, 'translation');
   if (!ok) {
-    res.status(402).json({ error: 'Insufficient credits.', balance, cost });
+    res.status(402).json({ error: 'Insufficient credits.', balance, cost: fullCost });
     return;
   }
 
   // If the translation fails to produce output, give the credits back.
   const refund = (): number => (chargeId ? refundPendingCharge(chargeId, userSub) : balance);
+
+  const translateOptions = {
+    translationMemory,
+    recoveryBudgetCredits: previewJobId ? fullCost : cost,
+    ...(previewSourceHtml ? { sourceHtml: previewSourceHtml } : {}),
+  };
+
+  const previewFields = (): Record<string, unknown> => {
+    if (!previewJobId) return {};
+    return {
+      preview: true,
+      locked: true,
+      jobId: previewJobId,
+      remainingCost,
+      fullCost,
+    };
+  };
+
+  const persistPreview = (html: string, reviewWarnings: unknown[]): void => {
+    if (!previewJobId || !previewSourceHtml) return;
+    saveTranslationJob({
+      id: previewJobId,
+      sub: userSub,
+      fileName: file.originalname || 'pattern',
+      language,
+      sourceLanguage,
+      previewHtml: html,
+      remainingSourceHtml,
+      reviewWarnings,
+      remainingCost,
+      fullCost,
+    });
+  };
+
+  const refundPreviewGrant = (): void => {
+    if (previewJobId) releaseFreePreview(userSub, previewJobId);
+  };
 
   if (!clientWantsStream(req)) {
     try {
@@ -182,13 +569,15 @@ router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, as
         sourceLanguage,
         // Recovery retries may spend at most what this job charged; they are
         // never billed separately (the single pending charge covers the job).
-        { translationMemory, recoveryBudgetCredits: cost },
+        translateOptions,
         file.originalname,
       );
       if (chargeId) settlePendingCharge(chargeId);
-      res.json({ ...result, cost, balance });
+      persistPreview(result.html, result.reviewWarnings ?? []);
+      res.json({ ...result, cost, balance, ...previewFields() });
     } catch (err: any) {
       console.error('[translate] Error:', err);
+      refundPreviewGrant();
       const newBalance = refund();
       const details = externalErrorDetails(err);
       res.status(details.status).json({
@@ -295,8 +684,7 @@ router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, as
       language,
       sourceLanguage,
       {
-        translationMemory,
-        recoveryBudgetCredits: cost,
+        ...translateOptions,
         onDelta: (text) => {
           if (clientGone) return;
           writeSubstantiveEvent({ type: 'delta', text });
@@ -311,6 +699,7 @@ router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, as
       file.originalname,
     );
     if (chargeId) settlePendingCharge(chargeId);
+    persistPreview(result.html, result.reviewWarnings ?? []);
     if (!clientGone) {
       // US9: flush the settled result the moment translate+verifier finish.
       if (wantsChunkedFinal) {
@@ -338,6 +727,7 @@ router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, as
             reviewWarnings: result.reviewWarnings,
             cost,
             balance,
+            ...previewFields(),
           });
         }
       } else {
@@ -348,6 +738,7 @@ router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, as
           reviewWarnings: result.reviewWarnings,
           cost,
           balance,
+          ...previewFields(),
         });
       }
     }
@@ -355,6 +746,7 @@ router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, as
     res.end();
   } catch (err: any) {
     console.error('[translate] Error:', err);
+    refundPreviewGrant();
     const newBalance = refund();
     const details = externalErrorDetails(err);
     if (!res.headersSent) {

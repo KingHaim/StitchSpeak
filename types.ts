@@ -45,6 +45,12 @@ export interface TranslationResult {
   balance?: number;
   /** Structural or terminology items that could not be repaired safely. */
   reviewWarnings?: TranslationReviewWarning[];
+  /** US10: this payload is a free preview; the rest is locked server-side. */
+  preview?: boolean;
+  locked?: boolean;
+  jobId?: string;
+  remainingCost?: number;
+  fullCost?: number;
 }
 
 export interface TranslationReviewWarning {
@@ -251,7 +257,7 @@ export interface CreditPackage {
   label: string;
 }
 
-export type TranslationJobStatus = 'translating' | 'complete' | 'error';
+export type TranslationJobStatus = 'translating' | 'complete' | 'error' | 'unlocking';
 
 export interface TranslationJob {
   id: string;
@@ -280,6 +286,11 @@ export interface TranslationJob {
    * persist chat exchanges and unlock paid allowance per pattern.
    */
   serverPatternId: string | null;
+  preview?: boolean;
+  locked?: boolean;
+  jobId?: string;
+  remainingCost?: number;
+  fullCost?: number;
 }
 
 export interface PendingTranslationStart {
