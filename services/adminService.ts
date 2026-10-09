@@ -73,3 +73,33 @@ export const deleteAdminUpload=(sub:string,id:string)=>apiCall<void>(`/admin/mem
 export const getAdminBetaApplications=(status?:BetaApplicationStatus)=>apiCall<{applications:AdminBetaApplication[]}>(`/admin/beta-applications${status?`?status=${status}`:''}`);
 export const reviewAdminBetaApplication=(id:string,status:'approved'|'rejected')=>apiCall<{application:AdminBetaApplication;emailSent:boolean;invite?:{creditsGranted:boolean;balance:number;alreadyActive:boolean;developmentInviteUrl?:string}}>(`/admin/beta-applications/${encodeURIComponent(id)}`,'PATCH',{status});
 export const inviteAdminUser=(email:string,name?:string)=>apiCall<{sub:string;email:string;creditsGranted:boolean;balance:number;emailSent:boolean;alreadyActive:boolean;developmentInviteUrl?:string}>('/admin/invites','POST',{email,name});
+export interface AdminUnappliedOrder {
+  orderId:string;
+  reason:string;
+  status:string|null;
+  sub:string|null;
+  packId:string|null;
+  credits:number|null;
+  createdAt:number;
+  updatedAt:number;
+}
+export interface AdminPaymentGap {
+  orderId:string;
+  status:string;
+  userEmail:string|null;
+  total:number|null;
+  createdAt:string|null;
+  credited:boolean;
+  unapplied:AdminUnappliedOrder|null;
+  source:'lemon_squeezy'|'unapplied_only';
+}
+export interface AdminPaymentReconcile {
+  configured:boolean;
+  since:string;
+  missingCredits:AdminPaymentGap[];
+  unapplied:AdminUnappliedOrder[];
+  lemonSqueezyError?:string;
+}
+export const getAdminPaymentReconcile=()=>apiCall<AdminPaymentReconcile>('/admin/payments/reconcile');
+export const applyAdminUnappliedOrder=(orderId:string)=>apiCall<{applied:boolean;reason?:string;balance?:number}>(`/admin/payments/unapplied/${encodeURIComponent(orderId)}/apply`,'POST');
+export const dismissAdminUnappliedOrder=(orderId:string)=>apiCall<{dismissed:boolean}>(`/admin/payments/unapplied/${encodeURIComponent(orderId)}/dismiss`,'POST');

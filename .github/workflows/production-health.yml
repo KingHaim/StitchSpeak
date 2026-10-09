@@ -48,6 +48,10 @@ jobs:
 
           check 'Public website' 'https://stitchspeak.com/'
           check 'API readiness' 'https://stitchspeak-production.up.railway.app/health/deep'
+          # /health/payments stays 503 until every paid unapplied order (and
+          # every anomaly tied to an order_id) is in payment_orders or
+          # dismissed. There is no 60-minute expiry, so this check must stay
+          # red to keep the GitHub alert open.
           check 'Payment reconciliation' 'https://stitchspeak-production.up.railway.app/health/payments'
           check 'Encrypted offsite backups' 'https://stitchspeak-production.up.railway.app/health/backups'
           check 'API error rate and latency' 'https://stitchspeak-production.up.railway.app/health/metrics'

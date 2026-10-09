@@ -16,6 +16,7 @@ import {
   type AdminOverview,
 } from '../../services/adminService';
 import { BetaApplicationsSection } from '../admin/BetaApplicationsSection';
+import { AdminPaymentsSection } from '../admin/AdminPaymentsSection';
 import { SelectDropdown } from '../SelectDropdown';
 
 const money = (n: number) => new Intl.NumberFormat('en', { style: 'currency', currency: 'EUR' }).format(n / 100);
@@ -281,6 +282,7 @@ export const AdminPage: React.FC = () => {
           {inviteNotice && <p role="status" className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-900">{inviteNotice}</p>}
         </section>
 
+        <AdminPaymentsSection />
         <BetaApplicationsSection onManageMember={setSelected} />
 
         <div className="mt-8 grid gap-6 xl:grid-cols-[1.35fr_.65fr]">
