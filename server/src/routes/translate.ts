@@ -305,7 +305,8 @@ async function deliverTranslation(
 
 router.get('/jobs/:id', requireAuth, (req: Request, res: Response) => {
   const { userSub } = req as AuthenticatedRequest;
-  const id = req.params.id === 'latest' ? null : req.params.id;
+  const rawId = req.params.id;
+  const id = typeof rawId === 'string' && rawId !== 'latest' ? rawId : null;
   const job = id ? getOwnedTranslationJob(userSub, id) : getLatestOpenTranslationJob(userSub);
   if (!job) {
     res.status(404).json({ error: 'Translation job not found.' });

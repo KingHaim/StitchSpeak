@@ -109,7 +109,9 @@ export function classifySegmentText(text: string, tag = 'p'): Omit<PreviewSegmen
   };
 }
 
-function assignPages(segments: Array<Omit<PreviewSegment, 'page'> & { page?: number | null }>): PreviewSegment[] {
+function assignPages(
+  segments: Array<Omit<PreviewSegment, 'page' | 'index'> & { page?: number | null }>,
+): PreviewSegment[] {
   let cumulativeWords = 0;
   return segments.map((segment, index) => {
     const words = segment.text.split(/\s+/).filter(Boolean).length;
@@ -167,21 +169,30 @@ function firstWorkedSectionEnd(segments: PreviewSegment[]): number {
   while (end < segments.length && segments[end].isSizeRow) end += 1;
 
   // First rows/rounds of the body or yoke — include the heading if it follows
-  // immediately, then at least one numbered row/round (and its repeat).
+  // immediately, then one or two numbered rows (and finish any open repeat).
+  // Do not keep walking just because later filler also has numbers.
   if (end < segments.length && segments[end].isBodyOrYoke) end += 1;
-  let includedRow = false;
-  while (end < segments.length) {
+  let includedRows = 0;
+  while (end < segments.length && includedRows < 2) {
     const segment = segments[end];
-    if (segment.isHeading && includedRow && !segment.isBodyOrYoke) break;
-    if (segment.isRowOrRound || segment.isRepeatOpener || (segment.hasNumbers && !segment.isHeading)) {
+    if (segment.isHeading && includedRows > 0 && !segment.isBodyOrYoke) break;
+    if (segment.isSizeRow) {
       end += 1;
-      includedRow = true;
-      if (segment.isSelfContainedRepeat || segment.isRepeatCloser) break;
       continue;
     }
-    if (includedRow) break;
-    end += 1;
-    if (end - start > 8) break;
+    if (segment.isRowOrRound || segment.isRepeatOpener) {
+      end += 1;
+      includedRows += 1;
+      if (segment.isSelfContainedRepeat || segment.isRepeatCloser) break;
+      if (segment.isRepeatOpener && !segment.isSelfContainedRepeat) {
+        while (end < segments.length && !segments[end].isRepeatCloser && !segments[end].isHeading) {
+          end += 1;
+        }
+        if (end < segments.length && segments[end].isRepeatCloser) end += 1;
+      }
+      continue;
+    }
+    break;
   }
 
   return Math.max(end, start + 1);
