@@ -11,9 +11,13 @@ export const TranslationJobCard: React.FC<TranslationJobCardProps> = ({ job, isS
   const statusLabel =
     job.status === 'translating'
       ? 'Translating…'
-      : job.status === 'complete'
-        ? 'Ready'
-        : 'Error';
+      : job.status === 'unlocking'
+        ? 'Unlocking…'
+        : job.status === 'complete'
+          ? job.locked
+            ? 'Preview'
+            : 'Ready'
+          : 'Error';
 
   return (
     <button
@@ -36,10 +40,12 @@ export const TranslationJobCard: React.FC<TranslationJobCardProps> = ({ job, isS
         </div>
         <span
           className={`shrink-0 text-xs font-medium px-2.5 py-1 rounded-full ${
-            job.status === 'translating'
+            job.status === 'translating' || job.status === 'unlocking'
               ? 'bg-amber-100 text-amber-800'
               : job.status === 'complete'
-                ? 'bg-emerald-100 text-emerald-800'
+                ? job.locked
+                  ? 'bg-amber-100 text-amber-800'
+                  : 'bg-emerald-100 text-emerald-800'
                 : 'bg-red-100 text-red-800'
           }`}
         >
@@ -47,7 +53,7 @@ export const TranslationJobCard: React.FC<TranslationJobCardProps> = ({ job, isS
         </span>
       </div>
 
-      {job.status === 'translating' && (
+      {(job.status === 'translating' || job.status === 'unlocking') && (
         <div className="flex items-center gap-2 text-sm text-primary">
           <svg
             className="animate-spin h-4 w-4 shrink-0"
@@ -72,7 +78,9 @@ export const TranslationJobCard: React.FC<TranslationJobCardProps> = ({ job, isS
       )}
 
       {job.status === 'complete' && (
-        <p className="text-xs text-on-surface-variant mt-1">Tap to view output and chat.</p>
+        <p className="text-xs text-on-surface-variant mt-1">
+          {job.locked ? 'Preview ready — unlock to export.' : 'Tap to view output and chat.'}
+        </p>
       )}
     </button>
   );

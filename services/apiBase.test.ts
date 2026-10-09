@@ -55,7 +55,9 @@ describe('apiBase', () => {
     expect((fetchMock.mock.calls[0]?.[1] as RequestInit).headers).not.toHaveProperty('Authorization');
 
     fetchMock.mockResolvedValueOnce(jsonResponse({ balance: 24, betaAccess: false }));
-    await getCreditState('cookie-session');
+    const credits = await getCreditState('cookie-session');
+    expect(credits.freePreviewMode).toBe('off');
+    expect(credits.freePreviewAvailable).toBe(false);
     expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/credits');
     expect((fetchMock.mock.calls[1]?.[1] as RequestInit).headers).not.toHaveProperty('Authorization');
   });

@@ -2207,6 +2207,11 @@ export interface TranslatePatternOptions {
     sourceText: string;
     targetText: string;
   }>;
+  /**
+   * US10: translate this extracted HTML slice instead of the uploaded file.
+   * Used for the free preview and for resuming the remaining source.
+   */
+  sourceHtml?: string;
 }
 
 export function createTranslationMemoryInstruction(
@@ -2626,6 +2631,16 @@ export async function translatePattern(
   usage: TranslationUsage | null;
   reviewWarnings: TranslationTopologyWarning[];
 }> {
+  if (options.sourceHtml && options.sourceHtml.replace(/<[^>]+>/g, '').trim()) {
+    const deadlineOptions: TranslatePatternOptions = {
+      ...options,
+      deadlineAt: Date.now() + TRANSLATION_DEADLINE_MS,
+    };
+    return withExternalDeadline('Gemini translation', TRANSLATION_DEADLINE_MS, (signal) =>
+      translateDocumentHtml(options.sourceHtml!, language, sourceLanguage, deadlineOptions, signal),
+    );
+  }
+
   const kind = detectSourceKind(fileBuffer, mimeType, fileName);
 
   if (kind === 'pdf') {

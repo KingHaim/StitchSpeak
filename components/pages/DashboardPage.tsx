@@ -12,7 +12,13 @@ import { TranslationLanguageModal } from '../TranslationLanguageModal';
 import { TranslationJobCard } from '../TranslationJobCard';
 import { FileThumbnail } from '../FileThumbnail';
 import { SelectDropdown } from '../SelectDropdown';
-import { translatePatternStream, startChatSession, sendChatMessage } from '../../services/translationService';
+import { translatePatternStream, unlockTranslation, fetchTranslationJob, startChatSession, sendChatMessage } from '../../services/translationService';
+import { TranslationPreviewLock } from '../TranslationPreviewLock';
+import {
+  clearPendingPreviewUnlock,
+  readPendingPreviewUnlock,
+  writePendingPreviewUnlock,
+} from '../../services/previewUnlock';
 import { analyzeFile } from '../../services/fileAnalyzer';
 import { estimateBatchTranslationCost, estimateTranslationCost } from '../../services/pricingService';
 import { saveTranslation, loadHistory, loadPatternSource } from '../../services/historyService';
@@ -122,7 +128,8 @@ function aggregatePdfMetrics(metricsList: PdfMetrics[]): PdfMetrics | null {
 
 export const DashboardPage: React.FC = () => {
   const { user, idToken, isAuthenticated, googleIdentityReady } = useAuth();
-  const { balance, applyBalance, refreshBalance, startCheckout } = useCredits();
+  const { balance, applyBalance, refreshBalance, startCheckout, freePreviewAvailable, freePreviewMode, checkoutReturnStatus } = useCredits();
+  const canStartFreePreview = freePreviewMode !== 'off' && freePreviewAvailable;
 
   const [jobs, setJobs] = useState<TranslationJob[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -155,6 +162,8 @@ export const DashboardPage: React.FC = () => {
 
   const [studioExportBusy, setStudioExportBusy] = useState(false);
   const [isStudioExportMenuOpen, setIsStudioExportMenuOpen] = useState(false);
+  const [previewUnlocking, setPreviewUnlocking] = useState(false);
+  const previewUnlockInFlight = useRef(false);
 
   const [addTranslationHint, setAddTranslationHintState] = useState<AddTranslationHint | null>(
     () => readAddTranslationHint(),
@@ -520,6 +529,8 @@ export const DashboardPage: React.FC = () => {
         status: 'translating',
         translatedHtml: '',
         reviewWarnings: [],
+        preview: false,
+        locked: false,
         error: null,
         chatSessionId: null,
         chatHistory: [],
@@ -566,6 +577,11 @@ export const DashboardPage: React.FC = () => {
                   status: 'complete' as const,
                   statusMessage: null,
                   error: null,
+                  preview: result.preview === true,
+                  locked: result.locked === true,
+                  jobId: result.jobId,
+                  remainingCost: result.remainingCost,
+                  fullCost: result.fullCost,
                 }
               : j,
           ),
@@ -574,6 +590,20 @@ export const DashboardPage: React.FC = () => {
         // The server is authoritative for billing: it charged `result.cost` and
         // returned the new balance. Reflect that in the UI.
         if (typeof result.balance === 'number') applyBalance(result.balance);
+
+        if (result.preview === true && result.jobId) {
+          writePendingPreviewUnlock({
+            jobId: result.jobId,
+            remainingCost: result.remainingCost ?? 0,
+            fullCost: result.fullCost,
+            clientJobId: id,
+            fileName: file.name,
+            translatedHtml: result.html,
+            sourceLanguage,
+            targetLanguage,
+            reviewWarnings: result.reviewWarnings ?? [],
+          });
+        }
 
         let serverPatternId: string | null = null;
         try {
@@ -699,7 +729,7 @@ export const DashboardPage: React.FC = () => {
       // Client-side estimate is only a pre-check to surface a top-up prompt
       // early; the server computes and charges the authoritative amount.
       const cost = modalPriceEstimate.translationCost;
-      if (balance < cost - 0.001) {
+      if (!canStartFreePreview && balance < cost - 0.001) {
         openBuyCredits('estimate_insufficient');
         return;
       }
@@ -738,6 +768,7 @@ export const DashboardPage: React.FC = () => {
     isAuthenticated,
     user,
     balance,
+    canStartFreePreview,
     beginTranslationBatch,
     closeLanguageModal,
     isStartingFromModal,
@@ -853,17 +884,237 @@ export const DashboardPage: React.FC = () => {
     }
   }, [selectedJobId, jobs, idToken, refreshBalance, openBuyCredits]);
 
+  const persistPendingFromJob = useCallback((job: TranslationJob) => {
+    if (!job.jobId) return;
+    writePendingPreviewUnlock({
+      jobId: job.jobId,
+      remainingCost: job.remainingCost ?? 0,
+      fullCost: job.fullCost,
+      clientJobId: job.id,
+      fileName: job.fileName,
+      translatedHtml: job.translatedHtml,
+      sourceLanguage: job.sourceLanguage,
+      targetLanguage: job.targetLanguage,
+      reviewWarnings: job.reviewWarnings,
+    });
+  }, []);
+
+  const applyUnlockedResult = useCallback((clientJobId: string, result: {
+    html: string;
+    reviewWarnings?: TranslationJob['reviewWarnings'];
+    balance?: number;
+    cost?: number;
+    jobId?: string;
+  }) => {
+    clearPendingPreviewUnlock();
+    if (typeof result.balance === 'number') applyBalance(result.balance);
+    setJobs((prev) =>
+      prev.map((j) =>
+        j.id === clientJobId
+          ? {
+              ...j,
+              translatedHtml: result.html,
+              reviewWarnings: result.reviewWarnings ?? j.reviewWarnings,
+              status: 'complete' as const,
+              statusMessage: null,
+              error: null,
+              preview: false,
+              locked: false,
+              remainingCost: 0,
+              jobId: result.jobId ?? j.jobId,
+            }
+          : j,
+      ),
+    );
+  }, [applyBalance]);
+
+  const runPreviewUnlock = useCallback(async (job: TranslationJob) => {
+    if (!job.jobId || !idToken || previewUnlockInFlight.current) return;
+    previewUnlockInFlight.current = true;
+    setPreviewUnlocking(true);
+    setJobs((prev) =>
+      prev.map((j) =>
+        j.id === job.id
+          ? { ...j, status: 'unlocking' as const, statusMessage: 'Unlocking the rest of this translation…', error: null }
+          : j,
+      ),
+    );
+    try {
+      const result = await unlockTranslation(job.jobId, idToken, {
+        onStatus: (message) => {
+          setJobs((prev) =>
+            prev.map((j) => (j.id === job.id ? { ...j, statusMessage: message } : j)),
+          );
+        },
+      });
+      applyUnlockedResult(job.id, result);
+      if (job.file.size > 0) {
+        try {
+          await saveTranslation(
+            {
+              fileName: job.fileName,
+              fileType: job.file.type || 'unknown',
+              sourceLanguage: job.sourceLanguage.name,
+              targetLanguage: job.targetLanguage.name,
+              translatedHtml: stripCodeFences(result.html),
+              pdfMetrics: job.pdfMetrics,
+              cost: result.cost ?? job.remainingCost ?? 0,
+              reviewWarnings: result.reviewWarnings ?? [],
+              sourceFile: job.file,
+            },
+            idToken,
+          );
+          refreshSavedPatterns();
+        } catch (saveErr) {
+          console.error('Failed to save unlocked translation:', saveErr);
+        }
+      }
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      const refundedBalance = (err as { balance?: number }).balance;
+      if (typeof refundedBalance === 'number') applyBalance(refundedBalance);
+      else void refreshBalance();
+      if (status === 402) {
+        persistPendingFromJob(job);
+        setJobs((prev) =>
+          prev.map((j) =>
+            j.id === job.id
+              ? { ...j, status: 'complete' as const, statusMessage: null, locked: true, preview: true }
+              : j,
+          ),
+        );
+        openBuyCredits('preview_unlock');
+        return;
+      }
+      const message = err instanceof Error ? err.message : 'Could not unlock the translation. Please try again.';
+      setJobs((prev) =>
+        prev.map((j) =>
+          j.id === job.id
+            ? { ...j, status: 'complete' as const, statusMessage: null, locked: true, preview: true, error: message }
+            : j,
+        ),
+      );
+    } finally {
+      previewUnlockInFlight.current = false;
+      setPreviewUnlocking(false);
+    }
+  }, [idToken, applyUnlockedResult, applyBalance, refreshBalance, persistPendingFromJob, openBuyCredits, refreshSavedPatterns]);
+
+  const handleUnlockPreview = useCallback(() => {
+    if (!selectedJob?.jobId || !selectedJob.locked) return;
+    persistPendingFromJob(selectedJob);
+    const need = selectedJob.remainingCost ?? 0;
+    if (need <= 0.001 || balance >= need - 0.001) {
+      void runPreviewUnlock(selectedJob);
+      return;
+    }
+    openBuyCredits('preview_unlock');
+  }, [selectedJob, persistPendingFromJob, balance, runPreviewUnlock, openBuyCredits]);
+
+  useEffect(() => {
+    const pending = readPendingPreviewUnlock();
+    if (!pending) return;
+    setJobs((prev) => {
+      if (prev.some((j) => j.jobId === pending.jobId || j.id === pending.clientJobId)) return prev;
+      const restored: TranslationJob = {
+        id: pending.clientJobId,
+        startedAt: Date.now(),
+        file: new File([], pending.fileName || 'pattern', { type: 'text/plain' }),
+        fileName: pending.fileName || 'pattern',
+        sourceLanguage: pending.sourceLanguage ?? AUTO_DETECT_LANGUAGE,
+        targetLanguage: pending.targetLanguage ?? LANGUAGES[0],
+        pdfMetrics: null,
+        priceEstimate: null,
+        status: 'complete',
+        translatedHtml: pending.translatedHtml ?? '',
+        reviewWarnings: pending.reviewWarnings ?? [],
+        error: null,
+        chatSessionId: null,
+        chatHistory: [],
+        chatMessageCount: 0,
+        chatMessagesAllowed: PRICING.chat.freeMessages,
+        serverPatternId: null,
+        preview: true,
+        locked: true,
+        jobId: pending.jobId,
+        remainingCost: pending.remainingCost,
+        fullCost: pending.fullCost,
+      };
+      return [restored, ...prev];
+    });
+    setSelectedJobId((current) => current ?? pending.clientJobId);
+  }, []);
+
+  useEffect(() => {
+    const pending = readPendingPreviewUnlock();
+    if (!pending || !idToken) return;
+    let cancelled = false;
+    void fetchTranslationJob(pending.jobId, idToken)
+      .then((remote) => {
+        if (cancelled) return;
+        if (remote.locked === false && remote.html) {
+          applyUnlockedResult(pending.clientJobId, remote);
+          return;
+        }
+        setJobs((prev) =>
+          prev.map((j) =>
+            j.jobId === pending.jobId || j.id === pending.clientJobId
+              ? {
+                  ...j,
+                  translatedHtml: remote.html || j.translatedHtml,
+                  reviewWarnings: remote.reviewWarnings ?? j.reviewWarnings,
+                  remainingCost: remote.remainingCost ?? j.remainingCost,
+                  fullCost: remote.fullCost ?? j.fullCost,
+                  locked: remote.locked !== false,
+                  preview: remote.preview === true,
+                }
+              : j,
+          ),
+        );
+      })
+      .catch((err) => {
+        console.warn('[preview] Could not restore locked translation job:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [idToken, applyUnlockedResult]);
+
+  useEffect(() => {
+    if (!selectedJob?.locked || !selectedJob.jobId) return;
+    const pending = readPendingPreviewUnlock();
+    if (!pending || pending.jobId !== selectedJob.jobId) return;
+    const need = selectedJob.remainingCost ?? 0;
+    const creditsReady = need <= 0.001 || balance >= need - 0.001;
+    if (!creditsReady) return;
+    if (
+      checkoutReturnStatus === 'confirmed' ||
+      checkoutReturnStatus === 'delayed' ||
+      checkoutReturnStatus === 'confirming'
+    ) {
+      void runPreviewUnlock(selectedJob);
+    }
+  }, [selectedJob, balance, checkoutReturnStatus, runPreviewUnlock]);
+
+  const waitingForPreviewCredits =
+    !!selectedJob?.locked &&
+    (checkoutReturnStatus === 'confirming' ||
+      (checkoutReturnStatus === 'delayed' && (selectedJob.remainingCost ?? 0) > balance + 0.001));
+
   const modalCreditCost = modalPriceEstimate?.translationCost ?? 0;
   const modalFileCount = modalFiles.length;
   const modalInsufficientCredits =
     isAuthenticated &&
     Boolean(modalPriceEstimate) &&
+    !canStartFreePreview &&
     balance < modalCreditCost - 0.001;
   const modalStartLabel = modalInsufficientCredits
     ? 'Buy credits to continue'
-    : isAuthenticated
-      ? `Start ${modalFileCount > 1 ? `${modalFileCount} translations` : 'translation'} (${modalCreditCost.toFixed(1)} credits)`
-      : `Start ${modalFileCount > 1 ? `${modalFileCount} translations` : 'translation'}`;
+    : isAuthenticated && canStartFreePreview
+      ? 'Start free preview'
+      : isAuthenticated
+        ? `Start ${modalFileCount > 1 ? `${modalFileCount} translations` : 'translation'} (${modalCreditCost.toFixed(1)} credits)`
+        : `Start ${modalFileCount > 1 ? `${modalFileCount} translations` : 'translation'}`;
 
   const modalStartDisabled =
     modalFileCount === 0 ||
@@ -944,16 +1195,21 @@ export const DashboardPage: React.FC = () => {
         ? 100
         : selectedJob.status === 'error'
           ? 0
-          : estimatedTranslationProgress(
-              progressClock - selectedJob.startedAt,
-              selectedJob.pdfMetrics?.pages ?? 1,
-            );
+          : selectedJob.status === 'unlocking'
+            ? 100
+            : estimatedTranslationProgress(
+                progressClock - selectedJob.startedAt,
+                selectedJob.pdfMetrics?.pages ?? 1,
+              );
 
   const canStudioExport =
-    selectedJob?.status === 'complete' && !!stripTranslatedHtml(selectedJob.translatedHtml ?? '');
+    selectedJob?.status === 'complete' &&
+    !selectedJob.locked &&
+    !!stripTranslatedHtml(selectedJob.translatedHtml ?? '');
 
   const showBilingual =
-    selectedJob?.status === 'complete' && hasAlignment(selectedJob.translatedHtml ?? '');
+    (selectedJob?.status === 'complete' || selectedJob?.status === 'unlocking') &&
+    hasAlignment(selectedJob.translatedHtml ?? '');
 
   const hasInProgressJob = jobs.some((job) => job.status === 'translating');
   const showEmptyBalanceBanner =
@@ -967,6 +1223,7 @@ export const DashboardPage: React.FC = () => {
           {selectedJob &&
             (selectedJob.status === 'complete' ||
               selectedJob.status === 'translating' ||
+              selectedJob.status === 'unlocking' ||
               selectedJob.status === 'error') && (
               <div className="bg-surface-container-low rounded-xl p-6 sm:p-8 flex flex-col md:flex-row gap-8 items-center border border-outline-variant/15">
                 <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-lg overflow-hidden bg-surface-container-highest shrink-0 flex items-center justify-center border border-outline-variant/20">
@@ -1140,6 +1397,7 @@ export const DashboardPage: React.FC = () => {
           {selectedJob &&
             (selectedJob.status === 'complete' ||
               selectedJob.status === 'translating' ||
+              selectedJob.status === 'unlocking' ||
               selectedJob.status === 'error') && (
               <>
                 {/* Segment-level mismatches render in-context inside the bilingual
@@ -1185,6 +1443,15 @@ export const DashboardPage: React.FC = () => {
                       targetLabel={selectedJob.targetLanguage.name}
                       reviewWarnings={selectedJob.reviewWarnings}
                     />
+                    {selectedJob.locked && freePreviewMode !== 'off' && (
+                      <TranslationPreviewLock
+                        remainingCost={selectedJob.remainingCost}
+                        fullCost={selectedJob.fullCost ?? selectedJob.priceEstimate?.translationCost}
+                        waitingForCredits={waitingForPreviewCredits}
+                        unlocking={previewUnlocking || selectedJob.status === 'unlocking'}
+                        onUnlock={handleUnlockPreview}
+                      />
+                    )}
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-start">
@@ -1225,7 +1492,7 @@ export const DashboardPage: React.FC = () => {
                       </div>
                       <TranslatedOutput
                         text={selectedJob.translatedHtml}
-                        isLoading={selectedJob.status === 'translating'}
+                        isLoading={selectedJob.status === 'translating' || selectedJob.status === 'unlocking'}
                         error={selectedJob.error}
                         languageCode={selectedJob.targetLanguage.code}
                         sourceFileName={selectedJob.fileName}
@@ -1233,6 +1500,15 @@ export const DashboardPage: React.FC = () => {
                       />
                     </div>
                   </div>
+                )}
+                {selectedJob.locked && freePreviewMode !== 'off' && !showBilingual && (
+                  <TranslationPreviewLock
+                    remainingCost={selectedJob.remainingCost}
+                    fullCost={selectedJob.fullCost ?? selectedJob.priceEstimate?.translationCost}
+                    waitingForCredits={waitingForPreviewCredits}
+                    unlocking={previewUnlocking || selectedJob.status === 'unlocking'}
+                    onUnlock={handleUnlockPreview}
+                  />
                 )}
 
                 {selectedJob.status === 'complete' && <AiTechEditNotice />}
@@ -1292,7 +1568,7 @@ export const DashboardPage: React.FC = () => {
                         )}
                       </div>
                       )}
-                      {selectedJob.status === 'complete' && (
+                      {selectedJob.status === 'complete' && !selectedJob.locked && (
                         <button
                           type="button"
                           onClick={() => openBuyCredits('post_translate')}

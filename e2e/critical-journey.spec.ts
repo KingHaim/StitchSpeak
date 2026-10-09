@@ -26,7 +26,7 @@ async function mockAccountApi(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ balance: 24, betaAccess: false }),
+      body: JSON.stringify({ balance: 24, betaAccess: false, freePreviewMode: 'off', freePreviewAvailable: false }),
     });
   });
   await page.route('**/api/patterns', async (route) => {
@@ -198,6 +198,100 @@ test('translation happy path surfaces review mismatches and exports cleanly', as
   await page.getByRole('menuitem', { name: 'Text (.txt)' }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/\.txt$/);
+});
+
+test('free preview stays locked until credits unlock export', async ({ page }) => {
+  const previewHtml =
+    '<h1 data-seg="1" data-o="Weekend scarf">Bufanda de fin de semana</h1>' +
+    '<p data-seg="2" data-o="Cast on 24 stitches.">Montar 24 puntos.</p>' +
+    '<p data-seg="3" data-o="Row 1: Knit.">Vuelta 1: Derecho.</p>';
+
+  await mockAccountApi(page);
+  await page.route('**/api/credits', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ balance: 0, betaAccess: false, freePreviewMode: 'on', freePreviewAvailable: true }),
+    });
+  });
+  await page.route('**/api/translate', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        html: previewHtml,
+        usage: null,
+        cost: 0,
+        balance: 0,
+        preview: true,
+        locked: true,
+        jobId: 'job-preview-e2e',
+        remainingCost: 6.5,
+        fullCost: 8.5,
+        reviewWarnings: [
+          {
+            code: 'NUMBER_UNRESTORABLE',
+            sourceId: 'seg-2',
+            message: 'In "Montar 24 puntos.": check this section against the original pattern.',
+          },
+        ],
+      }),
+    });
+  });
+  await page.route('**/api/patterns', async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          pattern: {
+            id: 'pat-preview-e2e',
+            timestamp: Date.now(),
+            fileName: 'weekend-scarf.txt',
+            fileType: 'text/plain',
+            sourceLanguage: 'English',
+            targetLanguage: 'Spanish',
+            pdfMetrics: null,
+            cost: 0,
+            reviewWarnings: [],
+            hasSource: false,
+          },
+        }),
+      });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ patterns: [] }) });
+  });
+  await page.route('**/api/chat/start', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ sessionId: 'chat-preview-e2e' }) });
+  });
+
+  await signIn(page);
+  await page.locator('#file-upload').setInputFiles({
+    name: 'weekend-scarf.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Cast on 24 stitches.\n\nRow 1: Knit.\n\nContinue until the scarf measures 120 cm.'),
+  });
+  const dialog = page.getByRole('dialog', { name: 'Select translation language' });
+  await expect(dialog.getByRole('heading', { name: 'Translation estimate' })).toBeVisible();
+  await dialog.getByRole('checkbox').check();
+  await dialog.getByRole('button', { name: 'Start free preview' }).click();
+
+  await expect(page.getByTestId('bilingual-review-strip')).toBeVisible();
+  const lock = page.getByTestId('translation-preview-lock');
+  const notice = page.getByTestId('ai-tech-edit-notice');
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText('This is an automated draft translation, not a published tech edit.');
+  await expect(notice).not.toContainText(/\bAI\b/);
+  await expect(lock).not.toContainText(/\bAI\b/);
+  await expect(lock).toBeVisible();
+  await expect(lock.getByRole('button', { name: 'Unlock the full translation and export' })).toBeVisible();
+  await expect(lock.getByRole('button')).toHaveCount(1);
+  await expect(lock.getByText('Translation estimate: 6.5 credits')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Export this file' })).toHaveCount(0);
+
+  await lock.getByRole('button', { name: 'Unlock the full translation and export' }).click();
+  await expect(page.getByRole('dialog', { name: 'Buy Credits' })).toBeVisible();
 });
 
 test('beta form requires the participation agreement before submitting', async ({ page }) => {
