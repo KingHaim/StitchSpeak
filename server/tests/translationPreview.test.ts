@@ -85,12 +85,17 @@ beforeEach(() => {
 });
 
 function patternFile(): Blob {
+  const later = Array.from({ length: 80 }, (_, i) => (
+    `Later sleeve section row ${i + 20}: continue in pattern until the piece measures the length given for your size, then work the next chart.`
+  ));
   const text = [
     'Weekend Scarf',
     'Cast on 24 stitches.',
     'Row 1: Knit.',
     'Row 2: Purl.',
-    ...Array.from({ length: 40 }, (_, i) => `Continue row ${i + 3} until the scarf measures 120 cm.`),
+    'Body',
+    'Row 1: Knit every stitch.',
+    ...later,
   ].join('\n\n');
   return new Blob([text], { type: 'text/plain' });
 }
@@ -108,7 +113,7 @@ describe('US10 server-side preview limit', () => {
     mocks.translatePattern.mockImplementation(async (_buf, _mime, _lang, _src, options) => {
       expect(options.sourceHtml).toBeTruthy();
       expect(options.sourceHtml).toContain('Cast on 24 stitches.');
-      expect(options.sourceHtml).not.toContain('Continue row 20');
+      expect(options.sourceHtml).not.toContain('Later sleeve section row 60');
       return {
         html: '<p data-seg="1" data-o="Cast on 24 stitches.">Monta 24 puntos.</p>',
         usage: null,
@@ -123,8 +128,8 @@ describe('US10 server-side preview limit', () => {
     expect(body.locked).toBe(true);
     expect(body.cost).toBe(0);
     expect(body.html).toContain('Monta 24 puntos.');
+    expect(body.html).not.toContain('Later sleeve');
     expect(body.html).not.toContain('Continue row');
-    expect(body.html).not.toMatch(/Continue row 20/);
     expect(body.remainingHtml).toBeUndefined();
     expect(body.remainingSourceHtml).toBeUndefined();
     expect(body.reviewWarnings).toHaveLength(1);
@@ -136,7 +141,7 @@ describe('US10 server-side preview limit', () => {
     expect(stored.status).toBe(200);
     const storedBody = await stored.json();
     expect(storedBody.html).toContain('Monta 24 puntos.');
-    expect(storedBody.html).not.toContain('Continue row');
+    expect(storedBody.html).not.toContain('Later sleeve');
     expect(storedBody.remainingSourceHtml).toBeUndefined();
     expect(storedBody.locked).toBe(true);
   });
@@ -181,10 +186,10 @@ describe('US10 server-side preview limit', () => {
     expect(remainingBefore).toBeGreaterThan(0);
 
     mocks.translatePattern.mockImplementation(async (_buf, _mime, _lang, _src, options) => {
-      expect(options.sourceHtml).toContain('Continue row');
+      expect(options.sourceHtml).toContain('Later sleeve section');
       expect(options.sourceHtml).not.toContain('Cast on 24 stitches.');
       return {
-        html: '<p>Continúa hasta 120 cm.</p>',
+        html: '<p>Continúa la manga.</p>',
         usage: null,
         reviewWarnings: [],
       };
@@ -201,7 +206,7 @@ describe('US10 server-side preview limit', () => {
     expect(body.locked).toBe(false);
     expect(body.preview).toBe(false);
     expect(body.html).toContain('Monta 24 puntos.');
-    expect(body.html).toContain('Continúa hasta 120 cm.');
+    expect(body.html).toContain('Continúa la manga.');
     expect(body.cost).toBe(remainingBefore);
     expect(credits.getBalance('user-preview-test')).toBeCloseTo(balanceBefore - remainingBefore, 2);
 
