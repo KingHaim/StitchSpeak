@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cutPreviewHtml, segmentsFromHtml } from '../src/services/previewCut';
+import { choosePreviewEndPage, cutPreviewHtml, segmentsFromHtml } from '../src/services/previewCut';
 
 function wrap(lines: string[]): string {
   return lines.map((line) => `<p>${line}</p>`).join('\n');
@@ -115,6 +115,49 @@ describe('preview cut craft rule', () => {
     const cut = cutPreviewHtml([...page1, ...page2, ...later].join('\n'));
     expect(cut.previewHtml).toContain('Cast on 32 (36, 40) stitches');
     expect(cut.remainingHtml).toContain('Page 3 row');
+  });
+
+  it('moves the page cut past a chart/legend pair that straddles the first boundary', () => {
+    const html = [
+      '<p data-page="1">Cast on 40 (44, 48) stitches.</p>',
+      '<p data-page="1">Row 1: Knit.</p>',
+      '<p data-page="1">Stitch chart A begins here.</p>',
+      '<p data-page="2">Legend: k2tog, ssk, yarn over.</p>',
+      '<p data-page="3">Later sleeve section row 20: continue in pattern.</p>',
+    ].join('\n');
+    const cut = cutPreviewHtml(html);
+    expect(cut.previewEndPage).toBeGreaterThanOrEqual(2);
+    expect(choosePreviewEndPage(cut.segments, cut.end)).toBe(cut.previewEndPage);
+    const previewPages = cut.segments.filter((segment) => Math.ceil(segment.page) <= cut.previewEndPage);
+    expect(previewPages.some((segment) => segment.isChart)).toBe(true);
+    expect(previewPages.some((segment) => segment.isLegend)).toBe(true);
+  });
+
+  it('moves the page cut past a size table that straddles the first boundary', () => {
+    const html = [
+      '<p data-page="1">Cast on 24 stitches.</p>',
+      '<p data-page="1">Row 1: Knit.</p>',
+      '<p data-page="1">80 (90, 100, 110) stitches.</p>',
+      '<p data-page="2">88 (98, 108, 118) stitches for the long version.</p>',
+      '<p data-page="3">Later sleeve section row 20: continue in pattern.</p>',
+    ].join('\n');
+    const cut = cutPreviewHtml(html);
+    expect(cut.previewEndPage).toBeGreaterThanOrEqual(2);
+    const previewPages = cut.segments.filter((segment) => Math.ceil(segment.page) <= cut.previewEndPage);
+    expect(previewPages.some((segment) => segment.text.includes('88 (98, 108, 118)'))).toBe(true);
+  });
+
+  it('moves the page cut past a repeat that straddles the first boundary', () => {
+    const html = [
+      '<p data-page="1">Cast on 40 (44, 48) stitches.</p>',
+      '<p data-page="1">Row 1: Knit 2, purl 2; repeat from *</p>',
+      '<p data-page="2">to last 2 stitches, knit 2.</p>',
+      '<p data-page="2">End of repeat. Bind off.</p>',
+      '<p data-page="3">Later sleeve section row 20: continue in pattern.</p>',
+    ].join('\n');
+    const cut = cutPreviewHtml(html);
+    expect(cut.previewEndPage).toBeGreaterThanOrEqual(2);
+    expect(cut.end).toBeGreaterThan(cut.segments.findIndex((segment) => /end of repeat/i.test(segment.text)));
   });
 
   it('splits HTML blocks into segments', () => {

@@ -46,6 +46,16 @@ db.exec(`
 `);
 db.exec('CREATE INDEX IF NOT EXISTS idx_translation_jobs_sub ON translation_jobs (sub, created_at DESC)');
 
+function addColumn(sql: string): void {
+  try {
+    db.exec(sql);
+  } catch {
+    /* column already exists on upgraded databases */
+  }
+}
+addColumn('ALTER TABLE translation_jobs ADD COLUMN remaining_pdf BLOB');
+addColumn('ALTER TABLE translation_jobs ADD COLUMN preview_end_page INTEGER');
+
 const MAX_HTML_BYTES = 16 * 1024 * 1024;
 
 function clip(html: string): string {
@@ -63,33 +73,37 @@ const stmts = {
   ),
   deleteGrantsForSub: db.prepare<[string]>('DELETE FROM translation_preview_grants WHERE sub = ?'),
   insertJob: db.prepare<
-    [string, string, string, string, string, string | null, string, string, string | null, number, number, number, number]
+    [string, string, string, string, string, string | null, string, string, Buffer | null, number | null, string | null, number, number, number, number]
   >(`
     INSERT INTO translation_jobs (
       id, sub, status, file_name, language, source_language, preview_html,
-      remaining_source_html, review_warnings, remaining_cost, full_cost, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      remaining_source_html, remaining_pdf, preview_end_page, review_warnings,
+      remaining_cost, full_cost, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `),
   getJob: db.prepare<[string]>(`
     SELECT id, sub, status, file_name, language, source_language, preview_html,
-           remaining_source_html, review_warnings, remaining_cost, full_cost, created_at, updated_at
+           remaining_source_html, remaining_pdf, preview_end_page, review_warnings,
+           remaining_cost, full_cost, created_at, updated_at
     FROM translation_jobs WHERE id = ?
   `),
   getOwnedJob: db.prepare<[string, string]>(`
     SELECT id, sub, status, file_name, language, source_language, preview_html,
-           remaining_source_html, review_warnings, remaining_cost, full_cost, created_at, updated_at
+           remaining_source_html, remaining_pdf, preview_end_page, review_warnings,
+           remaining_cost, full_cost, created_at, updated_at
     FROM translation_jobs WHERE id = ? AND sub = ?
   `),
   latestOpenJob: db.prepare<[string]>(`
     SELECT id, sub, status, file_name, language, source_language, preview_html,
-           remaining_source_html, review_warnings, remaining_cost, full_cost, created_at, updated_at
+           remaining_source_html, remaining_pdf, preview_end_page, review_warnings,
+           remaining_cost, full_cost, created_at, updated_at
     FROM translation_jobs WHERE sub = ? AND status = 'preview'
     ORDER BY created_at DESC LIMIT 1
   `),
   completeJob: db.prepare<[string, string | null, number, string]>(`
     UPDATE translation_jobs
     SET status = 'complete', preview_html = ?, review_warnings = ?, remaining_source_html = '',
-        remaining_cost = 0, updated_at = ?
+        remaining_pdf = NULL, remaining_cost = 0, updated_at = ?
     WHERE id = ?
   `),
   deleteJobsForSub: db.prepare<[string]>('DELETE FROM translation_jobs WHERE sub = ?'),
@@ -121,6 +135,8 @@ export interface TranslationPreviewJob {
   sourceLanguage: string | null;
   previewHtml: string;
   remainingSourceHtml: string;
+  remainingPdf: Buffer | null;
+  previewEndPage: number | null;
   reviewWarnings: unknown[];
   remainingCost: number;
   fullCost: number;
@@ -147,6 +163,8 @@ interface RawJob {
   source_language: string | null;
   preview_html: string;
   remaining_source_html: string;
+  remaining_pdf: Buffer | Uint8Array | null;
+  preview_end_page: number | null;
   review_warnings: string | null;
   remaining_cost: number;
   full_cost: number;
@@ -164,6 +182,8 @@ function toJob(row: RawJob): TranslationPreviewJob {
     sourceLanguage: row.source_language,
     previewHtml: row.preview_html,
     remainingSourceHtml: row.remaining_source_html,
+    remainingPdf: row.remaining_pdf ? Buffer.from(row.remaining_pdf) : null,
+    previewEndPage: row.preview_end_page,
     reviewWarnings: parseWarnings(row.review_warnings),
     remainingCost: row.remaining_cost,
     fullCost: row.full_cost,
@@ -184,6 +204,8 @@ export function saveTranslationJob(input: {
   sourceLanguage?: string | null;
   previewHtml: string;
   remainingSourceHtml: string;
+  remainingPdf?: Buffer | null;
+  previewEndPage?: number | null;
   reviewWarnings?: unknown[];
   remainingCost: number;
   fullCost: number;
@@ -198,6 +220,8 @@ export function saveTranslationJob(input: {
     input.sourceLanguage ?? null,
     clip(input.previewHtml),
     clip(input.remainingSourceHtml),
+    input.remainingPdf && input.remainingPdf.length > 0 ? input.remainingPdf : null,
+    input.previewEndPage ?? null,
     input.reviewWarnings?.length ? JSON.stringify(input.reviewWarnings) : null,
     input.remainingCost,
     input.fullCost,

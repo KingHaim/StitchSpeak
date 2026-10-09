@@ -4,9 +4,13 @@
  * The free preview must cover the first worked section that contains numbers:
  * the cast-on with all size columns, plus the first rows or rounds of the
  * body or yoke. Then extend to a cap of ~15% of segments or 1.5 pages,
- * whichever ends later. Never cut mid-repeat or mid size-row. If the
- * document has a glossary term, keep at least one in the preview so the
- * bilingual review can surface it.
+ * whichever ends later. Never cut mid-repeat or mid size-row. Never separate
+ * a chart from its key/legend, and never split a size table. If the document
+ * has a glossary term, keep at least one in the preview so the bilingual
+ * review can surface it.
+ *
+ * For PDFs, N is the smallest whole-page boundary that satisfies those
+ * rules; preview is pages 1..N and resume is N+1..end.
  *
  * The cut is computed on SOURCE text before translation. The API then
  * translates only that slice, so untranslated-to-translated content beyond
@@ -33,6 +37,9 @@ export interface PreviewSegment {
   isBodyOrYoke: boolean;
   isRowOrRound: boolean;
   isHeading: boolean;
+  isChart: boolean;
+  isLegend: boolean;
+  isSizeTable: boolean;
 }
 
 export interface PreviewCut {
@@ -44,9 +51,11 @@ export interface PreviewCut {
   previewHasNumbers: boolean;
   previewHasGlossaryTerm: boolean;
   documentHasGlossaryTerm: boolean;
+  /** Smallest whole page (1-based) that covers the preview cut. */
+  previewEndPage: number;
 }
 
-const BLOCK_RE = /<(p|h[1-6]|li|tr|blockquote|pre)(\s[^>]*)?>[\s\S]*?<\/\1>/gi;
+const BLOCK_RE = /<(p|h[1-6]|li|tr|table|blockquote|pre)(\s[^>]*)?>[\s\S]*?<\/\1>/gi;
 
 const SIZE_ROW_RE = /\d[\d.,/]*\s*\(\s*\d/;
 const NUMBER_RE = /\d/;
@@ -65,6 +74,9 @@ const HEADING_RE = /^h[1-6]$/i;
  */
 const GLOSSARY_TERM_RE =
   /\b(cast\s*on|bind\s*off|cast\s*off|knit|purl|yarn\s*over|k2tog|ssk|kfb|m1[lr]?|sl1|wyif|wyib|montar puntos|rematar|cerrar|derecho|revés|hebra|disminuci[oó]n|aumento)\b/i;
+const CHART_RE = /\b(chart|stitch chart|gr[aá]fico|diagrama(?: de puntos)?)\b/i;
+const LEGEND_RE =
+  /\b(legend|leyenda|symbol key|chart key|clave de (?:s[ií]mbolos|puntos)|abbreviations)\b/i;
 
 function decodeEntities(value: string): string {
   return value
@@ -94,9 +106,10 @@ function readTag(html: string): string {
 export function classifySegmentText(text: string, tag = 'p'): Omit<PreviewSegment, 'index' | 'html' | 'page'> {
   const isSelfContainedRepeat =
     REPEAT_OPEN_RE.test(text) && (REPEAT_CLOSE_RE.test(text) || /\*.+\*/.test(text) || /to end/i.test(text));
+  const isSizeRow = SIZE_ROW_RE.test(text);
   return {
     text,
-    isSizeRow: SIZE_ROW_RE.test(text),
+    isSizeRow,
     isRepeatOpener: REPEAT_OPEN_RE.test(text),
     isRepeatCloser: REPEAT_CLOSE_RE.test(text) || isSelfContainedRepeat,
     isSelfContainedRepeat,
@@ -106,6 +119,9 @@ export function classifySegmentText(text: string, tag = 'p'): Omit<PreviewSegmen
     isBodyOrYoke: BODY_YOKE_RE.test(text),
     isRowOrRound: ROW_ROUND_RE.test(text),
     isHeading: HEADING_RE.test(tag),
+    isChart: CHART_RE.test(text),
+    isLegend: LEGEND_RE.test(text),
+    isSizeTable: tag === 'table' && (isSizeRow || SIZE_ROW_RE.test(text)),
   };
 }
 
@@ -177,8 +193,11 @@ function firstWorkedSectionEnd(segments: PreviewSegment[]): number {
     const segment = segments[end];
     if (segment.isHeading && includedRows > 0 && !segment.isBodyOrYoke) break;
     if (segment.isSizeRow) {
-      end += 1;
-      continue;
+      if (includedRows === 0) {
+        end += 1;
+        continue;
+      }
+      break;
     }
     if (segment.isRowOrRound || segment.isRepeatOpener) {
       end += 1;
@@ -252,6 +271,103 @@ function ensureCraftCoverage(segments: PreviewSegment[], end: number): number {
   return snapToSafeBoundary(segments, next);
 }
 
+function wholePage(page: number): number {
+  return Math.max(1, Math.ceil(page));
+}
+
+function repeatOpenAcross(segments: PreviewSegment[], page: number): boolean {
+  let openRepeats = 0;
+  let closerAfter = false;
+  for (const segment of segments) {
+    const segmentPage = wholePage(segment.page);
+    if (segment.isSelfContainedRepeat) continue;
+    if (segmentPage <= page) {
+      if (segment.isRepeatOpener) openRepeats += 1;
+      if (segment.isRepeatCloser && openRepeats > 0) openRepeats -= 1;
+    } else if (segment.isRepeatCloser) {
+      closerAfter = true;
+    }
+  }
+  return openRepeats > 0 && closerAfter;
+}
+
+function sizeTableSplits(segments: PreviewSegment[], page: number): boolean {
+  let i = 0;
+  while (i < segments.length) {
+    const inTable = segments[i].isSizeRow || segments[i].isSizeTable;
+    if (!inTable) {
+      i += 1;
+      continue;
+    }
+    const start = i;
+    while (i < segments.length && (segments[i].isSizeRow || segments[i].isSizeTable)) i += 1;
+    const run = segments.slice(start, i);
+    const firstPage = wholePage(run[0].page);
+    const lastPage = wholePage(run[run.length - 1].page);
+    if (firstPage <= page && lastPage > page) return true;
+  }
+  return false;
+}
+
+function nearestLegendIndex(segments: PreviewSegment[], chartIndex: number): number {
+  let best = -1;
+  let bestDistance = 12;
+  for (let i = 0; i < segments.length; i += 1) {
+    if (!segments[i].isLegend) continue;
+    const distance = Math.abs(i - chartIndex);
+    if (distance <= bestDistance) {
+      best = i;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+function chartLegendSplits(segments: PreviewSegment[], page: number): boolean {
+  for (let i = 0; i < segments.length; i += 1) {
+    if (!segments[i].isChart) continue;
+    const legendIndex = nearestLegendIndex(segments, i);
+    if (legendIndex < 0) continue;
+    const chartPage = wholePage(segments[i].page);
+    const legendPage = wholePage(segments[legendIndex].page);
+    const low = Math.min(chartPage, legendPage);
+    const high = Math.max(chartPage, legendPage);
+    if (low <= page && high > page) return true;
+  }
+  return false;
+}
+
+export function pageBoundarySplitsProtected(segments: PreviewSegment[], page: number): boolean {
+  return (
+    repeatOpenAcross(segments, page)
+    || sizeTableSplits(segments, page)
+    || chartLegendSplits(segments, page)
+  );
+}
+
+/**
+ * Smallest whole page N such that pages 1..N cover the segment cut and do
+ * not split a repeat, size table, or chart/legend pair.
+ */
+export function choosePreviewEndPage(segments: PreviewSegment[], end: number): number {
+  if (segments.length === 0) return 1;
+  const last = segments[Math.max(0, Math.min(end, segments.length) - 1)];
+  let n = last ? wholePage(last.page) : 1;
+  const maxPage = Math.max(...segments.map((segment) => wholePage(segment.page)));
+  while (n < maxPage && pageBoundarySplitsProtected(segments, n)) n += 1;
+  return n;
+}
+
+export function htmlForPageRange(segments: PreviewSegment[], startPage: number, endPage: number): string {
+  return segments
+    .filter((segment) => {
+      const page = wholePage(segment.page);
+      return page >= startPage && page <= endPage;
+    })
+    .map((segment) => segment.html)
+    .join('\n');
+}
+
 export function cutPreviewHtml(sourceHtml: string): PreviewCut {
   const segments = segmentsFromHtml(sourceHtml);
   if (segments.length === 0) {
@@ -263,12 +379,14 @@ export function cutPreviewHtml(sourceHtml: string): PreviewCut {
       previewHasNumbers: false,
       previewHasGlossaryTerm: false,
       documentHasGlossaryTerm: false,
+      previewEndPage: 1,
     };
   }
 
   const workedEnd = firstWorkedSectionEnd(segments);
   const capped = Math.max(workedEnd, capEnd(segments));
   const end = ensureCraftCoverage(segments, snapToSafeBoundary(segments, capped));
+  const previewEndPage = choosePreviewEndPage(segments, end);
   const preview = segments.slice(0, end);
   const remaining = segments.slice(end);
 
@@ -280,6 +398,7 @@ export function cutPreviewHtml(sourceHtml: string): PreviewCut {
     previewHasNumbers: preview.some((segment) => segment.hasNumbers),
     previewHasGlossaryTerm: preview.some((segment) => segment.hasGlossaryTerm),
     documentHasGlossaryTerm: segments.some((segment) => segment.hasGlossaryTerm),
+    previewEndPage,
   };
 }
 
