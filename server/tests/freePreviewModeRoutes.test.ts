@@ -199,6 +199,7 @@ describe('FREE_PREVIEW_MODE HTTP', () => {
 
   it('on: every signed-in account gets the preview flow', async () => {
     process.env.FREE_PREVIEW_MODE = 'on';
+    const balanceBefore = credits.getBalance('user-regular');
 
     const state = await creditsState();
     expect(state.freePreviewMode).toBe('on');
@@ -212,7 +213,7 @@ describe('FREE_PREVIEW_MODE HTTP', () => {
     expect(body.cost).toBe(0);
     expect(typeof body.jobId).toBe('string');
     expect(store.hasFreePreviewAvailable('user-regular')).toBe(false);
-    expect(credits.getBalance('user-regular')).toBe(0);
+    expect(credits.getBalance('user-regular')).toBe(balanceBefore);
   });
 
   it('admins: a stream token minted for an admin still unlocks preview on the direct translate call', async () => {
