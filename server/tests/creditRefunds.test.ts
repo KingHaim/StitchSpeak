@@ -69,9 +69,18 @@ describe('payment refund reconciliation', () => {
   });
 
   it('surfaces recent reconciliation anomalies without affecting credit storage', () => {
-    expect(store.paymentReconciliationHealth()).toEqual({ ok: true, recentAnomalies: 0 });
+    expect(store.paymentReconciliationHealth()).toMatchObject({
+      ok: true,
+      recentAnomalies: 0,
+      unresolvedAnomalies: 0,
+      unresolvedPaidOrders: 0,
+    });
     store.recordPaymentAnomaly('rejected_paid_order', 'order-3');
-    expect(store.paymentReconciliationHealth()).toEqual({ ok: false, recentAnomalies: 1 });
+    expect(store.paymentReconciliationHealth()).toMatchObject({
+      ok: false,
+      recentAnomalies: 1,
+      unresolvedAnomalies: 1,
+    });
   });
 
   it('settles, refunds, and reconciles pending job charges', () => {

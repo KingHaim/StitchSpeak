@@ -20,7 +20,13 @@ import {
   reviewBetaApplication,
   type BetaApplicationStatus,
 } from '../services/betaApplicationStore.js';
-import { getBalance } from '../services/creditStore.js';
+import { getBalance, type UnappliedOrderRow } from '../services/creditStore.js';
+import {
+  applyUnappliedOrder,
+  dismissUnappliedOrder,
+  reconcileRecentPayments,
+} from '../services/paymentReconcile.js';
+import { isLemonSqueezyConfigured } from '../services/lemonSqueezy.js';
 import {
   fetchRecordingsForSessions,
   fetchUserActivity,
@@ -220,6 +226,49 @@ router.post('/members/:sub/credits', (req: Request, res: Response) => {
   const balance = adjustMemberCredits(sub, delta, reason, (req as AuthenticatedRequest).userEmail || 'unknown');
   res.json({ balance });
 });
+function publicUnapplied(row: UnappliedOrderRow) {
+  const { payloadJson: _payloadJson, ...rest } = row;
+  return rest;
+}
+
+router.get('/payments/reconcile', async (_req, res) => {
+  const report = await reconcileRecentPayments();
+  res.json({
+    configured: isLemonSqueezyConfigured(),
+    since: report.since,
+    lemonSqueezyError: report.lemonSqueezyError,
+    unapplied: report.unapplied.map(publicUnapplied),
+    missingCredits: report.missingCredits.map((gap) => ({
+      ...gap,
+      unapplied: gap.unapplied ? publicUnapplied(gap.unapplied) : null,
+    })),
+  });
+});
+
+router.post('/payments/unapplied/:orderId/apply', (req, res) => {
+  const orderId = Array.isArray(req.params.orderId) ? req.params.orderId[0] : req.params.orderId;
+  if (!orderId) {
+    res.status(400).json({ error: 'Missing order id.' });
+    return;
+  }
+  const result = applyUnappliedOrder(orderId);
+  if (result.reason === 'not_found') {
+    res.status(404).json({ error: 'Unapplied order not found.', ...result });
+    return;
+  }
+  res.json(result);
+});
+
+router.post('/payments/unapplied/:orderId/dismiss', (req, res) => {
+  const orderId = Array.isArray(req.params.orderId) ? req.params.orderId[0] : req.params.orderId;
+  if (!orderId) {
+    res.status(400).json({ error: 'Missing order id.' });
+    return;
+  }
+  const actorEmail = (req as unknown as AuthenticatedRequest).userEmail || 'unknown';
+  res.json(dismissUnappliedOrder(orderId, actorEmail));
+});
+
 router.delete('/members/:sub/uploads/:id', (req, res) => {
   const sub = Array.isArray(req.params.sub) ? req.params.sub[0] : req.params.sub;
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { expectedCheckoutBalance, isCheckoutBalanceConfirmed } from './checkoutReconciliation';
+import {
+  CHECKOUT_MANUAL_REVIEW_MS,
+  expectedCheckoutBalance,
+  isCheckoutBalanceConfirmed,
+} from './checkoutReconciliation';
 
 const expectation = {
   packId: 'credits_10',
@@ -18,5 +22,9 @@ describe('checkout reconciliation', () => {
 
   it('does not claim confirmation without checkout metadata', () => {
     expect(isCheckoutBalanceConfirmed(100, null)).toBe(false);
+  });
+
+  it('waits about two minutes before the manual-review checkout copy', () => {
+    expect(CHECKOUT_MANUAL_REVIEW_MS).toBe(2 * 60 * 1000);
   });
 });
