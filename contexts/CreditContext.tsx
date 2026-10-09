@@ -18,6 +18,7 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const { idToken, isAuthenticated } = useAuth();
   const [balance, setBalance] = useState(0);
   const [betaAccess, setBetaAccess] = useState(false);
+  const [freePreviewMode, setFreePreviewMode] = useState<CreditContextValue['freePreviewMode']>('off');
   const [freePreviewAvailable, setFreePreviewAvailable] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [checkoutReturnStatus, setCheckoutReturnStatus] = useState<CheckoutReturnStatus>(null);
@@ -26,6 +27,7 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!isAuthenticated || !idToken) {
       setBalance(0);
       setBetaAccess(false);
+      setFreePreviewMode('off');
       setFreePreviewAvailable(false);
       return;
     }
@@ -33,6 +35,7 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const state = await getCreditState(idToken);
       setBalance(state.balance);
       setBetaAccess(state.betaAccess);
+      setFreePreviewMode(state.freePreviewMode);
       setFreePreviewAvailable(state.freePreviewAvailable);
     } catch (err) {
       console.error('[CreditContext] Failed to fetch balance:', err);
@@ -43,6 +46,7 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!isAuthenticated || !idToken) {
       setBalance(0);
       setBetaAccess(false);
+      setFreePreviewMode('off');
       setFreePreviewAvailable(false);
       return;
     }
@@ -79,6 +83,7 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const state = await getCreditState(idToken);
         setBalance(state.balance);
         setBetaAccess(state.betaAccess);
+        setFreePreviewMode(state.freePreviewMode);
         setFreePreviewAvailable(state.freePreviewAvailable);
         if (!finished && isCheckoutBalanceConfirmed(state.balance, expectation)) {
           finished = true;
@@ -135,6 +140,7 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const state = await getCreditState(idToken);
       setBalance(state.balance);
       setBetaAccess(state.betaAccess);
+      setFreePreviewMode(state.freePreviewMode);
       setFreePreviewAvailable(state.freePreviewAvailable);
       const expectation = readCheckoutExpectation();
       if (isCheckoutBalanceConfirmed(state.balance, expectation)) {
@@ -195,6 +201,7 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     () => ({
       balance,
       betaAccess,
+      freePreviewMode,
       freePreviewAvailable,
       isLoading,
       applyBalance,
@@ -207,6 +214,7 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     [
       balance,
       betaAccess,
+      freePreviewMode,
       freePreviewAvailable,
       isLoading,
       applyBalance,

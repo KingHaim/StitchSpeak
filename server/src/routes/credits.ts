@@ -6,6 +6,7 @@ import {
   listPaymentOrders,
   userOwnsPaymentOrder,
 } from '../services/creditStore.js';
+import { canOfferFreePreview, getFreePreviewMode } from '../services/freePreviewMode.js';
 import { hasFreePreviewAvailable } from '../services/translationPreviewStore.js';
 import { CREDIT_PACKS, getCreditPack } from '../services/pricing.js';
 import { hasActiveBetaAccess } from '../services/betaApplicationStore.js';
@@ -24,11 +25,13 @@ const checkoutRateLimit = rateLimit({ windowMs: 60_000, max: 20, name: 'checkout
 const receiptRateLimit = rateLimit({ windowMs: 60_000, max: 30, name: 'billing-receipt' });
 
 router.get('/', (req, res: Response) => {
-  const { userSub, userEmail } = req as AuthenticatedRequest;
+  const auth = req as AuthenticatedRequest;
+  const previewEnabled = canOfferFreePreview(auth);
   res.json({
-    balance: getBalance(userSub),
-    betaAccess: hasActiveBetaAccess(userEmail),
-    freePreviewAvailable: hasFreePreviewAvailable(userSub),
+    balance: getBalance(auth.userSub),
+    betaAccess: hasActiveBetaAccess(auth.userEmail),
+    freePreviewMode: getFreePreviewMode(),
+    freePreviewAvailable: previewEnabled && hasFreePreviewAvailable(auth.userSub),
   });
 });
 

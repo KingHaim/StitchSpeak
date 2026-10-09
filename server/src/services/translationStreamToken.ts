@@ -34,6 +34,8 @@ interface StreamTokenClaims {
   provider: 'google' | 'email';
   purpose: 'translate-stream';
   exp: number;
+  /** Present when the session that minted the token may start a free preview. */
+  previewEligible?: boolean;
 }
 
 function sign(payload: string): string {
@@ -48,12 +50,14 @@ export function createTranslationStreamToken(
   sub: string,
   identityProvider: 'google' | 'email',
   now = Date.now(),
+  previewEligible = false,
 ): string {
   const claims: StreamTokenClaims = {
     sub,
     provider: identityProvider,
     purpose: 'translate-stream',
     exp: now + TRANSLATION_STREAM_TOKEN_TTL_MS,
+    ...(previewEligible ? { previewEligible: true } : {}),
   };
   const payload = Buffer.from(JSON.stringify(claims)).toString('base64url');
   return `${TOKEN_PREFIX}${payload}.${sign(payload)}`;
@@ -62,7 +66,7 @@ export function createTranslationStreamToken(
 export function verifyTranslationStreamToken(
   token: string,
   now = Date.now(),
-): { sub: string; identityProvider: 'google' | 'email' } | null {
+): { sub: string; identityProvider: 'google' | 'email'; previewEligible: boolean } | null {
   if (!isTranslationStreamToken(token)) return null;
   const [payload, signature] = token.slice(TOKEN_PREFIX.length).split('.');
   if (!payload || !signature) return null;
@@ -85,6 +89,7 @@ export function verifyTranslationStreamToken(
   return {
     sub: claims.sub,
     identityProvider: claims.provider === 'email' ? 'email' : 'google',
+    previewEligible: claims.previewEligible === true,
   };
 }
 

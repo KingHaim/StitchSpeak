@@ -2,9 +2,12 @@ import { createContext, useContext } from 'react';
 
 export type CheckoutReturnStatus = 'confirming' | 'confirmed' | 'delayed' | null;
 
+export type FreePreviewMode = 'off' | 'admins' | 'on';
+
 export type CreditContextValue = {
   balance: number;
   betaAccess: boolean;
+  freePreviewMode: FreePreviewMode;
   freePreviewAvailable: boolean;
   isLoading: boolean;
   applyBalance: (balance: number) => void;
