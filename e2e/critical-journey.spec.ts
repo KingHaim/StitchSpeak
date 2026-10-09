@@ -279,12 +279,18 @@ test('free preview stays locked until credits unlock export', async ({ page }) =
 
   await expect(page.getByTestId('bilingual-review-strip')).toBeVisible();
   const lock = page.getByTestId('translation-preview-lock');
+  const notice = page.getByTestId('ai-tech-edit-notice');
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText('This is an automated draft translation, not a published tech edit.');
+  await expect(notice).not.toContainText(/\bAI\b/);
+  await expect(lock).not.toContainText(/\bAI\b/);
   await expect(lock).toBeVisible();
-  await expect(lock.getByRole('button', { name: 'Unlock the full translation and export.' })).toBeVisible();
-  await expect(lock.getByText(/Translation estimate/)).toBeVisible();
+  await expect(lock.getByRole('button', { name: 'Unlock the full translation and export' })).toBeVisible();
+  await expect(lock.getByRole('button')).toHaveCount(1);
+  await expect(lock.getByText('Translation estimate: 6.5 credits')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Export this file' })).toHaveCount(0);
 
-  await lock.getByRole('button', { name: 'Unlock the full translation and export.' }).click();
+  await lock.getByRole('button', { name: 'Unlock the full translation and export' }).click();
   await expect(page.getByRole('dialog', { name: 'Buy Credits' })).toBeVisible();
 });
 

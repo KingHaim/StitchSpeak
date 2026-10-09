@@ -7,7 +7,12 @@ import { translatePattern } from '../services/gemini.js';
 import { chargeCreditsForJob, getBalance, refundPendingCharge, settlePendingCharge } from '../services/creditStore.js';
 import { computeDocumentMetrics, metricsFromHtml, translationCostFromMetrics } from '../services/pricing.js';
 import { extractSourceHtml } from '../services/documentExtract.js';
-import { cutPreviewHtml, remainingSourceHasContent } from '../services/previewCut.js';
+import {
+  cutPreviewHtml,
+  htmlForPageRange,
+  remainingSourceHasContent,
+} from '../services/previewCut.js';
+import { slicePdfPages } from '../services/pdfSlice.js';
 import {
   claimFreePreview,
   completeTranslationJob,
@@ -129,6 +134,51 @@ interface TranslationPayload {
   jobId?: string;
   remainingCost?: number;
   fullCost?: number;
+}
+
+async function translateSlice(input: {
+  language: string;
+  sourceLanguage?: string;
+  fileName: string;
+  translationMemory: ReturnType<typeof getTranslationMemoryForPrompt>;
+  recoveryBudgetCredits: number;
+  visualPdf: Buffer | null | undefined;
+  fallbackHtml: string;
+  fallbackLabel: 'preview' | 'resume';
+  onDelta?: (text: string) => void;
+  onStatus?: (status: { stage: string; message: string }) => void;
+}): Promise<{ html: string; usage: { promptTokens: number; candidateTokens: number; totalTokens: number } | null; reviewWarnings: unknown[] }> {
+  const options = {
+    translationMemory: input.translationMemory,
+    recoveryBudgetCredits: input.recoveryBudgetCredits,
+    onDelta: input.onDelta,
+    onStatus: input.onStatus,
+  };
+  if (input.visualPdf && input.visualPdf.length > 0) {
+    try {
+      return await translatePattern(
+        input.visualPdf,
+        'application/pdf',
+        input.language,
+        input.sourceLanguage,
+        options,
+        input.fileName,
+      );
+    } catch (err) {
+      console.warn(
+        `[translate] Visual PDF ${input.fallbackLabel} failed; falling back to text extract:`,
+        err,
+      );
+    }
+  }
+  return translatePattern(
+    Buffer.from(''),
+    'text/html',
+    input.language,
+    input.sourceLanguage,
+    { ...options, sourceHtml: input.fallbackHtml },
+    input.fileName,
+  );
 }
 
 function extraResultFields(payload: TranslationPayload): Record<string, unknown> {
@@ -382,20 +432,20 @@ router.post('/unlock', requireTranslateAuth, translateRateLimit, async (req: Req
       let html = job.previewHtml;
       let usage = null;
       let reviewWarnings = job.reviewWarnings;
-      if (remainingSourceHasContent(remainingHtml)) {
+      const hasRemainingPdf = Boolean(job.remainingPdf && job.remainingPdf.length > 0);
+      const hasRemainingHtml = remainingSourceHasContent(remainingHtml);
+      if (hasRemainingPdf || hasRemainingHtml) {
         const translationMemory = getTranslationMemoryForPrompt(userSub, job.sourceLanguage ?? undefined, job.language);
-        const result = await translatePattern(
-          Buffer.from(''),
-          'text/html',
-          job.language,
-          job.sourceLanguage ?? undefined,
-          {
-            translationMemory,
-            recoveryBudgetCredits: remainingCost,
-            sourceHtml: remainingHtml,
-          },
-          job.fileName,
-        );
+        const result = await translateSlice({
+          language: job.language,
+          sourceLanguage: job.sourceLanguage ?? undefined,
+          fileName: job.fileName,
+          translationMemory,
+          recoveryBudgetCredits: remainingCost,
+          visualPdf: hasRemainingPdf ? job.remainingPdf : null,
+          fallbackHtml: hasRemainingHtml ? remainingHtml : '',
+          fallbackLabel: 'resume',
+        });
         html = `${job.previewHtml}\n${result.html}`;
         usage = result.usage;
         reviewWarnings = [...(job.reviewWarnings ?? []), ...(result.reviewWarnings ?? [])];
@@ -486,10 +536,14 @@ router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, as
 
   // US10: a signed-in account gets one free preview of the opening section.
   // The grant is claimed only after we know we can cut a source slice; if
-  // extract/cut fails we fall through to the paid full job.
+  // extract/cut fails we fall through to the paid full job. PDFs use the
+  // visual path on pages 1..N; text extract is only a logged fallback.
   let previewJobId: string | null = null;
   let previewSourceHtml: string | null = null;
   let remainingSourceHtml = '';
+  let remainingPdf: Buffer | null = null;
+  let previewPdf: Buffer | null = null;
+  let previewEndPage: number | null = null;
   let remainingCost = 0;
   if (hasFreePreviewAvailable(userSub)) {
     try {
@@ -500,9 +554,22 @@ router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, as
           const jobId = createTranslationJobId();
           if (claimFreePreview(userSub, jobId)) {
             previewJobId = jobId;
+            previewEndPage = cut.previewEndPage;
             previewSourceHtml = cut.previewHtml;
             remainingSourceHtml = cut.remainingHtml;
-            const previewCost = translationCostFromMetrics(metricsFromHtml(cut.previewHtml));
+            if (extracted.kind === 'pdf') {
+              previewSourceHtml = htmlForPageRange(cut.segments, 1, cut.previewEndPage);
+              remainingSourceHtml = htmlForPageRange(cut.segments, cut.previewEndPage + 1, Number.POSITIVE_INFINITY);
+              try {
+                previewPdf = await slicePdfPages(file.buffer, 1, cut.previewEndPage);
+                remainingPdf = await slicePdfPages(file.buffer, cut.previewEndPage + 1, Number.POSITIVE_INFINITY);
+              } catch (err) {
+                console.warn('[translate] PDF page slice failed; falling back to text extract:', err);
+                previewPdf = null;
+                remainingPdf = null;
+              }
+            }
+            const previewCost = translationCostFromMetrics(metricsFromHtml(previewSourceHtml));
             remainingCost = Math.max(0, Math.round((fullCost - previewCost) * 100) / 100);
             cost = 0;
           }
@@ -527,7 +594,36 @@ router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, as
   const translateOptions = {
     translationMemory,
     recoveryBudgetCredits: previewJobId ? fullCost : cost,
-    ...(previewSourceHtml ? { sourceHtml: previewSourceHtml } : {}),
+  };
+
+  const runTranslate = (
+    hooks: {
+      onDelta?: (text: string) => void;
+      onStatus?: (status: { stage: string; message: string }) => void;
+    } = {},
+  ) => {
+    if (previewJobId && previewSourceHtml) {
+      return translateSlice({
+        language,
+        sourceLanguage,
+        fileName: file.originalname || 'pattern',
+        translationMemory,
+        recoveryBudgetCredits: fullCost,
+        visualPdf: previewPdf,
+        fallbackHtml: previewSourceHtml,
+        fallbackLabel: 'preview',
+        onDelta: hooks.onDelta,
+        onStatus: hooks.onStatus,
+      });
+    }
+    return translatePattern(
+      file.buffer,
+      file.mimetype,
+      language,
+      sourceLanguage,
+      { ...translateOptions, ...hooks },
+      file.originalname,
+    );
   };
 
   const previewFields = (): Record<string, unknown> => {
@@ -551,6 +647,8 @@ router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, as
       sourceLanguage,
       previewHtml: html,
       remainingSourceHtml,
+      remainingPdf,
+      previewEndPage,
       reviewWarnings,
       remainingCost,
       fullCost,
@@ -563,16 +661,7 @@ router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, as
 
   if (!clientWantsStream(req)) {
     try {
-      const result = await translatePattern(
-        file.buffer,
-        file.mimetype,
-        language,
-        sourceLanguage,
-        // Recovery retries may spend at most what this job charged; they are
-        // never billed separately (the single pending charge covers the job).
-        translateOptions,
-        file.originalname,
-      );
+      const result = await runTranslate();
       if (chargeId) settlePendingCharge(chargeId);
       persistPreview(result.html, result.reviewWarnings ?? []);
       res.json({ ...result, cost, balance, ...previewFields() });
@@ -679,26 +768,16 @@ router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, as
   let terminalEventSent = false;
 
   try {
-    const result = await translatePattern(
-      file.buffer,
-      file.mimetype,
-      language,
-      sourceLanguage,
-      {
-        ...translateOptions,
-        onDelta: (text) => {
-          if (clientGone) return;
-          writeSubstantiveEvent({ type: 'delta', text });
-        },
-        // Surface recovery-ladder progress ("retrying with stricter number
-        // lock…") so the client can show it instead of a silent stall.
-        onStatus: (status) => {
-          if (clientGone) return;
-          writeSubstantiveEvent({ type: 'status', stage: status.stage, message: status.message });
-        },
+    const result = await runTranslate({
+      onDelta: (text) => {
+        if (clientGone) return;
+        writeSubstantiveEvent({ type: 'delta', text });
       },
-      file.originalname,
-    );
+      onStatus: (status) => {
+        if (clientGone) return;
+        writeSubstantiveEvent({ type: 'status', stage: status.stage, message: status.message });
+      },
+    });
     if (chargeId) settlePendingCharge(chargeId);
     persistPreview(result.html, result.reviewWarnings ?? []);
     if (!clientGone) {
