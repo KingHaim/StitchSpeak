@@ -13,6 +13,7 @@ import {
   remainingSourceHasContent,
 } from '../services/previewCut.js';
 import { slicePdfPages } from '../services/pdfSlice.js';
+import { canOfferFreePreview } from '../services/freePreviewMode.js';
 import {
   claimFreePreview,
   completeTranslationJob,
@@ -112,6 +113,7 @@ function requireTranslateAuth(req: Request, res: Response, next: NextFunction): 
     authenticated.userSub = claims.sub;
     authenticated.identityProvider = claims.identityProvider;
     authenticated.emailVerified = false;
+    authenticated.freePreviewEligibleFromToken = claims.previewEligible;
     next();
     return;
   }
@@ -474,9 +476,14 @@ router.post('/unlock', requireTranslateAuth, translateRateLimit, async (req: Req
 });
 
 router.post('/stream-token', requireAuth, streamTokenRateLimit, (req: Request, res: Response) => {
-  const { userSub, identityProvider } = req as AuthenticatedRequest;
+  const auth = req as AuthenticatedRequest;
   res.json({
-    token: createTranslationStreamToken(userSub, identityProvider),
+    token: createTranslationStreamToken(
+      auth.userSub,
+      auth.identityProvider,
+      Date.now(),
+      canOfferFreePreview(auth),
+    ),
     expiresInSeconds: Math.floor(TRANSLATION_STREAM_TOKEN_TTL_MS / 1000),
     directOrigin: translationStreamDirectOrigin(),
   });
@@ -534,10 +541,11 @@ router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, as
     return;
   }
 
-  // US10: a signed-in account gets one free preview of the opening section.
-  // The grant is claimed only after we know we can cut a source slice; if
-  // extract/cut fails we fall through to the paid full job. PDFs use the
-  // visual path on pages 1..N; text extract is only a logged fallback.
+  // US10: when FREE_PREVIEW_MODE allows this account, they get one free
+  // preview of the opening section. The grant is claimed only after we know
+  // we can cut a source slice; if extract/cut fails we fall through to the
+  // paid full job. PDFs use the visual path on pages 1..N; text extract is
+  // only a logged fallback. Mode `off` (default) never claims a grant.
   let previewJobId: string | null = null;
   let previewSourceHtml: string | null = null;
   let remainingSourceHtml = '';
@@ -545,7 +553,7 @@ router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, as
   let previewPdf: Buffer | null = null;
   let previewEndPage: number | null = null;
   let remainingCost = 0;
-  if (hasFreePreviewAvailable(userSub)) {
+  if (canOfferFreePreview(req as AuthenticatedRequest) && hasFreePreviewAvailable(userSub)) {
     try {
       const extracted = await extractSourceHtml(file.buffer, file.mimetype, file.originalname);
       if (extracted.html.replace(/<[^>]+>/g, '').trim()) {

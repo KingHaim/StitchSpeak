@@ -10,6 +10,8 @@ export interface AuthenticatedRequest extends Request {
   userPicture?: string;
   identityProvider: 'google' | 'email';
   emailVerified: boolean;
+  /** True when a US9 stream token was minted for a preview-eligible account. */
+  freePreviewEligibleFromToken?: boolean;
 }
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';

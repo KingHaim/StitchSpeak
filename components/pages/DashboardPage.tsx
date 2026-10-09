@@ -128,7 +128,8 @@ function aggregatePdfMetrics(metricsList: PdfMetrics[]): PdfMetrics | null {
 
 export const DashboardPage: React.FC = () => {
   const { user, idToken, isAuthenticated, googleIdentityReady } = useAuth();
-  const { balance, applyBalance, refreshBalance, startCheckout, freePreviewAvailable, checkoutReturnStatus } = useCredits();
+  const { balance, applyBalance, refreshBalance, startCheckout, freePreviewAvailable, freePreviewMode, checkoutReturnStatus } = useCredits();
+  const canStartFreePreview = freePreviewMode !== 'off' && freePreviewAvailable;
 
   const [jobs, setJobs] = useState<TranslationJob[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -728,7 +729,7 @@ export const DashboardPage: React.FC = () => {
       // Client-side estimate is only a pre-check to surface a top-up prompt
       // early; the server computes and charges the authoritative amount.
       const cost = modalPriceEstimate.translationCost;
-      if (!freePreviewAvailable && balance < cost - 0.001) {
+      if (!canStartFreePreview && balance < cost - 0.001) {
         openBuyCredits('estimate_insufficient');
         return;
       }
@@ -767,7 +768,7 @@ export const DashboardPage: React.FC = () => {
     isAuthenticated,
     user,
     balance,
-    freePreviewAvailable,
+    canStartFreePreview,
     beginTranslationBatch,
     closeLanguageModal,
     isStartingFromModal,
@@ -1105,11 +1106,11 @@ export const DashboardPage: React.FC = () => {
   const modalInsufficientCredits =
     isAuthenticated &&
     Boolean(modalPriceEstimate) &&
-    !freePreviewAvailable &&
+    !canStartFreePreview &&
     balance < modalCreditCost - 0.001;
   const modalStartLabel = modalInsufficientCredits
     ? 'Buy credits to continue'
-    : isAuthenticated && freePreviewAvailable
+    : isAuthenticated && canStartFreePreview
       ? 'Start free preview'
       : isAuthenticated
         ? `Start ${modalFileCount > 1 ? `${modalFileCount} translations` : 'translation'} (${modalCreditCost.toFixed(1)} credits)`
@@ -1442,7 +1443,7 @@ export const DashboardPage: React.FC = () => {
                       targetLabel={selectedJob.targetLanguage.name}
                       reviewWarnings={selectedJob.reviewWarnings}
                     />
-                    {selectedJob.locked && (
+                    {selectedJob.locked && freePreviewMode !== 'off' && (
                       <TranslationPreviewLock
                         remainingCost={selectedJob.remainingCost}
                         fullCost={selectedJob.fullCost ?? selectedJob.priceEstimate?.translationCost}
@@ -1500,7 +1501,7 @@ export const DashboardPage: React.FC = () => {
                     </div>
                   </div>
                 )}
-                {selectedJob.locked && !showBilingual && (
+                {selectedJob.locked && freePreviewMode !== 'off' && !showBilingual && (
                   <TranslationPreviewLock
                     remainingCost={selectedJob.remainingCost}
                     fullCost={selectedJob.fullCost ?? selectedJob.priceEstimate?.translationCost}

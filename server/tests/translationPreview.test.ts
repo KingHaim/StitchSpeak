@@ -6,6 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stitchspeak-preview-test-'));
 process.env.DATA_DIR = dataDir;
+process.env.FREE_PREVIEW_MODE = 'on';
 
 const mocks = vi.hoisted(() => ({
   translatePattern: vi.fn(),
@@ -78,6 +79,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await new Promise((resolve) => server.close(resolve));
   fs.rmSync(dataDir, { recursive: true, force: true });
+  delete process.env.FREE_PREVIEW_MODE;
 });
 
 beforeEach(() => {

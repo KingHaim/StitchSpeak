@@ -26,7 +26,7 @@ async function mockAccountApi(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ balance: 24, betaAccess: false, freePreviewAvailable: false }),
+      body: JSON.stringify({ balance: 24, betaAccess: false, freePreviewMode: 'off', freePreviewAvailable: false }),
     });
   });
   await page.route('**/api/patterns', async (route) => {
@@ -211,7 +211,7 @@ test('free preview stays locked until credits unlock export', async ({ page }) =
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ balance: 0, betaAccess: false, freePreviewAvailable: true }),
+      body: JSON.stringify({ balance: 0, betaAccess: false, freePreviewMode: 'on', freePreviewAvailable: true }),
     });
   });
   await page.route('**/api/translate', async (route) => {
