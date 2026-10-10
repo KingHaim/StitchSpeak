@@ -33,6 +33,13 @@ import {
   friendlyPageName,
 } from '../services/activityHumanizer.js';
 import type { CreditLedgerEntry } from '../services/creditStore.js';
+import {
+  BACKUP_OBJECT_KEY_PATTERN,
+  listBackupObjects,
+  publicDrillErrorMessage,
+  RecoveryDrillFailure,
+  runRecoveryDrill,
+} from '../services/recoveryDrill.js';
 
 const router = Router();
 router.use(requireAdmin);
@@ -225,6 +232,35 @@ router.delete('/members/:sub/uploads/:id', (req, res) => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   if (!deletePattern(sub, id)) return void res.status(404).json({ error: 'Upload not found.' });
   res.status(204).end();
+});
+
+router.get('/backups', async (_req, res) => {
+  try {
+    const backups = await listBackupObjects();
+    res.json({ backups });
+  } catch (error) {
+    console.error('[admin/backups] Failed:', error);
+    res.status(500).json({ error: 'Could not list backups.' });
+  }
+});
+
+router.post('/recovery-drill', async (req, res) => {
+  const key = typeof req.body?.key === 'string' ? req.body.key.trim() : undefined;
+  if (key && !BACKUP_OBJECT_KEY_PATTERN.test(key)) {
+    return void res.status(400).json({ error: 'key must be a backup object key ending in .ssbackup.' });
+  }
+  try {
+    const result = await runRecoveryDrill({ key });
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    const result = error instanceof RecoveryDrillFailure ? error.result : undefined;
+    console.error('[admin/recovery-drill] Failed:', error);
+    res.status(result ? 422 : 500).json({
+      ok: false,
+      ...(result ?? {}),
+      error: publicDrillErrorMessage(error),
+    });
+  }
 });
 
 export default router;
