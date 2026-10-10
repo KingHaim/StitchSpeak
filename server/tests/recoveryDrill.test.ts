@@ -13,6 +13,7 @@ process.env.DATA_DIR = dataDir;
 
 const {
   compareBackupSizes,
+  countZipFileEntries,
   listBackupObjects,
   recoveryDrillHealth,
   RecoveryDrillFailure,
@@ -165,6 +166,15 @@ describe('backup size comparison', () => {
       writerSha256: 'bbb',
     })?.errorCode).toBe('size_mismatch');
   });
+
+  it('counts only file entries in the zip central directory', () => {
+    expect(countZipFileEntries([
+      { type: 'File', path: 'patterns.db' },
+      { type: 'Directory', path: 'sources/' },
+      { type: 'File', path: 'sources/' },
+      { type: 'File', path: 'sources/note.txt' },
+    ])).toBe(2);
+  });
 });
 
 describe('recovery drill diagnostics', () => {
@@ -256,6 +266,36 @@ describe('recovery drill diagnostics', () => {
     expect(integrityFailure.result.error).toMatch(/auth\.db/);
   });
 
+  it('fails with restore_count when a zip file entry is missing after extract', async () => {
+    const source = fs.mkdtempSync(path.join(workspace, 'missing-src-'));
+    writeRequiredDatabases(source, { 'sources/extra.txt': 'gone' });
+    const key = randomBytes(32);
+    const encryptedPath = path.join(workspace, 'missing-entry.ssbackup');
+    await createEncryptedBackupFromDirectory(source, encryptedPath, key);
+    const objectKey = 'production/2026-10-06T00-00-00-000Z.ssbackup';
+
+    const failure = await expectFailedStep('restore_count', () => runRecoveryDrill({
+      client: createFakeS3(new Map([[objectKey, {
+        body: fs.readFileSync(encryptedPath),
+        lastModified: new Date('2026-10-06T00:00:00.000Z'),
+      }]])),
+      encryptionKey: key,
+      prefix: 'production',
+      persist: true,
+      afterExtract: (restoredDir) => {
+        fs.rmSync(path.join(restoredDir, 'sources', 'extra.txt'));
+      },
+    }));
+    expect(failure.result.expectedEntries).toBe(5);
+    expect(failure.result.filesRestored).toBe(4);
+    expect(failure.result.error).toBe(
+      'Restored 4 files but the zip central directory lists 5 file entries.',
+    );
+    expect(recoveryDrillHealth().lastResult?.failedStep).toBe('restore_count');
+    expect(recoveryDrillHealth().lastResult?.expectedEntries).toBe(5);
+    expect(recoveryDrillHealth().lastResult?.filesRestored).toBe(4);
+  });
+
   it('drills a chosen backup key instead of the newest object', async () => {
     const source = fs.mkdtempSync(path.join(workspace, 'chosen-src-'));
     writeRequiredDatabases(source, { 'sources/note.txt': 'chosen' });
@@ -285,6 +325,7 @@ describe('recovery drill diagnostics', () => {
     expect(result.failedStep).toBeUndefined();
     expect(result.databasesVerified).toBe(4);
     expect(result.filesRestored).toBeGreaterThanOrEqual(4);
+    expect(result.expectedEntries).toBe(result.filesRestored);
   });
 
   it('writes, downloads, and restores a synthetic snapshot through the backup writer', async () => {
@@ -320,6 +361,7 @@ describe('recovery drill diagnostics', () => {
     expect(result.backup).toBe(objectKey);
     expect(result.databasesVerified).toBe(4);
     expect(result.filesRestored).toBeGreaterThanOrEqual(5);
+    expect(result.expectedEntries).toBe(result.filesRestored);
     expect(result.downloadedBytes).toBe(stored.body.length);
     expect(result.storageBytes).toBe(stored.body.length);
     expect(result.writerBytes).toBe(stored.body.length);

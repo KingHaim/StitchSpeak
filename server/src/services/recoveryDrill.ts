@@ -23,7 +23,7 @@ const SCHEDULER_INTERVAL_MS = 24 * 60 * 60 * 1000;
 export const REQUIRED_DATABASES = ['patterns.db', 'credits.db', 'auth.db', 'beta-applications.db'];
 export const BACKUP_OBJECT_KEY_PATTERN = /^[A-Za-z0-9._/-]+\.ssbackup$/;
 
-export type RecoveryDrillStep = 'list' | 'download' | 'decrypt' | 'unzip' | 'integrity';
+export type RecoveryDrillStep = 'list' | 'download' | 'decrypt' | 'unzip' | 'restore_count' | 'integrity';
 export type RecoveryDrillErrorCode = 'download_truncated' | 'size_mismatch';
 
 export interface RecoveryDrillResult {
@@ -33,6 +33,7 @@ export interface RecoveryDrillResult {
   attemptedAt: string;
   databasesVerified: number;
   filesRestored: number;
+  expectedEntries?: number;
   downloadedBytes?: number;
   storageBytes?: number;
   writerBytes?: number;
@@ -57,6 +58,8 @@ export interface RecoveryDrillOptions {
   bucket?: string;
   prefix?: string;
   encryptionKey?: Buffer;
+  /** Test hook: mutate the restored tree after unzip, before the entry-count check. */
+  afterExtract?: (restoredDir: string) => void | Promise<void>;
 }
 
 interface RecoveryDrillState {
@@ -154,6 +157,10 @@ async function countFiles(directory: string): Promise<number> {
   return count;
 }
 
+export function countZipFileEntries(files: Array<{ type?: string; path?: string }>): number {
+  return files.filter((entry) => entry.type !== 'Directory' && !String(entry.path ?? '').endsWith('/')).length;
+}
+
 function resolveDrillConfig(options: RecoveryDrillOptions = {}): BackupConfig {
   if (options.client) {
     return {
@@ -241,6 +248,8 @@ export async function runRecoveryDrill(options: RecoveryDrillOptions = {}): Prom
   let writerBytes: number | undefined;
   let writerSha256: string | undefined;
   let downloadedSha256: string | undefined;
+  let expectedEntries: number | undefined;
+  let filesRestored = 0;
   let failedStep: RecoveryDrillStep = 'list';
 
   const fail = (step: RecoveryDrillStep, error: unknown, extras: Partial<RecoveryDrillResult> = {}): never => {
@@ -251,7 +260,8 @@ export async function runRecoveryDrill(options: RecoveryDrillOptions = {}): Prom
       completedAt: attemptedAt,
       attemptedAt,
       databasesVerified: 0,
-      filesRestored: 0,
+      filesRestored,
+      expectedEntries,
       downloadedBytes,
       storageBytes,
       writerBytes,
@@ -350,16 +360,30 @@ export async function runRecoveryDrill(options: RecoveryDrillOptions = {}): Prom
         // Streaming Extract() is the usual source of "unexpected end of file"
         // once an archive has more entries or data descriptors.
         const directory = await Open.file(zipPath);
+        expectedEntries = countZipFileEntries(directory.files);
         await directory.extract({ path: restoredDir });
+        if (options.afterExtract) await options.afterExtract(restoredDir);
       } catch (error) {
+        if (error instanceof RecoveryDrillFailure) throw error;
         fail('unzip', error);
       }
 
-      let filesRestored = 0;
+      try {
+        failedStep = 'restore_count';
+        filesRestored = await countFiles(restoredDir);
+        if (filesRestored !== expectedEntries) {
+          throw new Error(
+            `Restored ${filesRestored} files but the zip central directory lists ${expectedEntries} file entries.`,
+          );
+        }
+      } catch (error) {
+        if (error instanceof RecoveryDrillFailure) throw error;
+        fail('restore_count', error, { expectedEntries, filesRestored });
+      }
+
       try {
         failedStep = 'integrity';
         await verifyRestoredDatabases(restoredDir);
-        filesRestored = await countFiles(restoredDir);
       } catch (error) {
         fail('integrity', error);
       }
@@ -371,6 +395,7 @@ export async function runRecoveryDrill(options: RecoveryDrillOptions = {}): Prom
         attemptedAt,
         databasesVerified: REQUIRED_DATABASES.length,
         filesRestored,
+        expectedEntries,
         downloadedBytes,
         storageBytes,
         writerBytes,
@@ -391,7 +416,8 @@ export async function runRecoveryDrill(options: RecoveryDrillOptions = {}): Prom
       completedAt: attemptedAt,
       attemptedAt,
       databasesVerified: 0,
-      filesRestored: 0,
+      filesRestored,
+      expectedEntries,
       downloadedBytes,
       storageBytes,
       writerBytes,
