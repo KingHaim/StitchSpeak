@@ -9,17 +9,24 @@ import { ZipArchive } from 'archiver';
 import Database from 'better-sqlite3';
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
-const STATE_PATH = path.join(DATA_DIR, '.backup-state.json');
 const MAGIC = Buffer.from('SSBACKUP1');
 const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const MAX_BACKUP_AGE_MS = 36 * 60 * 60 * 1000;
 const RETENTION_DAYS = 30;
 
-interface BackupConfig {
+export interface BackupConfig {
   bucket: string;
   prefix: string;
   encryptionKey: Buffer;
   client: S3Client;
+}
+
+export interface OffsiteBackupOverrides {
+  client?: Pick<S3Client, 'send'>;
+  bucket?: string;
+  prefix?: string;
+  encryptionKey?: Buffer;
+  dataDir?: string;
 }
 
 interface BackupState {
@@ -27,9 +34,33 @@ interface BackupState {
   lastFailureAt?: string;
   lastError?: string;
   objectKey?: string;
+  byteSize?: number;
+  sha256?: string;
 }
 
-function config(): BackupConfig | null {
+export function backupObjectMetadata(byteSize: number, sha256: string): Record<string, string> {
+  return {
+    encryption: 'aes-256-gcm',
+    format: 'SSBACKUP1',
+    'byte-size': String(byteSize),
+    sha256,
+  };
+}
+
+export function parseBackupWriterMetadata(metadata?: Record<string, string>): {
+  writerBytes?: number;
+  writerSha256?: string;
+} {
+  if (!metadata) return {};
+  const sizeRaw = metadata['byte-size'] ?? metadata.bytesize;
+  const parsed = sizeRaw === undefined ? Number.NaN : Number(sizeRaw);
+  return {
+    ...(Number.isFinite(parsed) ? { writerBytes: parsed } : {}),
+    ...(metadata.sha256 ? { writerSha256: metadata.sha256 } : {}),
+  };
+}
+
+export function getBackupConfig(): BackupConfig | null {
   const endpoint = process.env.BACKUP_S3_ENDPOINT?.trim();
   const region = process.env.BACKUP_S3_REGION?.trim();
   const bucket = process.env.BACKUP_S3_BUCKET?.trim();
@@ -52,20 +83,24 @@ function config(): BackupConfig | null {
   };
 }
 
-function readState(): BackupState {
-  try { return JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')) as BackupState; } catch { return {}; }
+function statePathFor(dataDir: string): string {
+  return path.join(dataDir, '.backup-state.json');
 }
 
-function writeState(state: BackupState): void {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(STATE_PATH, JSON.stringify(state, null, 2), { mode: 0o600 });
+function readState(dataDir = DATA_DIR): BackupState {
+  try { return JSON.parse(fs.readFileSync(statePathFor(dataDir), 'utf8')) as BackupState; } catch { return {}; }
 }
 
-async function snapshotData(target: string): Promise<void> {
-  const entries = await readdir(DATA_DIR, { withFileTypes: true }).catch(() => []);
+function writeState(state: BackupState, dataDir = DATA_DIR): void {
+  fs.mkdirSync(dataDir, { recursive: true });
+  fs.writeFileSync(statePathFor(dataDir), JSON.stringify(state, null, 2), { mode: 0o600 });
+}
+
+async function snapshotData(sourceDataDir: string, target: string): Promise<void> {
+  const entries = await readdir(sourceDataDir, { withFileTypes: true }).catch(() => []);
   for (const entry of entries) {
-    if (entry.name === '.backup-state.json' || entry.name.endsWith('-wal') || entry.name.endsWith('-shm')) continue;
-    const source = path.join(DATA_DIR, entry.name);
+    if (entry.name === '.backup-state.json' || entry.name === '.recovery-drill-state.json' || entry.name.endsWith('-wal') || entry.name.endsWith('-shm')) continue;
+    const source = path.join(sourceDataDir, entry.name);
     const destination = path.join(target, entry.name);
     if (entry.isDirectory()) {
       fs.cpSync(source, destination, { recursive: true });
@@ -103,7 +138,7 @@ async function createZip(sourceDir: string, outputPath: string): Promise<void> {
   await completed;
 }
 
-async function hashFile(filePath: string): Promise<string> {
+export async function hashFile(filePath: string): Promise<string> {
   const hash = createHash('sha256');
   await new Promise<void>((resolve, reject) => {
     const input = fs.createReadStream(filePath);
@@ -159,39 +194,72 @@ async function pruneOldBackups(cfg: BackupConfig): Promise<void> {
   await Promise.all(expired.map((item) => cfg.client.send(new DeleteObjectCommand({ Bucket: cfg.bucket, Key: item.Key! }))));
 }
 
+export async function createEncryptedBackupFromDirectory(
+  sourceDataDir: string,
+  encryptedPath: string,
+  encryptionKey: Buffer,
+): Promise<{ byteSize: number; sha256: string }> {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), 'stitchspeak-backup-build-'));
+  try {
+    const snapshotDir = path.join(workspace, 'snapshot');
+    fs.mkdirSync(snapshotDir);
+    const zipPath = path.join(workspace, 'snapshot.zip');
+    await snapshotData(sourceDataDir, snapshotDir);
+    await createZip(snapshotDir, zipPath);
+    await encryptAndVerify(zipPath, encryptedPath, encryptionKey);
+    const byteSize = (await stat(encryptedPath)).size;
+    return { byteSize, sha256: await hashFile(encryptedPath) };
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+}
+
+function resolveBackupConfig(overrides?: OffsiteBackupOverrides): BackupConfig {
+  if (overrides?.client && overrides.encryptionKey) {
+    return {
+      client: overrides.client as S3Client,
+      bucket: overrides.bucket ?? 'test-bucket',
+      prefix: (overrides.prefix ?? 'stitchspeak').replace(/^\/+|\/+$/g, ''),
+      encryptionKey: overrides.encryptionKey,
+    };
+  }
+  const cfg = getBackupConfig();
+  if (!cfg) throw new Error('Offsite backup is not configured.');
+  return cfg;
+}
+
 let running: Promise<void> | null = null;
 
-export function runOffsiteBackup(): Promise<void> {
+export function runOffsiteBackup(overrides?: OffsiteBackupOverrides): Promise<void> {
   if (running) return running;
   running = (async () => {
-    const cfg = config();
-    if (!cfg) throw new Error('Offsite backup is not configured.');
+    const cfg = resolveBackupConfig(overrides);
+    const dataDir = overrides?.dataDir ?? DATA_DIR;
     const workspace = await mkdtemp(path.join(os.tmpdir(), 'stitchspeak-backup-'));
     try {
-      const snapshotDir = path.join(workspace, 'snapshot');
-      fs.mkdirSync(snapshotDir);
-      const zipPath = path.join(workspace, 'snapshot.zip');
       const encryptedPath = path.join(workspace, 'snapshot.ssbackup');
-      await snapshotData(snapshotDir);
-      await createZip(snapshotDir, zipPath);
-      await encryptAndVerify(zipPath, encryptedPath, cfg.encryptionKey);
+      const artifact = await createEncryptedBackupFromDirectory(dataDir, encryptedPath, cfg.encryptionKey);
       const now = new Date();
       const objectKey = `${cfg.prefix}/${now.toISOString().replace(/[:.]/g, '-')}.ssbackup`;
-      const size = (await stat(encryptedPath)).size;
       await cfg.client.send(new PutObjectCommand({
         Bucket: cfg.bucket,
         Key: objectKey,
         Body: fs.createReadStream(encryptedPath),
-        ContentLength: size,
+        ContentLength: artifact.byteSize,
         ContentType: 'application/octet-stream',
-        Metadata: { encryption: 'aes-256-gcm', format: 'SSBACKUP1' },
+        Metadata: backupObjectMetadata(artifact.byteSize, artifact.sha256),
       }));
       await pruneOldBackups(cfg);
-      writeState({ lastSuccessAt: now.toISOString(), objectKey });
-      console.log(`[backup] encrypted offsite backup uploaded: ${objectKey} (${size} bytes)`);
+      writeState({
+        lastSuccessAt: now.toISOString(),
+        objectKey,
+        byteSize: artifact.byteSize,
+        sha256: artifact.sha256,
+      }, dataDir);
+      console.log(`[backup] encrypted offsite backup uploaded: ${objectKey} (${artifact.byteSize} bytes)`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown backup failure';
-      writeState({ ...readState(), lastFailureAt: new Date().toISOString(), lastError: message });
+      writeState({ ...readState(dataDir), lastFailureAt: new Date().toISOString(), lastError: message }, dataDir);
       throw error;
     } finally {
       await rm(workspace, { recursive: true, force: true });
@@ -202,7 +270,7 @@ export function runOffsiteBackup(): Promise<void> {
 
 export function backupHealth(): { configured: boolean; ok: boolean; running: boolean; lastSuccessAt?: string; lastError?: string } {
   let configured = false;
-  try { configured = config() !== null; } catch { configured = true; }
+  try { configured = getBackupConfig() !== null; } catch { configured = true; }
   const state = readState();
   const fresh = state.lastSuccessAt ? Date.now() - Date.parse(state.lastSuccessAt) < MAX_BACKUP_AGE_MS : false;
   return {
@@ -215,7 +283,7 @@ export function backupHealth(): { configured: boolean; ok: boolean; running: boo
 }
 
 export function scheduleOffsiteBackups(): void {
-  if (!config()) {
+  if (!getBackupConfig()) {
     console.warn('[backup] offsite backups are not configured');
     return;
   }
