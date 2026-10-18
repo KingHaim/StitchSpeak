@@ -25,6 +25,7 @@ import {
   isLemonSqueezyWebhookConfigured,
 } from './services/lemonSqueezy.js';
 import { isProductionReady } from './services/readiness.js';
+import { getDeployedCommit } from './services/deployedCommit.js';
 import { isAuthEmailConfigured } from './services/authEmail.js';
 import { installGracefulShutdown } from './services/gracefulShutdown.js';
 import { backupHealth, scheduleOffsiteBackups } from './services/offsiteBackup.js';
@@ -156,12 +157,13 @@ app.use((req, res, next) => {
 });
 
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok' });
+  res.json({ status: 'ok', commit: getDeployedCommit() });
 });
 
 app.get('/health/deep', (_req, res) => {
+  const commit = getDeployedCommit();
   if (draining) {
-    res.status(503).json({ status: 'draining' });
+    res.status(503).json({ status: 'draining', commit });
     return;
   }
   try {
@@ -183,10 +185,10 @@ app.get('/health/deep', (_req, res) => {
       credits: checks.credits.ok,
       patterns: checks.patterns.ok,
     });
-    res.status(ok ? 200 : 503).json({ status: ok ? 'ok' : 'degraded', checks });
+    res.status(ok ? 200 : 503).json({ status: ok ? 'ok' : 'degraded', checks, commit });
   } catch (err) {
     console.error('[health/deep] failed:', err);
-    res.status(503).json({ status: 'error' });
+    res.status(503).json({ status: 'error', commit });
   }
 });
 
