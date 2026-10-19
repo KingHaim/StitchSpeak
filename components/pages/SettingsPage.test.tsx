@@ -57,6 +57,8 @@ describe('SettingsPage billing', () => {
     const credits: CreditContextValue = {
       balance: 20,
       betaAccess: false,
+      freePreviewMode: 'off',
+      freePreviewAvailable: false,
       isLoading: false,
       applyBalance: vi.fn(),
       refreshBalance: vi.fn(),

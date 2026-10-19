@@ -35,9 +35,26 @@ async function apiFetch(
   return data;
 }
 
-export async function getCreditState(idToken: string): Promise<{ balance: number; betaAccess: boolean }> {
+export type FreePreviewMode = 'off' | 'admins' | 'on';
+
+/** Server is the only source of the mode. Unknown or missing values are `off`. */
+export function parseFreePreviewMode(value: unknown): FreePreviewMode {
+  return value === 'on' || value === 'admins' ? value : 'off';
+}
+
+export async function getCreditState(idToken: string): Promise<{
+  balance: number;
+  betaAccess: boolean;
+  freePreviewMode: FreePreviewMode;
+  freePreviewAvailable: boolean;
+}> {
   const data = await apiFetch('/', idToken);
-  return { balance: typeof data.balance === 'number' ? data.balance : 0, betaAccess: data.betaAccess === true };
+  return {
+    balance: typeof data.balance === 'number' ? data.balance : 0,
+    betaAccess: data.betaAccess === true,
+    freePreviewMode: parseFreePreviewMode(data.freePreviewMode),
+    freePreviewAvailable: data.freePreviewAvailable === true,
+  };
 }
 
 export interface CreditPackagesResponse {

@@ -40,6 +40,7 @@ StitchSpeak is a React 19 + TypeScript + Tailwind CSS v4 frontend (Vite) with an
 | `BACKUP_S3_SECRET_ACCESS_KEY` | `server/.env` | Secret for the backup bucket credential |
 | `BACKUP_ENCRYPTION_KEY` | `server/.env` | Base64-encoded 32-byte AES key; store separately for disaster recovery |
 | `ADMIN_EMAILS` | `server/.env` | Comma-separated Google emails allowed to access the server-enforced admin console |
+| `FREE_PREVIEW_MODE` | `server/.env` | US10 dark launch: `off` (default, paid jobs only), `admins` (ADMIN_EMAILS only), `on` (everyone) |
 | `AUTH_SESSION_SECRET` | `server/.env` | Long random secret used to sign and revoke email-account sessions |
 | `APP_URL` | `server/.env` | Canonical frontend URL used for verification and password-reset links |
 | `RESEND_API_KEY` | `server/.env` | Resend API key for authentication email delivery |

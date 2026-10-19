@@ -181,6 +181,11 @@ interface NdjsonDoneEvent {
   cost?: number;
   balance?: number;
   reviewWarnings?: TranslationResult['reviewWarnings'];
+  preview?: boolean;
+  locked?: boolean;
+  jobId?: string;
+  remainingCost?: number;
+  fullCost?: number;
 }
 
 /**
@@ -380,6 +385,11 @@ const translatePatternStreamInner = async (
           cost: event.cost,
           balance: event.balance,
           reviewWarnings: event.reviewWarnings ?? [],
+          preview: event.preview === true,
+          locked: event.locked === true,
+          jobId: typeof event.jobId === 'string' ? event.jobId : undefined,
+          remainingCost: typeof event.remainingCost === 'number' ? event.remainingCost : undefined,
+          fullCost: typeof event.fullCost === 'number' ? event.fullCost : undefined,
         };
         return;
       }
@@ -466,6 +476,93 @@ const translatePatternStreamInner = async (
   }
 
   return finalResult;
+};
+
+function resultFromDone(event: NdjsonDoneEvent, htmlChunks: string): TranslationResult | null {
+  const html = typeof event.html === 'string' && event.html.length > 0 ? event.html : htmlChunks;
+  if (html.length === 0) return null;
+  return {
+    html,
+    usage: event.usage ?? null,
+    cost: event.cost,
+    balance: event.balance,
+    reviewWarnings: event.reviewWarnings ?? [],
+    preview: event.preview === true,
+    locked: event.locked === true,
+    jobId: typeof event.jobId === 'string' ? event.jobId : undefined,
+    remainingCost: typeof event.remainingCost === 'number' ? event.remainingCost : undefined,
+    fullCost: typeof event.fullCost === 'number' ? event.fullCost : undefined,
+  };
+}
+
+export const unlockTranslation = async (
+  jobId: string,
+  idToken: string | null,
+  callbacks: TranslatePatternStreamCallbacks = {},
+): Promise<TranslationResult> => {
+  const target = await resolveStreamTarget(idToken);
+  const unlockUrl = target.url.replace(/\/translate\/?$/, '/translate/unlock');
+  const response = await checkedFetch(
+    unlockUrl,
+    {
+      method: 'POST',
+      headers: {
+        ...target.headers,
+        Accept: 'application/x-ndjson',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ jobId, streamFinalChunks: true }),
+    },
+    'Unlock translation',
+  );
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/x-ndjson')) {
+    return (await response.json()) as TranslationResult;
+  }
+
+  const text = await response.text();
+  let htmlChunks = '';
+  let result: TranslationResult | null = null;
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    let event: NdjsonEvent;
+    try {
+      event = JSON.parse(line) as NdjsonEvent;
+    } catch {
+      continue;
+    }
+    if (event.type === 'final') htmlChunks += event.chunk;
+    else if (event.type === 'delta') callbacks.onDelta?.(event.text, event.text);
+    else if (event.type === 'status') callbacks.onStatus?.(event.message, event.stage);
+    else if (event.type === 'done') result = resultFromDone(event, htmlChunks);
+    else if (event.type === 'error') {
+      throw new TranslationError(
+        normalizeTranslationErrorMessage(event.message || 'Unlock failed.'),
+        'server',
+        event.status,
+        event.code,
+        event.balance,
+      );
+    }
+  }
+  if (!result) {
+    throw new TranslationError('Unlock ended unexpectedly. Please try again.', 'server');
+  }
+  return result;
+};
+
+export const fetchTranslationJob = async (
+  jobId: string,
+  idToken: string | null,
+): Promise<TranslationResult & { fileName?: string; language?: string; sourceLanguage?: string; status?: string }> => {
+  const response = await checkedFetch(
+    apiUrl(`/translate/jobs/${encodeURIComponent(jobId)}`),
+    { headers: authHeaders(idToken) },
+    'Translation job',
+  );
+  return response.json();
 };
 
 export const startChatSession = async (

@@ -63,8 +63,10 @@ describe('LandingPage FAQ', () => {
 
     const faq = container.querySelector('#faq');
     expect(faq).not.toBeNull();
-    expect(faq?.querySelectorAll('details')).toHaveLength(8);
+    expect(faq?.querySelectorAll('details')).toHaveLength(9);
     expect(faq?.textContent).toContain('How is a translation priced?');
+    expect(faq?.textContent).toContain('Do I get a free preview?');
+    expect(faq?.textContent).toContain('Unlock the full translation and export');
     expect(faq?.textContent).toContain('What happens if a translation fails?');
     expect(faq?.textContent).toContain('Will the translated file look exactly like my original?');
     expect(faq?.textContent).toContain('Built for patterns. Still reviewed by you.');
@@ -86,6 +88,7 @@ describe('LandingPage FAQ', () => {
     expect(container.querySelector('[aria-label="Idioma de la web"]')).not.toBeNull();
     expect(container.querySelector('h1')?.textContent).toMatch(/patrones de punto y ganchillo/i);
     expect(container.textContent).toContain('¿Cómo se calcula el precio de una traducción?');
+    expect(container.textContent).toContain('Desbloquea la traducción completa y la exportación');
     expect(container.textContent).toContain('Empezar a traducir');
     expect(document.title).toBe('Traducción de patrones de punto y ganchillo | StitchSpeak');
     expect(document.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe('https://stitchspeak.com/');
