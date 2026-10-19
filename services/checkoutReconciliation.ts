@@ -1,5 +1,10 @@
 export const CHECKOUT_EXPECTATION_KEY = 'ss_checkout_expectation';
 
+/** How long the post-checkout banner stays on "Payment received…" before the manual-review copy. */
+export const CHECKOUT_MANUAL_REVIEW_MS = 2 * 60 * 1000;
+
+export const SUPPORT_EMAIL = 'support@stitchspeak.com';
+
 export interface CheckoutExpectation {
   packId: string;
   baselineBalance: number;

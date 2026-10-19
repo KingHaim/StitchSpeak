@@ -58,6 +58,34 @@ db.exec(`
   )
 `);
 
+// Paid (or not-yet-paid) Lemon Squeezy orders that could not be credited.
+// Survives webhook retries so a captured payment is never dropped without a
+// local record. Safe additive migration on existing credits.db files.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS unapplied_orders (
+    order_id     TEXT PRIMARY KEY,
+    reason       TEXT NOT NULL,
+    status       TEXT,
+    payload_json TEXT NOT NULL,
+    sub          TEXT,
+    pack_id      TEXT,
+    credits      REAL,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL
+  )
+`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_unapplied_orders_status ON unapplied_orders (status)');
+
+// Admin-only dismissals for unapplied orders / order-tied anomalies. Health
+// stays red until the order is in payment_orders or listed here.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS payment_dismissals (
+    order_id     TEXT PRIMARY KEY,
+    dismissed_by TEXT NOT NULL,
+    dismissed_at INTEGER NOT NULL
+  )
+`);
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS deleted_accounts (
     sub_hash   TEXT PRIMARY KEY,
@@ -160,6 +188,58 @@ const stmts = {
   `),
   recentAnomalies: db.prepare<[number]>(`
     SELECT COUNT(*) AS count FROM payment_anomalies WHERE created_at >= ?
+  `),
+  upsertUnapplied: db.prepare<[string, string, string | null, string, string | null, string | null, number | null, number, number]>(`
+    INSERT INTO unapplied_orders (
+      order_id, reason, status, payload_json, sub, pack_id, credits, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(order_id) DO UPDATE SET
+      reason = excluded.reason,
+      status = excluded.status,
+      payload_json = excluded.payload_json,
+      sub = excluded.sub,
+      pack_id = excluded.pack_id,
+      credits = excluded.credits,
+      updated_at = excluded.updated_at
+  `),
+  getUnapplied: db.prepare<[string]>(`
+    SELECT order_id, reason, status, payload_json, sub, pack_id, credits, created_at, updated_at
+    FROM unapplied_orders WHERE order_id = ?
+  `),
+  listUnapplied: db.prepare(`
+    SELECT order_id, reason, status, payload_json, sub, pack_id, credits, created_at, updated_at
+    FROM unapplied_orders
+    ORDER BY updated_at DESC, order_id DESC
+  `),
+  listPaidUnresolvedUnapplied: db.prepare(`
+    SELECT u.order_id
+    FROM unapplied_orders u
+    LEFT JOIN payment_orders p ON p.order_id = u.order_id
+    LEFT JOIN payment_dismissals d ON d.order_id = u.order_id
+    WHERE p.order_id IS NULL
+      AND d.order_id IS NULL
+      AND COALESCE(u.status, 'paid') = 'paid'
+  `),
+  deleteUnapplied: db.prepare<[string]>('DELETE FROM unapplied_orders WHERE order_id = ?'),
+  hasPaymentOrder: db.prepare<[string]>('SELECT 1 FROM payment_orders WHERE order_id = ?'),
+  listPaymentOrderIds: db.prepare('SELECT order_id FROM payment_orders'),
+  upsertDismissal: db.prepare<[string, string, number]>(`
+    INSERT INTO payment_dismissals (order_id, dismissed_by, dismissed_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(order_id) DO UPDATE SET
+      dismissed_by = excluded.dismissed_by,
+      dismissed_at = excluded.dismissed_at
+  `),
+  getDismissal: db.prepare<[string]>('SELECT order_id FROM payment_dismissals WHERE order_id = ?'),
+  unresolvedOrderAnomalies: db.prepare(`
+    SELECT a.reference AS order_id
+    FROM payment_anomalies a
+    LEFT JOIN payment_orders p ON p.order_id = a.reference
+    LEFT JOIN payment_dismissals d ON d.order_id = a.reference
+    WHERE a.reference IS NOT NULL
+      AND a.reference != ''
+      AND p.order_id IS NULL
+      AND d.order_id IS NULL
   `),
   insertPendingCharge: db.prepare<[string, string, number, string, number]>(`
     INSERT INTO pending_charges (id, sub, amount, kind, created_at) VALUES (?, ?, ?, ?, ?)
@@ -387,7 +467,7 @@ const purchaseTx = db.transaction((params: {
     params.orderId,
     deleted ? `deleted:${subHash(params.sub)}` : params.sub,
     round(params.credits),
-    Math.max(1, Math.round(params.amountPaidCents)),
+    Math.max(0, Math.round(params.amountPaidCents)),
     now,
     now,
   );
@@ -397,6 +477,13 @@ const purchaseTx = db.transaction((params: {
   return { applied: true, balance: round(getBalance(params.sub)) };
 });
 
+export function isUniqueConstraintError(err: unknown): boolean {
+  const code = typeof err === 'object' && err && 'code' in err
+    ? String((err as { code: unknown }).code)
+    : '';
+  return code.startsWith('SQLITE_CONSTRAINT');
+}
+
 export function recordPurchaseAndGrantCredits(params: {
   eventId: string;
   orderId: string;
@@ -405,7 +492,28 @@ export function recordPurchaseAndGrantCredits(params: {
   amountPaidCents: number;
   email?: string;
 }): { applied: boolean; balance: number } {
-  return purchaseTx(params);
+  try {
+    return purchaseTx(params);
+  } catch (err) {
+    // Concurrent webhook retries race on event_id / order_id. The loser is a
+    // no-op, not a second grant — treat it as idempotent instead of 500.
+    if (isUniqueConstraintError(err)) {
+      return { applied: false, balance: round(getBalance(params.sub)) };
+    }
+    throw err;
+  }
+}
+
+export function isCreditAccountDeleted(sub: string): boolean {
+  return Boolean(stmts.isDeleted.get(subHash(sub)));
+}
+
+export function hasPaymentOrder(orderId: string): boolean {
+  return Boolean(stmts.hasPaymentOrder.get(orderId));
+}
+
+export function listPaymentOrderIds(): string[] {
+  return (stmts.listPaymentOrderIds.all() as Array<{ order_id: string }>).map((row) => row.order_id);
 }
 
 export interface PaymentOrderSummary {
@@ -464,16 +572,18 @@ const refundTx = db.transaction(
       };
     }
 
-    const cumulativeRefund = Math.min(
-      order.amount_paid_cents,
-      Math.max(order.refunded_amount_cents, Math.round(refundedAmountCents)),
-    );
-    const targetRevoked = round(
-      Math.min(
-        order.credits_granted,
-        order.credits_granted * (cumulativeRefund / order.amount_paid_cents),
-      ),
-    );
+    const requestedRefund = Math.max(order.refunded_amount_cents, Math.round(refundedAmountCents));
+    const cumulativeRefund = order.amount_paid_cents <= 0
+      ? requestedRefund
+      : Math.min(order.amount_paid_cents, requestedRefund);
+    const targetRevoked = order.amount_paid_cents <= 0
+      ? (requestedRefund > 0 ? round(order.credits_granted) : 0)
+      : round(
+          Math.min(
+            order.credits_granted,
+            order.credits_granted * (cumulativeRefund / order.amount_paid_cents),
+          ),
+        );
     const delta = round(Math.max(0, targetRevoked - order.credits_revoked));
     const now = Date.now();
 
@@ -506,12 +616,107 @@ export function recordPaymentAnomaly(kind: string, reference?: string): void {
   stmts.insertAnomaly.run(kind, reference ?? null, Date.now());
 }
 
-export function paymentReconciliationHealth(windowMs = 60 * 60 * 1000): {
+export interface UnappliedOrderRow {
+  orderId: string;
+  reason: string;
+  status: string | null;
+  payloadJson: string;
+  sub: string | null;
+  packId: string | null;
+  credits: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface UnappliedDbRow {
+  order_id: string;
+  reason: string;
+  status: string | null;
+  payload_json: string;
+  sub: string | null;
+  pack_id: string | null;
+  credits: number | null;
+  created_at: number;
+  updated_at: number;
+}
+
+function mapUnapplied(row: UnappliedDbRow): UnappliedOrderRow {
+  return {
+    orderId: row.order_id,
+    reason: row.reason,
+    status: row.status,
+    payloadJson: row.payload_json,
+    sub: row.sub,
+    packId: row.pack_id,
+    credits: row.credits,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function saveUnappliedOrder(params: {
+  orderId: string;
+  reason: string;
+  status?: string | null;
+  payload: unknown;
+  sub?: string | null;
+  packId?: string | null;
+  credits?: number | null;
+}): { created: boolean } {
+  const existing = stmts.getUnapplied.get(params.orderId) as UnappliedDbRow | undefined;
+  const now = Date.now();
+  stmts.upsertUnapplied.run(
+    params.orderId,
+    params.reason,
+    params.status ?? null,
+    JSON.stringify(params.payload ?? {}),
+    params.sub ?? null,
+    params.packId ?? null,
+    params.credits ?? null,
+    existing?.created_at ?? now,
+    now,
+  );
+  return { created: !existing };
+}
+
+export function getUnappliedOrder(orderId: string): UnappliedOrderRow | null {
+  const row = stmts.getUnapplied.get(orderId) as UnappliedDbRow | undefined;
+  return row ? mapUnapplied(row) : null;
+}
+
+export function listUnappliedOrders(): UnappliedOrderRow[] {
+  return (stmts.listUnapplied.all() as UnappliedDbRow[]).map(mapUnapplied);
+}
+
+export function clearUnappliedOrder(orderId: string): void {
+  stmts.deleteUnapplied.run(orderId);
+}
+
+export function dismissPaymentOrder(orderId: string, dismissedBy: string): void {
+  stmts.upsertDismissal.run(orderId, dismissedBy, Date.now());
+}
+
+export function isPaymentOrderDismissed(orderId: string): boolean {
+  return Boolean(stmts.getDismissal.get(orderId));
+}
+
+export function paymentReconciliationHealth(): {
   ok: boolean;
   recentAnomalies: number;
+  unresolvedPaidOrders: number;
+  unresolvedAnomalies: number;
 } {
-  const row = stmts.recentAnomalies.get(Date.now() - windowMs) as { count: number };
-  return { ok: row.count === 0, recentAnomalies: row.count };
+  const paidUnapplied = stmts.listPaidUnresolvedUnapplied.all() as Array<{ order_id: string }>;
+  const openAnomalies = stmts.unresolvedOrderAnomalies.all() as Array<{ order_id: string }>;
+  const unresolvedPaidOrders = paidUnapplied.length;
+  const unresolvedAnomalies = new Set(openAnomalies.map((row) => row.order_id)).size;
+  const recentAnomalies = unresolvedPaidOrders + unresolvedAnomalies;
+  return {
+    ok: recentAnomalies === 0,
+    recentAnomalies,
+    unresolvedPaidOrders,
+    unresolvedAnomalies,
+  };
 }
 
 export function creditStoreHealth(): { ok: boolean } {

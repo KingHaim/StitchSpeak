@@ -6,6 +6,7 @@ import {
 } from '../services/creditService';
 import { CREDIT_PACKAGES } from '../constants';
 import {
+  CHECKOUT_MANUAL_REVIEW_MS,
   clearCheckoutExpectation,
   isCheckoutBalanceConfirmed,
   readCheckoutExpectation,
@@ -99,7 +100,6 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       else void reconcile();
     }, 2_000);
     const timeout = window.setTimeout(() => {
-      window.clearInterval(interval);
       if (!finished) {
         setCheckoutReturnStatus('delayed');
         captureEvent('checkout_delayed', {
@@ -107,7 +107,7 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           elapsed_ms: expectation ? Math.max(0, Date.now() - expectation.startedAt) : undefined,
         });
       }
-    }, 20_000);
+    }, CHECKOUT_MANUAL_REVIEW_MS);
     return () => {
       window.clearInterval(interval);
       window.clearTimeout(timeout);

@@ -12,6 +12,7 @@ import {
   createLemonSqueezyCheckout,
   getLemonSqueezyOrderReceipt,
   isLemonSqueezyConfigured,
+  isLemonSqueezyWebhookConfigured,
 } from '../services/lemonSqueezy.js';
 
 const router = Router();
@@ -69,6 +70,9 @@ router.get(
 router.post('/checkout', checkoutRateLimit, async (req: Request, res: Response) => {
   const { userSub, userEmail } = req as AuthenticatedRequest;
   if (!isLemonSqueezyConfigured()) {
+    if (!isLemonSqueezyWebhookConfigured()) {
+      console.error('[credits/checkout] LEMON_SQUEEZY_WEBHOOK_SECRET is missing; refusing checkout.');
+    }
     res.status(503).json({ error: 'Payments are not configured.' });
     return;
   }

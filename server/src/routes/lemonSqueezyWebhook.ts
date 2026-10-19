@@ -2,10 +2,15 @@ import { Router, type Request, type Response } from 'express';
 import express from 'express';
 import {
   applyOrderRefund,
+  clearUnappliedOrder,
+  isCreditAccountDeleted,
+  isUniqueConstraintError,
   recordPaymentAnomaly,
   recordPurchaseAndGrantCredits,
+  saveUnappliedOrder,
 } from '../services/creditStore.js';
 import { getCreditPack } from '../services/pricing.js';
+import { orderPaymentCoversDiscountedTotal } from '../services/paymentValidation.js';
 import {
   getLemonSqueezyVariantId,
   isLemonSqueezyWebhookConfigured,
@@ -14,7 +19,7 @@ import {
 
 const router = Router();
 
-interface LemonSqueezyWebhookPayload {
+export interface LemonSqueezyWebhookPayload {
   meta?: {
     event_name?: unknown;
     custom_data?: {
@@ -31,6 +36,7 @@ interface LemonSqueezyWebhookPayload {
       refunded?: unknown;
       subtotal?: unknown;
       total?: unknown;
+      discount_total?: unknown;
       refunded_amount?: unknown;
       first_order_item?: {
         variant_id?: unknown;
@@ -44,13 +50,43 @@ function numberFromUnknown(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function orderIdFromPayload(event: LemonSqueezyWebhookPayload): string {
+  return typeof event.data?.id === 'string' ? event.data.id : '';
+}
+
+function persistUnapplied(
+  orderId: string,
+  reason: string,
+  event: LemonSqueezyWebhookPayload,
+): void {
+  const custom = event.meta?.custom_data;
+  const packId = typeof custom?.packId === 'string' ? custom.packId : '';
+  const pack = getCreditPack(packId);
+  const status = typeof event.data?.attributes?.status === 'string' ? event.data.attributes.status : '';
+  saveUnappliedOrder({
+    orderId,
+    reason,
+    status: status || null,
+    payload: event,
+    sub: typeof custom?.sub === 'string' ? custom.sub : null,
+    packId: packId || null,
+    credits: pack?.credits ?? numberFromUnknown(custom?.credits),
+  });
+}
+
 /**
  * Lemon Squeezy webhook. Mounted with a raw body parser (see index.ts) because
  * signature verification must run against the exact bytes Lemon Squeezy sent.
  *
  * Credits are only granted after an `order_created` event with a verified
- * signature, paid order status, expected variant, expected pack, and sufficient
- * subtotal. The browser never mutates its own balance.
+ * signature, paid order status, expected variant, expected pack, and a charged
+ * amount that matches Lemon's discounted total (not the catalogue list price).
+ * The browser never mutates its own balance.
+ *
+ * Permanent apply failures are written to `unapplied_orders` before we ack
+ * with 2xx. Pending/unpaid orders are also saved, then we return non-2xx so
+ * Lemon Squeezy retries until the order is paid — there is no later
+ * `order_paid` event.
  */
 router.post(
   '/',
@@ -62,7 +98,15 @@ router.post(
     }
 
     if (!verifyLemonSqueezySignature(req.body, req.headers['x-signature'])) {
-      console.error('[lemon-squeezy/webhook] Signature verification failed');
+      let orderId: string | undefined;
+      try {
+        const peeked = JSON.parse(req.body.toString('utf8')) as LemonSqueezyWebhookPayload;
+        orderId = orderIdFromPayload(peeked) || undefined;
+      } catch {
+        orderId = undefined;
+      }
+      console.error('[lemon-squeezy/webhook] Signature verification failed', { orderId });
+      recordPaymentAnomaly('signature_mismatch', orderId);
       res.status(400).json({ error: 'Invalid signature.' });
       return;
     }
@@ -93,13 +137,18 @@ router.post(
     const pack = getCreditPack(packId);
     const sub = typeof custom?.sub === 'string' ? custom.sub : '';
     const credits = numberFromUnknown(custom?.credits);
-    const orderId = typeof event.data?.id === 'string' ? event.data.id : '';
+    const orderId = orderIdFromPayload(event);
     const subtotal = numberFromUnknown(attrs?.subtotal);
     const total = numberFromUnknown(attrs?.total);
-    const amountPaid = subtotal ?? total;
+    const discountTotal = numberFromUnknown(attrs?.discount_total);
     const variantId = numberFromUnknown(attrs?.first_order_item?.variant_id);
     const expectedVariantId = numberFromUnknown(getLemonSqueezyVariantId());
     const status = typeof attrs?.status === 'string' ? attrs.status : '';
+    const payment = orderPaymentCoversDiscountedTotal({
+      subtotal,
+      total,
+      discountTotal,
+    });
 
     if (eventName === 'order_refunded') {
       const refundedAmount = numberFromUnknown(attrs?.refunded_amount);
@@ -131,59 +180,120 @@ router.post(
       return;
     }
 
-    // With tax-inclusive store pricing, `subtotal` is the net-of-VAT amount and
-    // is legitimately below the pack price; the tax-inclusive `total` is what
-    // the customer actually paid. Accept the order when either covers the pack.
-    const expectedCents = Math.round(pack ? pack.price * 100 : Number.POSITIVE_INFINITY);
-    const coversPackPrice =
-      (subtotal != null && subtotal >= expectedCents) ||
-      (total != null && total >= expectedCents);
+    if (!orderId) {
+      recordPaymentAnomaly('missing_order_id');
+      res.status(400).json({ error: 'Missing order id.' });
+      return;
+    }
 
-    const isExpectedOrder =
-      orderId &&
-      sub &&
-      pack &&
-      credits === pack.credits &&
-      status === 'paid' &&
-      attrs?.refunded !== true &&
-      variantId === expectedVariantId &&
-      amountPaid != null &&
-      coversPackPrice;
-
-    if (!isExpectedOrder || !pack || credits == null) {
-      recordPaymentAnomaly('rejected_paid_order', orderId || undefined);
-      console.warn('[lemon-squeezy/webhook] Paid order did not match an expected credit pack', {
+    const rejectPermanent = (reason: string): void => {
+      const { created } = saveUnappliedOrder({
         orderId,
+        reason,
+        status: status || null,
+        payload: event,
+        sub: sub || null,
+        packId: packId || null,
+        credits: pack?.credits ?? credits,
+      });
+      if (created) {
+        recordPaymentAnomaly(reason, orderId);
+      }
+      console.warn('[lemon-squeezy/webhook] Paid order could not be applied', {
+        orderId,
+        reason,
         packId,
         status,
         variantId,
-        amountPaid,
+        amountPaid: payment.amountPaidCents,
       });
-      res.json({ received: true, applied: false });
-      return;
-    }
+      res.json({ received: true, applied: false, reason });
+    };
 
-    const eventId = `${eventName}:${orderId}`;
-    const email = typeof attrs?.user_email === 'string' ? attrs.user_email : undefined;
-    const chargedTotal = total ?? subtotal;
-    if (chargedTotal == null || chargedTotal <= 0) {
-      recordPaymentAnomaly('invalid_paid_order_total', orderId);
-      res.status(400).json({ error: 'Invalid paid order total.' });
-      return;
-    }
-    const { applied, balance } = recordPurchaseAndGrantCredits({
-      eventId,
-      orderId,
-      sub,
-      credits,
-      amountPaidCents: chargedTotal,
-      email,
-    });
-    console.log(
-      `[lemon-squeezy/webhook] order_created sub=${sub} credits=${credits} applied=${applied} balance=${balance}`,
-    );
+    const rejectTemporary = (reason: string, statusCode: number): void => {
+      persistUnapplied(orderId, reason, event);
+      if (reason !== 'pending_or_unpaid') {
+        recordPaymentAnomaly(reason, orderId);
+      }
+      console.warn('[lemon-squeezy/webhook] Order not yet applicable; asking Lemon Squeezy to retry', {
+        orderId,
+        reason,
+        status,
+      });
+      res.status(statusCode).json({ error: 'Order not yet applicable.', reason });
+    };
 
-    res.json({ received: true, applied });
+    try {
+      if (status === 'pending' || status === 'unpaid') {
+        // Lemon Squeezy has no later order_paid event. Ack'ing pending with
+        // 2xx would stop retries and lose the payment when it later settles.
+        // Persist the row so it is never dropped, then return 409 so LS
+        // retries until status is paid.
+        rejectTemporary('pending_or_unpaid', 409);
+        return;
+      }
+
+      if (!sub) {
+        rejectPermanent('missing_sub');
+        return;
+      }
+      if (isCreditAccountDeleted(sub)) {
+        rejectPermanent('deleted_account');
+        return;
+      }
+      if (!pack || credits !== pack.credits) {
+        rejectPermanent('unknown_pack');
+        return;
+      }
+      if (variantId !== expectedVariantId) {
+        rejectPermanent('wrong_variant');
+        return;
+      }
+      if (attrs?.refunded === true) {
+        rejectPermanent('already_refunded');
+        return;
+      }
+      if (!payment.ok || payment.amountPaidCents == null) {
+        rejectPermanent('underpaid');
+        return;
+      }
+      if (status !== 'paid') {
+        rejectPermanent('unexpected_status');
+        return;
+      }
+
+      const eventId = `${eventName}:${orderId}`;
+      const email = typeof attrs?.user_email === 'string' ? attrs.user_email : undefined;
+      const { applied, balance } = recordPurchaseAndGrantCredits({
+        eventId,
+        orderId,
+        sub,
+        credits,
+        amountPaidCents: payment.amountPaidCents,
+        email,
+      });
+      if (applied) {
+        clearUnappliedOrder(orderId);
+      }
+      console.log(
+        `[lemon-squeezy/webhook] order_created sub=${sub} credits=${credits} applied=${applied} balance=${balance}`,
+      );
+      res.json({ received: true, applied });
+    } catch (err) {
+      if (isUniqueConstraintError(err)) {
+        console.log('[lemon-squeezy/webhook] concurrent duplicate ignored', { orderId });
+        res.json({ received: true, applied: false });
+        return;
+      }
+      console.error('[lemon-squeezy/webhook] Temporary failure applying order', { orderId, err });
+      try {
+        persistUnapplied(orderId, 'temporary_failure', event);
+        recordPaymentAnomaly('temporary_failure', orderId);
+      } catch (persistErr) {
+        console.error('[lemon-squeezy/webhook] Failed to persist unapplied order', persistErr);
+      }
+      res.status(500).json({ error: 'Could not apply order.' });
+    }
   },
 );
 

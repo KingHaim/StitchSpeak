@@ -32,8 +32,18 @@ export function isLemonSqueezyConfigured(): boolean {
   return Boolean(
     process.env.LEMON_SQUEEZY_API_KEY?.trim() &&
       process.env.LEMON_SQUEEZY_STORE_ID?.trim() &&
-      process.env.LEMON_SQUEEZY_VARIANT_ID?.trim(),
+      process.env.LEMON_SQUEEZY_VARIANT_ID?.trim() &&
+      process.env.LEMON_SQUEEZY_WEBHOOK_SECRET?.trim(),
   );
+}
+
+export function missingLemonSqueezyConfig(): string[] {
+  return [
+    'LEMON_SQUEEZY_API_KEY',
+    'LEMON_SQUEEZY_STORE_ID',
+    'LEMON_SQUEEZY_VARIANT_ID',
+    'LEMON_SQUEEZY_WEBHOOK_SECRET',
+  ].filter((name) => !process.env[name]?.trim());
 }
 
 export function isLemonSqueezyWebhookConfigured(): boolean {
@@ -119,6 +129,107 @@ export async function createLemonSqueezyCheckout(params: {
     throw new Error('Lemon Squeezy did not return a checkout URL.');
   }
   return url;
+}
+
+export interface LemonSqueezyListedOrder {
+  id: string;
+  status: string;
+  userEmail: string | null;
+  total: number | null;
+  subtotal: number | null;
+  discountTotal: number | null;
+  createdAt: string | null;
+  variantId: number | null;
+}
+
+interface LemonSqueezyOrdersListResponse {
+  data?: Array<{
+    id?: unknown;
+    attributes?: {
+      status?: unknown;
+      user_email?: unknown;
+      total?: unknown;
+      subtotal?: unknown;
+      discount_total?: unknown;
+      created_at?: unknown;
+      first_order_item?: { variant_id?: unknown };
+    };
+  }>;
+  meta?: {
+    page?: {
+      currentPage?: unknown;
+      lastPage?: unknown;
+    };
+  };
+}
+
+function finiteNumber(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Last-N-days Lemon Squeezy orders for admin reconciliation. Callers must
+ * mock `fetch` in tests — this hits the live API when configured.
+ */
+export async function listLemonSqueezyOrdersSince(since: Date): Promise<LemonSqueezyListedOrder[]> {
+  const apiKey = requiredEnv('LEMON_SQUEEZY_API_KEY');
+  const storeId = requiredEnv('LEMON_SQUEEZY_STORE_ID');
+  const sinceMs = since.getTime();
+  const orders: LemonSqueezyListedOrder[] = [];
+  let page = 1;
+  let lastPage = 1;
+
+  do {
+    const url = new URL(`${API_BASE_URL}/orders`);
+    url.searchParams.set('filter[store_id]', storeId);
+    url.searchParams.set('page[size]', '100');
+    url.searchParams.set('page[number]', String(page));
+    url.searchParams.set('sort', '-created_at');
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      signal: AbortSignal.timeout(15_000),
+      headers: {
+        Accept: 'application/vnd.api+json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
+    const data = (await response.json().catch(() => null)) as LemonSqueezyOrdersListResponse | null;
+    if (!response.ok) {
+      throw new Error(`Lemon Squeezy order list failed (${response.status}).`);
+    }
+
+    const rows = data?.data ?? [];
+    let reachedOlder = false;
+    for (const row of rows) {
+      const id = typeof row.id === 'string' ? row.id : '';
+      if (!id) continue;
+      const createdAt = typeof row.attributes?.created_at === 'string' ? row.attributes.created_at : null;
+      const createdMs = createdAt ? Date.parse(createdAt) : Number.NaN;
+      if (Number.isFinite(createdMs) && createdMs < sinceMs) {
+        reachedOlder = true;
+        continue;
+      }
+      orders.push({
+        id,
+        status: typeof row.attributes?.status === 'string' ? row.attributes.status : '',
+        userEmail: typeof row.attributes?.user_email === 'string' ? row.attributes.user_email : null,
+        total: finiteNumber(row.attributes?.total),
+        subtotal: finiteNumber(row.attributes?.subtotal),
+        discountTotal: finiteNumber(row.attributes?.discount_total),
+        createdAt,
+        variantId: finiteNumber(row.attributes?.first_order_item?.variant_id),
+      });
+    }
+
+    const reportedLast = finiteNumber(data?.meta?.page?.lastPage);
+    lastPage = reportedLast ?? page;
+    if (reachedOlder || rows.length === 0) break;
+    page += 1;
+  } while (page <= lastPage && page <= 10);
+
+  return orders;
 }
 
 export async function getLemonSqueezyOrderReceipt(orderId: string): Promise<string> {

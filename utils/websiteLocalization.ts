@@ -217,6 +217,18 @@ export const ENGLISH_WEBSITE_COPY = {
     body: 'Sign in with Google or email to open checkout. The credit pack you chose will be selected for you.',
     close: 'Close',
   },
+  checkoutReturn: {
+    confirmingTitle: 'Payment received, adding credits…',
+    confirmingBody: 'We’re refreshing your balance. This usually takes a few seconds.',
+    confirmedTitle: 'Credits added',
+    confirmedBody: 'Your payment was confirmed and your balance is up to date.',
+    delayedTitle: 'We’ve got your payment',
+    delayedBody: 'We’ve got your payment and are adding your credits by hand. You won’t be charged twice.',
+    supportLead: 'Need help?',
+    supportAction: 'Email support',
+    retry: 'Retry',
+    dismiss: 'Dismiss',
+  },
   footer: {
     copyright: 'StitchSpeak. Operated by Innovai Studio S.L.',
     privacy: 'Privacy Policy',
@@ -437,6 +449,18 @@ export const SPANISH_WEBSITE_COPY: WebsiteCopy = {
     body: 'Inicia sesión con Google o por correo electrónico para ir al pago. El paquete de créditos que hayas elegido ya estará seleccionado.',
     close: 'Cerrar',
   },
+  checkoutReturn: {
+    confirmingTitle: 'Pago recibido, añadiendo créditos…',
+    confirmingBody: 'Estamos actualizando tu saldo. Suele tardar unos segundos.',
+    confirmedTitle: 'Créditos añadidos',
+    confirmedBody: 'Tu pago se confirmó y tu saldo está al día.',
+    delayedTitle: 'Hemos recibido tu pago',
+    delayedBody: 'Hemos recibido tu pago y estamos añadiendo tus créditos a mano. No se te cobrará dos veces.',
+    supportLead: '¿Necesitas ayuda?',
+    supportAction: 'Escribir a soporte',
+    retry: 'Reintentar',
+    dismiss: 'Cerrar',
+  },
   footer: {
     copyright: 'StitchSpeak. Operado por Innovai Studio S.L.',
     privacy: 'Política de privacidad',
@@ -453,4 +477,18 @@ export const WEBSITE_COPY: Record<WebsiteLocale, WebsiteCopy> = {
 
 export function isWebsiteLocale(value: string | null | undefined): value is WebsiteLocale {
   return WEBSITE_LANGUAGES.some((language) => language.code === value);
+}
+
+export function readWebsiteLocale(): WebsiteLocale {
+  try {
+    const stored = localStorage.getItem(WEBSITE_LANGUAGE_STORAGE_KEY);
+    if (isWebsiteLocale(stored)) return stored;
+  } catch {
+    /* storage may be unavailable */
+  }
+  return 'en';
+}
+
+export function websiteCopy(locale: WebsiteLocale = readWebsiteLocale()): WebsiteCopy {
+  return WEBSITE_COPY[locale];
 }
