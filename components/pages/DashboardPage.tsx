@@ -1003,7 +1003,7 @@ export const DashboardPage: React.FC = () => {
   const handleUnlockPreview = useCallback(() => {
     if (!selectedJob?.jobId || !selectedJob.locked) return;
     persistPendingFromJob(selectedJob);
-    const need = selectedJob.remainingCost ?? 0;
+    const need = selectedJob.fullCost ?? selectedJob.remainingCost ?? 0;
     if (need <= 0.001 || balance >= need - 0.001) {
       void runPreviewUnlock(selectedJob);
       return;
@@ -1084,7 +1084,7 @@ export const DashboardPage: React.FC = () => {
     if (!selectedJob?.locked || !selectedJob.jobId) return;
     const pending = readPendingPreviewUnlock();
     if (!pending || pending.jobId !== selectedJob.jobId) return;
-    const need = selectedJob.remainingCost ?? 0;
+    const need = selectedJob.fullCost ?? selectedJob.remainingCost ?? 0;
     const creditsReady = need <= 0.001 || balance >= need - 0.001;
     if (!creditsReady) return;
     if (
@@ -1099,7 +1099,7 @@ export const DashboardPage: React.FC = () => {
   const waitingForPreviewCredits =
     !!selectedJob?.locked &&
     (checkoutReturnStatus === 'confirming' ||
-      (checkoutReturnStatus === 'delayed' && (selectedJob.remainingCost ?? 0) > balance + 0.001));
+      (checkoutReturnStatus === 'delayed' && (selectedJob.fullCost ?? selectedJob.remainingCost ?? 0) > balance + 0.001));
 
   const modalCreditCost = modalPriceEstimate?.translationCost ?? 0;
   const modalFileCount = modalFiles.length;

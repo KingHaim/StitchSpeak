@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { choosePreviewEndPage, cutPreviewHtml, segmentsFromHtml } from '../src/services/previewCut';
+import {
+  choosePreviewEndPage,
+  cutPreviewHtml,
+  documentPageCount,
+  PREVIEW_MAX_COVERAGE,
+  previewLeavesMeaningfulRemainder,
+  segmentsFromHtml,
+} from '../src/services/previewCut';
 
 function wrap(lines: string[]): string {
   return lines.map((line) => `<p>${line}</p>`).join('\n');
@@ -165,5 +172,45 @@ describe('preview cut craft rule', () => {
     expect(segments.map((segment) => segment.text)).toEqual(['Hat', 'Cast on 80 sts.', 'Body']);
     expect(segments[1].isCastOn).toBe(true);
     expect(segments[1].hasNumbers).toBe(true);
+  });
+
+  it('does not treat a short single-page whole-cut document as a preview remainder', () => {
+    const cut = cutPreviewHtml(wrap([
+      'Weekend Scarf',
+      'Cast on 24 stitches.',
+      'Row 1: Knit.',
+    ]));
+    expect(cut.remainingHtml.replace(/<[^>]+>/g, '').trim()).toBe('');
+    expect(cut.end).toBe(cut.segments.length);
+    expect(previewLeavesMeaningfulRemainder(cut)).toBe(false);
+    expect(previewLeavesMeaningfulRemainder(cut, { isPdf: true })).toBe(false);
+  });
+
+  it('keeps a long document preview at or under 50% of source segments', () => {
+    const cut = cutPreviewHtml(wrap([...OPENING, ...WORKED, ...BODY, ...filler(80)]));
+    expect(previewLeavesMeaningfulRemainder(cut)).toBe(true);
+    expect(cut.end / cut.segments.length).toBeLessThanOrEqual(PREVIEW_MAX_COVERAGE);
+    expect(cut.end).toBeLessThan(cut.segments.length);
+    expect(cut.remainingHtml).toContain('Later section row');
+  });
+
+  it('requires a PDF preview to leave at least one page and at most 50% of pages', () => {
+    const shortPdf = cutPreviewHtml([
+      '<p data-page="1">Cast on 24 stitches.</p>',
+      '<p data-page="1">Row 1: Knit.</p>',
+    ].join('\n'));
+    expect(documentPageCount(shortPdf.segments)).toBe(1);
+    expect(previewLeavesMeaningfulRemainder(shortPdf, { isPdf: true })).toBe(false);
+
+    const longPdf = cutPreviewHtml([
+      '<p data-page="1">Cast on 80 (90, 100, 110) stitches.</p>',
+      '<p data-page="1">Row 1: Knit.</p>',
+      ...Array.from({ length: 8 }, (_, i) => `<p data-page="2">Later sleeve section row ${i + 20}.</p>`),
+      ...Array.from({ length: 8 }, (_, i) => `<p data-page="3">Later chart row ${i + 40}.</p>`),
+      ...Array.from({ length: 8 }, (_, i) => `<p data-page="4">Later finishing row ${i + 60}.</p>`),
+    ].join('\n'));
+    expect(previewLeavesMeaningfulRemainder(longPdf, { isPdf: true })).toBe(true);
+    expect(longPdf.previewEndPage / documentPageCount(longPdf.segments)).toBeLessThanOrEqual(PREVIEW_MAX_COVERAGE);
+    expect(longPdf.previewEndPage).toBeLessThan(documentPageCount(longPdf.segments));
   });
 });

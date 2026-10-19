@@ -17,14 +17,14 @@ afterEach(async () => {
 });
 
 describe('TranslationPreviewLock', () => {
-  it('shows exactly one unlock line plus the remaining-cost estimate, and no AI wording', async () => {
+  it('shows exactly one unlock line plus the full-job unlock price, and no AI wording', async () => {
     const onUnlock = vi.fn();
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
     await act(async () => {
       root?.render(
-        <TranslationPreviewLock remainingCost={6.5} fullCost={8.5} onUnlock={onUnlock} />,
+        <TranslationPreviewLock remainingCost={6.5} fullCost={6.5} onUnlock={onUnlock} />,
       );
     });
 
@@ -33,7 +33,6 @@ describe('TranslationPreviewLock', () => {
     expect(lock?.querySelectorAll('button')).toHaveLength(1);
     expect(lock?.querySelector('button')?.textContent).toBe(UNLOCK_TRANSLATION_LINE);
     expect(lock?.textContent).toContain('Translation estimate: 6.5 credits');
-    expect(lock?.textContent).not.toContain('8.5');
     expect(lock?.textContent).not.toMatch(/\bAI\b/i);
     expect(lock?.textContent).not.toContain('Next section');
 
@@ -41,6 +40,19 @@ describe('TranslationPreviewLock', () => {
       lock?.querySelector('button')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     expect(onUnlock).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the full-job price even if remainingCost still holds a discounted remainder', async () => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(
+        <TranslationPreviewLock remainingCost={0.5} fullCost={6.5} onUnlock={() => undefined} />,
+      );
+    });
+    expect(container.textContent).toContain('Translation estimate: 6.5 credits');
+    expect(container.textContent).not.toContain('0.5');
   });
 
   it('shows payment polling copy instead of a dead end', async () => {

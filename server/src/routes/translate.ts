@@ -5,11 +5,12 @@ import { uploadPattern } from '../middleware/upload.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 import { translatePattern } from '../services/gemini.js';
 import { chargeCreditsForJob, getBalance, refundPendingCharge, settlePendingCharge } from '../services/creditStore.js';
-import { computeDocumentMetrics, metricsFromHtml, translationCostFromMetrics } from '../services/pricing.js';
+import { computeDocumentMetrics, translationCostFromMetrics } from '../services/pricing.js';
 import { extractSourceHtml } from '../services/documentExtract.js';
 import {
   cutPreviewHtml,
   htmlForPageRange,
+  previewLeavesMeaningfulRemainder,
   remainingSourceHasContent,
 } from '../services/previewCut.js';
 import { slicePdfPages } from '../services/pdfSlice.js';
@@ -415,7 +416,10 @@ router.post('/unlock', requireTranslateAuth, translateRateLimit, async (req: Req
   leaseHeartbeat.unref();
 
   try {
-    const remainingCost = job.remainingCost;
+    // Preview was never charged. Unlock costs the same as a direct paid job
+    // of this document — do not subtract a preview-slice price (that double-
+    // counts fixedMargin / round-up and undercharges ~EUR 0.50 jobs).
+    const remainingCost = job.fullCost;
     const { ok, balance, chargeId } = chargeCreditsForJob(userSub, remainingCost, 'translation');
     if (!ok) {
       res.status(402).json({
@@ -543,9 +547,11 @@ router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, as
 
   // US10: when FREE_PREVIEW_MODE allows this account, they get one free
   // preview of the opening section. The grant is claimed only after we know
-  // we can cut a source slice; if extract/cut fails we fall through to the
-  // paid full job. PDFs use the visual path on pages 1..N; text extract is
-  // only a logged fallback. Mode `off` (default) never claims a grant.
+  // we can cut a source slice that leaves a meaningful remainder; if extract
+  // or cut fails, or the cut covers the whole (or >50%) source, we fall
+  // through to the paid full job. PDFs use the visual path on pages 1..N;
+  // text extract is only a logged fallback. Mode `off` (default) never
+  // claims a grant. Unlock later charges `fullCost` — the preview is free.
   let previewJobId: string | null = null;
   let previewSourceHtml: string | null = null;
   let remainingSourceHtml = '';
@@ -558,16 +564,29 @@ router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, as
       const extracted = await extractSourceHtml(file.buffer, file.mimetype, file.originalname);
       if (extracted.html.replace(/<[^>]+>/g, '').trim()) {
         const cut = cutPreviewHtml(extracted.html);
-        if (cut.previewHtml.replace(/<[^>]+>/g, '').trim()) {
+        const isPdf = extracted.kind === 'pdf';
+        let candidatePreviewHtml = cut.previewHtml;
+        let candidateRemainingHtml = cut.remainingHtml;
+        if (isPdf) {
+          candidatePreviewHtml = htmlForPageRange(cut.segments, 1, cut.previewEndPage);
+          candidateRemainingHtml = htmlForPageRange(cut.segments, cut.previewEndPage + 1, Number.POSITIVE_INFINITY);
+        }
+        const remainderCut = {
+          ...cut,
+          previewHtml: candidatePreviewHtml,
+          remainingHtml: candidateRemainingHtml,
+        };
+        if (
+          candidatePreviewHtml.replace(/<[^>]+>/g, '').trim()
+          && previewLeavesMeaningfulRemainder(remainderCut, { isPdf })
+        ) {
           const jobId = createTranslationJobId();
           if (claimFreePreview(userSub, jobId)) {
             previewJobId = jobId;
             previewEndPage = cut.previewEndPage;
-            previewSourceHtml = cut.previewHtml;
-            remainingSourceHtml = cut.remainingHtml;
-            if (extracted.kind === 'pdf') {
-              previewSourceHtml = htmlForPageRange(cut.segments, 1, cut.previewEndPage);
-              remainingSourceHtml = htmlForPageRange(cut.segments, cut.previewEndPage + 1, Number.POSITIVE_INFINITY);
+            previewSourceHtml = candidatePreviewHtml;
+            remainingSourceHtml = candidateRemainingHtml;
+            if (isPdf) {
               try {
                 previewPdf = await slicePdfPages(file.buffer, 1, cut.previewEndPage);
                 remainingPdf = await slicePdfPages(file.buffer, cut.previewEndPage + 1, Number.POSITIVE_INFINITY);
@@ -577,8 +596,7 @@ router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, as
                 remainingPdf = null;
               }
             }
-            const previewCost = translationCostFromMetrics(metricsFromHtml(previewSourceHtml));
-            remainingCost = Math.max(0, Math.round((fullCost - previewCost) * 100) / 100);
+            remainingCost = fullCost;
             cost = 0;
           }
         }

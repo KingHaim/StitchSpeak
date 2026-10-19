@@ -227,7 +227,7 @@ test('free preview stays locked until credits unlock export', async ({ page }) =
         locked: true,
         jobId: 'job-preview-e2e',
         remainingCost: 6.5,
-        fullCost: 8.5,
+        fullCost: 6.5,
         reviewWarnings: [
           {
             code: 'NUMBER_UNRESTORABLE',

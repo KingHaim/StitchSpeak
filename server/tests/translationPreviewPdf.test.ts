@@ -140,6 +140,8 @@ describe('US10 PDF visual path', () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.preview).toBe(true);
+    expect(body.remainingCost).toBe(8);
+    expect(body.fullCost).toBe(8);
     expect(body.html).toContain('Monta 24 puntos.');
     expect(body.html).not.toContain('Later sleeve');
     expect(body.remainingSourceHtml).toBeUndefined();
@@ -169,7 +171,8 @@ describe('US10 PDF visual path', () => {
     const job = store.getLatestOpenTranslationJob('user-preview-pdf');
     expect(job?.remainingPdf?.length).toBeGreaterThan(0);
     const remainingBefore = job!.remainingCost;
-    expect(remainingBefore).toBeGreaterThan(0);
+    expect(remainingBefore).toBe(job!.fullCost);
+    expect(remainingBefore).toBe(8);
     const balanceBefore = credits.getBalance('user-preview-pdf');
 
     const unlock = await fetch(`${base}/api/translate/unlock`, {

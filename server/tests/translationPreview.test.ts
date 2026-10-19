@@ -129,6 +129,8 @@ describe('US10 server-side preview limit', () => {
     expect(body.preview).toBe(true);
     expect(body.locked).toBe(true);
     expect(body.cost).toBe(0);
+    expect(body.remainingCost).toBe(8);
+    expect(body.fullCost).toBe(8);
     expect(body.html).toContain('Monta 24 puntos.');
     expect(body.html).not.toContain('Later sleeve');
     expect(body.html).not.toContain('Continue row');
@@ -185,7 +187,8 @@ describe('US10 server-side preview limit', () => {
     const jobs = store.getLatestOpenTranslationJob('user-preview-test');
     expect(jobs).not.toBeNull();
     const remainingBefore = jobs!.remainingCost;
-    expect(remainingBefore).toBeGreaterThan(0);
+    expect(remainingBefore).toBe(jobs!.fullCost);
+    expect(remainingBefore).toBe(8);
 
     mocks.translatePattern.mockImplementation(async (_buf, _mime, _lang, _src, options) => {
       expect(options.sourceHtml).toContain('Later sleeve section');
@@ -215,5 +218,56 @@ describe('US10 server-side preview limit', () => {
     const completed = store.getOwnedTranslationJob('user-preview-test', jobs!.id);
     expect(completed?.status).toBe('complete');
     expect(completed?.remainingSourceHtml).toBe('');
+  });
+
+  it('does not claim a grant when the preview cut covers the whole short document', async () => {
+    store.deleteTranslationPreviewData('user-preview-test');
+    const balanceBefore = credits.getBalance('user-preview-test');
+    credits.addCredits('user-preview-test', 20);
+    mocks.translatePattern.mockResolvedValue({
+      html: '<p>Monta 24 puntos.</p>',
+      usage: null,
+      reviewWarnings: [],
+    });
+
+    const short = new Blob(['Weekend Scarf\n\nCast on 24 stitches.\n\nRow 1: Knit.'], { type: 'text/plain' });
+    const response = await startPreview(short);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.preview).not.toBe(true);
+    expect(body.locked).not.toBe(true);
+    expect(body.cost).toBe(8);
+    expect(body.jobId).toBeUndefined();
+    expect(store.hasFreePreviewAvailable('user-preview-test')).toBe(true);
+    expect(store.getLatestOpenTranslationJob('user-preview-test')).toBeNull();
+    expect(credits.getBalance('user-preview-test')).toBe(balanceBefore + 12);
+  });
+
+  it('offers a preview of a long document covering at most 50% of the source', async () => {
+    store.deleteTranslationPreviewData('user-preview-test');
+    mocks.translatePattern.mockImplementation(async (_buf, _mime, _lang, _src, options) => {
+      expect(options.sourceHtml).toContain('Cast on 24 stitches.');
+      expect(options.sourceHtml).not.toContain('Later sleeve section row 60');
+      return {
+        html: '<p>Monta 24 puntos.</p>',
+        usage: null,
+        reviewWarnings: [],
+      };
+    });
+
+    const response = await startPreview();
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.preview).toBe(true);
+    expect(body.cost).toBe(0);
+    expect(body.remainingCost).toBe(8);
+    expect(body.fullCost).toBe(8);
+    const job = store.getLatestOpenTranslationJob('user-preview-test');
+    expect(job).not.toBeNull();
+    expect(job!.remainingSourceHtml).toContain('Later sleeve section');
+    expect(job!.previewHtml).not.toContain('Later sleeve section row 60');
+    const remainingChars = job!.remainingSourceHtml.replace(/<[^>]+>/g, '').length;
+    const previewChars = job!.previewHtml.replace(/<[^>]+>/g, '').length;
+    expect(previewChars).toBeLessThanOrEqual(remainingChars);
   });
 });

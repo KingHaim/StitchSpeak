@@ -19,6 +19,7 @@
 
 export const PREVIEW_SEGMENT_FRACTION = 0.15;
 export const PREVIEW_PAGE_CAP = 1.5;
+export const PREVIEW_MAX_COVERAGE = 0.5;
 export const WORDS_PER_PAGE = 250;
 
 export interface PreviewSegment {
@@ -404,4 +405,32 @@ export function cutPreviewHtml(sourceHtml: string): PreviewCut {
 
 export function remainingSourceHasContent(html: string): boolean {
   return stripTags(html).length > 0;
+}
+
+export function documentPageCount(segments: PreviewSegment[]): number {
+  if (segments.length === 0) return 1;
+  return Math.max(...segments.map((segment) => wholePage(segment.page)));
+}
+
+/**
+ * A free preview is only offered when the cut leaves a meaningful remainder.
+ * Short patterns whose cut covers the whole source must go down the paid path
+ * so the full translation is never given away. The preview itself may cover
+ * at most 50% of source segments (HTML/text) or pages (PDF), and a PDF must
+ * keep at least one page for unlock.
+ */
+export function previewLeavesMeaningfulRemainder(
+  cut: PreviewCut,
+  options: { isPdf?: boolean } = {},
+): boolean {
+  if (cut.end <= 0 || cut.segments.length === 0) return false;
+  if (cut.end >= cut.segments.length) return false;
+  if (!remainingSourceHasContent(cut.remainingHtml)) return false;
+
+  const pages = documentPageCount(cut.segments);
+  if (options.isPdf) {
+    if (cut.previewEndPage >= pages) return false;
+    return cut.previewEndPage / pages <= PREVIEW_MAX_COVERAGE;
+  }
+  return cut.end / cut.segments.length <= PREVIEW_MAX_COVERAGE;
 }

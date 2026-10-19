@@ -12,10 +12,12 @@ export const UNLOCK_TRANSLATION_LINE = 'Unlock the full translation and export';
 
 export const TranslationPreviewLock: React.FC<TranslationPreviewLockProps> = ({
   remainingCost,
+  fullCost,
   waitingForCredits = false,
   unlocking = false,
   onUnlock,
 }) => {
+  const unlockPrice = typeof fullCost === 'number' ? fullCost : remainingCost;
   return (
     <div
       data-testid="translation-preview-lock"
@@ -35,9 +37,9 @@ export const TranslationPreviewLock: React.FC<TranslationPreviewLockProps> = ({
           >
             {unlocking ? 'Unlocking…' : UNLOCK_TRANSLATION_LINE}
           </button>
-          {typeof remainingCost === 'number' && (
+          {typeof unlockPrice === 'number' && (
             <p className="mt-2 text-xs text-on-surface-variant">
-              Translation estimate: {remainingCost.toFixed(1)} credits
+              Translation estimate: {unlockPrice.toFixed(1)} credits
             </p>
           )}
         </>
