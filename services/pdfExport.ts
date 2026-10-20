@@ -690,102 +690,238 @@ export async function buildDocxDocumentXml(html: string): Promise<{ documentXml:
   return { documentXml, images };
 }
 
-async function waitForImages(container: HTMLElement): Promise<void> {
-  const images = Array.from(container.querySelectorAll('img'));
-  await Promise.all(
-    images.map(async (img) => {
-      if (img.complete) return;
-      if ('decode' in img) {
-        try {
-          await img.decode();
-          return;
-        } catch {
-          // Fall back to load/error listeners.
-        }
+/** Hard cap used by tests — a short pattern must stay well under a few MB. */
+export const PATTERN_PDF_SIZE_LIMIT_BYTES = 2.5 * 1024 * 1024;
+
+function headingFontSize(tag: string): number {
+  switch (tag) {
+    case 'h1': return 22;
+    case 'h2': return 16;
+    case 'h3': return 14;
+    case 'h4': return 13;
+    default: return 11;
+  }
+}
+
+function collectExportBlocks(root: Element): Element[] {
+  const blocks: Element[] = [];
+  const walk = (element: Element): void => {
+    const tag = element.tagName.toLowerCase();
+    if (tag === 'script' || tag === 'style') return;
+    if (tag === 'table' || tag === 'img' || tag === 'hr') {
+      blocks.push(element);
+      return;
+    }
+    if (/^h[1-6]$/.test(tag) || tag === 'p' || tag === 'li' || tag === 'pre' || tag === 'blockquote') {
+      blocks.push(element);
+      return;
+    }
+    if (element.children.length === 0) {
+      if (element.textContent?.trim()) blocks.push(element);
+      return;
+    }
+    Array.from(element.children).forEach(walk);
+  };
+  walk(root);
+  return blocks;
+}
+
+function decodePdfLiteral(value: string): string {
+  return value
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '')
+    .replace(/\\t/g, '\t')
+    .replace(/\\([()\\])/g, '$1');
+}
+
+function decodePdfHex(value: string): string {
+  const bytes = value.match(/[0-9a-fA-F]{2}/g) ?? [];
+  if (bytes.length >= 2 && bytes[0] === 'fe' && bytes[1] === 'ff') {
+    const chars: string[] = [];
+    for (let i = 2; i + 1 < bytes.length; i += 2) {
+      chars.push(String.fromCharCode((parseInt(bytes[i], 16) << 8) + parseInt(bytes[i + 1], 16)));
+    }
+    return chars.join('');
+  }
+  return bytes.map((pair) => String.fromCharCode(parseInt(pair, 16))).join('');
+}
+
+/** Extract selectable text operators from a jsPDF / pdf-lib text PDF. */
+export function extractPdfTextLayer(bytes: Uint8Array): string {
+  const raw = new TextDecoder('latin1').decode(bytes);
+  const parts: string[] = [];
+  for (const match of raw.matchAll(/\(((?:\\.|[^\\)])*)\)\s*Tj/g)) {
+    parts.push(decodePdfLiteral(match[1]));
+  }
+  for (const match of raw.matchAll(/\[((?:\\.|[^\\\]])*)\]\s*TJ/g)) {
+    for (const item of match[1].matchAll(/\(((?:\\.|[^\\)])*)\)/g)) {
+      parts.push(decodePdfLiteral(item[1]));
+    }
+  }
+  for (const match of raw.matchAll(/<([0-9A-Fa-f]+)>\s*Tj/g)) {
+    parts.push(decodePdfHex(match[1]));
+  }
+  return parts.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+export function countPdfPages(bytes: Uint8Array): number {
+  const raw = new TextDecoder('latin1').decode(bytes);
+  const counted = raw.match(/\/Type\s*\/Page(?!s)\b/g);
+  return counted?.length && counted.length > 0 ? counted.length : 1;
+}
+
+async function imageDataUrl(img: HTMLImageElement): Promise<{ dataUrl: string; format: 'JPEG' | 'PNG' } | null> {
+  const src = img.getAttribute('src') || img.src;
+  if (!src) return null;
+  if (src.startsWith('data:image/jpeg') || src.startsWith('data:image/jpg')) {
+    return { dataUrl: src, format: 'JPEG' };
+  }
+  if (src.startsWith('data:image/png') && src.length < 400_000) {
+    return { dataUrl: src, format: 'PNG' };
+  }
+  try {
+    const canvas = document.createElement('canvas');
+    const width = Math.max(1, img.naturalWidth || img.width || 400);
+    const height = Math.max(1, img.naturalHeight || img.height || 300);
+    const scale = Math.min(1, 1200 / width);
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const context = canvas.getContext('2d');
+    if (!context) return src.startsWith('data:image/') ? { dataUrl: src, format: 'PNG' } : null;
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return { dataUrl: canvas.toDataURL('image/jpeg', 0.72), format: 'JPEG' };
+  } catch {
+    return src.startsWith('data:image/') ? { dataUrl: src, format: 'PNG' } : null;
+  }
+}
+
+export async function buildPatternPdfBytes(html: string): Promise<Uint8Array> {
+  const { jsPDF } = await import('jspdf');
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4', compress: false });
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const left = PAGE_MARGIN_PT;
+  const contentWidth = pageWidth - PAGE_MARGIN_PT * 2;
+  const top = PAGE_MARGIN_PT;
+  const bottom = pageHeight - PAGE_MARGIN_PT;
+  let y = top;
+
+  const parsed = new DOMParser().parseFromString(`<div class="pdf-pattern">${html}</div>`, 'text/html');
+  const root = parsed.body.firstElementChild;
+  if (!root) {
+    return new Uint8Array(pdf.output('arraybuffer'));
+  }
+
+  const ensureSpace = (needed: number): void => {
+    if (y + needed <= bottom) return;
+    pdf.addPage();
+    y = top;
+  };
+
+  const writeLines = (text: string, fontSize: number, style: 'normal' | 'bold' | 'italic', extraAfter = 6): void => {
+    const cleaned = text.replace(/\s+/g, ' ').trim();
+    if (!cleaned) return;
+    pdf.setFont('helvetica', style);
+    pdf.setFontSize(fontSize);
+    pdf.setTextColor(0, 0, 0);
+    const lines = pdf.splitTextToSize(cleaned, contentWidth) as string[];
+    const lineHeight = fontSize * 1.35;
+    for (const line of lines) {
+      ensureSpace(lineHeight);
+      pdf.text(line, left, y + fontSize * 0.85);
+      y += lineHeight;
+    }
+    y += extraAfter;
+  };
+
+  const writeTable = (table: HTMLTableElement): void => {
+    const rows = Array.from(table.querySelectorAll('tr'));
+    if (rows.length === 0) return;
+    const colCount = Math.max(...rows.map((row) => row.children.length), 1);
+    const colWidth = contentWidth / colCount;
+    const fontSize = 10;
+    const padding = 5;
+    pdf.setFontSize(fontSize);
+    pdf.setDrawColor(180, 160, 145);
+    pdf.setLineWidth(0.4);
+
+    for (const row of rows) {
+      const cells = Array.from(row.children);
+      const isHeader = cells.some((cell) => cell.tagName.toLowerCase() === 'th');
+      pdf.setFont('helvetica', isHeader ? 'bold' : 'normal');
+      const cellLines = cells.map((cell) => pdf.splitTextToSize((cell.textContent || '').replace(/\s+/g, ' ').trim(), colWidth - padding * 2) as string[]);
+      const lineHeight = fontSize * 1.3;
+      const rowHeight = Math.max(fontSize + padding * 2, ...cellLines.map((lines) => lines.length * lineHeight + padding * 2));
+      ensureSpace(rowHeight);
+      if (isHeader) {
+        pdf.setFillColor(250, 246, 241);
+        pdf.rect(left, y, contentWidth, rowHeight, 'F');
       }
-      await new Promise<void>((resolve) => {
-        const done = () => resolve();
-        img.addEventListener('load', done, { once: true });
-        img.addEventListener('error', done, { once: true });
+      cells.forEach((_cell, index) => {
+        const x = left + index * colWidth;
+        pdf.rect(x, y, colWidth, rowHeight);
+        const lines = cellLines[index] ?? [];
+        lines.forEach((line, lineIndex) => {
+          pdf.text(line, x + padding, y + padding + fontSize * 0.85 + lineIndex * lineHeight);
+        });
       });
-    }),
-  );
+      y += rowHeight;
+    }
+    y += 10;
+  };
+
+  const writeImage = async (img: HTMLImageElement): Promise<void> => {
+    const encoded = await imageDataUrl(img);
+    if (!encoded) return;
+    const width = Math.min(contentWidth, 420);
+    const naturalWidth = img.naturalWidth || img.width || width;
+    const naturalHeight = img.naturalHeight || img.height || width * 0.6;
+    const height = width * (naturalHeight / Math.max(1, naturalWidth));
+    ensureSpace(height + 8);
+    try {
+      pdf.addImage(encoded.dataUrl, encoded.format, left, y, width, height, undefined, 'FAST');
+      y += height + 10;
+    } catch {
+      writeLines(img.getAttribute('alt') || '', 10, 'italic');
+    }
+  };
+
+  for (const block of collectExportBlocks(root)) {
+    const tag = block.tagName.toLowerCase();
+    if (tag === 'hr') {
+      ensureSpace(12);
+      pdf.setDrawColor(232, 221, 211);
+      pdf.line(left, y + 4, left + contentWidth, y + 4);
+      y += 12;
+      continue;
+    }
+    if (tag === 'table') {
+      writeTable(block as HTMLTableElement);
+      continue;
+    }
+    if (tag === 'img') {
+      await writeImage(block as HTMLImageElement);
+      continue;
+    }
+    const nestedImages = Array.from(block.querySelectorAll('img'));
+    const text = (block.textContent || '').replace(/\s+/g, ' ').trim();
+    const prefix = tag === 'li' ? '• ' : '';
+    const fontSize = headingFontSize(tag);
+    const style: 'normal' | 'bold' | 'italic' = /^h[1-6]$/.test(tag) ? 'bold' : tag === 'blockquote' ? 'italic' : 'normal';
+    writeLines(prefix + text, fontSize, style, /^h[1-6]$/.test(tag) ? 8 : 6);
+    for (const img of nestedImages) {
+      await writeImage(img);
+    }
+  }
+
+  return new Uint8Array(pdf.output('arraybuffer'));
 }
 
 export async function exportPatternPdf(html: string, options?: PatternExportOptions): Promise<void> {
-  const [{ jsPDF }, { default: html2canvas }] = await Promise.all([
-    import('jspdf'),
-    import('html2canvas'),
-  ]);
-  const style = document.createElement('style');
-  style.textContent = PATTERN_EXPORT_CSS;
-  const container = document.createElement('div');
-  container.style.position = 'fixed';
-  container.style.left = '-10000px';
-  container.style.top = '0';
-  container.style.width = `${EXPORT_WIDTH_PX}px`;
-  container.style.pointerEvents = 'none';
-  container.style.zIndex = '-1';
-  const wrapper = document.createElement('div');
-  wrapper.className = 'pdf-pattern';
-  wrapper.innerHTML = html;
-  container.appendChild(wrapper);
-  document.head.appendChild(style);
-  document.body.appendChild(container);
-
-  try {
-    await document.fonts.ready;
-    await waitForImages(container);
-
-    const canvas = await html2canvas(wrapper, {
-      backgroundColor: '#ffffff',
-      logging: false,
-      scale: 2,
-      useCORS: true,
-      windowWidth: EXPORT_WIDTH_PX,
-    });
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const contentWidthPt = pageWidth - PAGE_MARGIN_PT * 2;
-    const contentHeightPt = pageHeight - PAGE_MARGIN_PT * 2;
-    const pixelsPerPoint = canvas.width / contentWidthPt;
-    const pageSliceHeightPx = Math.max(1, Math.floor(contentHeightPt * pixelsPerPoint));
-
-    let sourceY = 0;
-    let pageIndex = 0;
-    while (sourceY < canvas.height) {
-      const sliceHeight = Math.min(pageSliceHeightPx, canvas.height - sourceY);
-      const pageCanvas = document.createElement('canvas');
-      pageCanvas.width = canvas.width;
-      pageCanvas.height = sliceHeight;
-      const context = pageCanvas.getContext('2d');
-      if (!context) break;
-
-      context.fillStyle = '#ffffff';
-      context.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-      context.drawImage(canvas, 0, sourceY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
-
-      if (pageIndex > 0) pdf.addPage();
-      const sliceHeightPt = sliceHeight / pixelsPerPoint;
-      pdf.addImage(
-        pageCanvas.toDataURL('image/png'),
-        'PNG',
-        PAGE_MARGIN_PT,
-        PAGE_MARGIN_PT,
-        contentWidthPt,
-        sliceHeightPt,
-      );
-
-      sourceY += sliceHeight;
-      pageIndex += 1;
-    }
-
-    pdf.save(getExportFileName(html, 'pdf', options));
-  } finally {
-    container.remove();
-    style.remove();
-  }
+  const bytes = await buildPatternPdfBytes(html);
+  triggerDownload(new Blob([bytes], { type: 'application/pdf' }), getExportFileName(html, 'pdf', options));
 }
 
 export function exportPatternHtml(html: string, options?: PatternExportOptions): void {

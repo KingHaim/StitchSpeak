@@ -4,8 +4,12 @@ import {
   MAX_DOCX_IMAGE_HEIGHT_PX,
   MAX_DOCX_IMAGE_WIDTH_PX,
   EXPORT_FILE_LANGUAGE_CODES,
+  PATTERN_PDF_SIZE_LIMIT_BYTES,
   buildDocxDocumentXml,
   buildDocxStylesXml,
+  buildPatternPdfBytes,
+  countPdfPages,
+  extractPdfTextLayer,
   getExportBaseFileName,
   getExportLanguageCode,
   getDocxImageSize,
@@ -70,5 +74,44 @@ describe('Pattern file export', () => {
     expect(styles).toMatch(/w:style w:type="paragraph" w:styleId="PatternTitle"[^]*w:sz w:val="56"/);
     expect(styles).toMatch(/w:style w:type="paragraph" w:styleId="PatternSubtitle"[^]*w:sz w:val="40"/);
     expect(styles).toMatch(/w:style w:type="paragraph" w:styleId="Heading2"[^]*w:keepNext/);
+  });
+});
+
+describe('Pattern PDF text layer', () => {
+  it('writes selectable text, keeps diacritics and tables, and stays small', async () => {
+    const html = `
+      <h1>Bufanda de fin de semana</h1>
+      <p>Montar 80 puntos. Más información: niño, français, Größe.</p>
+      <table>
+        <tr><th>Talla</th><th>S</th><th>M</th></tr>
+        <tr><td>Pecho</td><td>80</td><td>90</td></tr>
+      </table>
+      <p>Fila 1: derecho.</p>
+    `;
+
+    const bytes = await buildPatternPdfBytes(html);
+    const text = extractPdfTextLayer(bytes);
+
+    expect(bytes.byteLength).toBeLessThan(PATTERN_PDF_SIZE_LIMIT_BYTES);
+    expect(bytes.byteLength).toBeLessThan(200_000);
+    expect(countPdfPages(bytes)).toBe(1);
+    expect(text).toMatch(/Bufanda de fin de semana/);
+    expect(text).toMatch(/Montar 80 puntos/);
+    expect(text).toMatch(/niño|nino/);
+    expect(text).toMatch(/Talla|Pecho|80/);
+    expect(text).toMatch(/Fila 1/);
+  });
+
+  it('does not add a spurious extra page for a short three-section pattern', async () => {
+    const paragraphs = Array.from({ length: 18 }, (_, i) => (
+      `<p>Fila ${i + 1}: teje derecho hasta el final de la vuelta y gira el trabajo.</p>`
+    ));
+    const html = `<h1>Muestra</h1>${paragraphs.join('')}`;
+    const bytes = await buildPatternPdfBytes(html);
+    const pages = countPdfPages(bytes);
+    expect(pages).toBeGreaterThanOrEqual(1);
+    expect(pages).toBeLessThanOrEqual(3);
+    expect(extractPdfTextLayer(bytes)).toMatch(/Fila 1/);
+    expect(extractPdfTextLayer(bytes)).toMatch(/Fila 18/);
   });
 });

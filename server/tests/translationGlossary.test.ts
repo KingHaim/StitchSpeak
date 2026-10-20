@@ -258,6 +258,30 @@ describe('auditTranslatedGlossary — English term leakage', () => {
     expect(auditTranslatedGlossary(html, 'Spanish')).toEqual([]);
   });
 
+  it('does not treat publisher codes as pick-up abbreviations', () => {
+    const html = `<div>
+      <p data-seg="1" data-o="Pattern pu-068">Patrón pu-068</p>
+      <p data-seg="2" data-o="Style ab-123 from the archive">Estilo ab-123 del archivo</p>
+      <p data-seg="3" data-o="DROPS 234-78">DROPS 234-78</p>
+    </div>`;
+
+    const warnings = auditTranslatedGlossary(html, 'Spanish');
+    expect(warnings.some((warning) => /"pu"|pick up|recoger y tejer/i.test(warning.message))).toBe(false);
+  });
+
+  it('still flags standalone pu / PU usages', () => {
+    const html = `<div>
+      <p data-seg="1" data-o="pu 5 sts along the neck edge.">pu 5 pts a lo largo del escote.</p>
+      <p data-seg="2" data-o="PU 8 sts for the button band.">PU 8 pts para la cinta de botones.</p>
+    </div>`;
+
+    const warnings = auditTranslatedGlossary(html, 'Spanish');
+    expect(warnings.some((warning) =>
+      warning.code === 'GLOSSARY_TERM_UNTRANSLATED' && /"pu"/i.test(warning.message),
+    )).toBe(true);
+    expect(warnings.some((warning) => /recoger y tejer/i.test(warning.message))).toBe(true);
+  });
+
   it('returns nothing when the HTML has no aligned segments', () => {
     expect(auditTranslatedGlossary('<div><p>Sin alineación.</p></div>', 'Spanish')).toEqual([]);
   });

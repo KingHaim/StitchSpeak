@@ -6,13 +6,8 @@ import { rateLimit } from '../middleware/rateLimit.js';
 import { translatePattern } from '../services/gemini.js';
 import { chargeCreditsForJob, getBalance, refundPendingCharge, settlePendingCharge } from '../services/creditStore.js';
 import { computeDocumentMetrics, translationCostFromMetrics } from '../services/pricing.js';
-import { extractSourceHtml } from '../services/documentExtract.js';
-import {
-  cutPreviewHtml,
-  htmlForPageRange,
-  previewLeavesMeaningfulRemainder,
-  remainingSourceHasContent,
-} from '../services/previewCut.js';
+import { planDocumentPreview } from '../services/previewPlan.js';
+import { remainingSourceHasContent } from '../services/previewCut.js';
 import { slicePdfPages } from '../services/pdfSlice.js';
 import { canOfferFreePreview } from '../services/freePreviewMode.js';
 import {
@@ -493,6 +488,55 @@ router.post('/stream-token', requireAuth, streamTokenRateLimit, (req: Request, r
   });
 });
 
+const estimateRateLimit = rateLimit({ windowMs: 60_000, max: 30, name: 'translate-estimate' });
+
+/**
+ * Per-document estimate + preview eligibility. The upload dialog must only
+ * promise a free preview when this says `previewEligible: true` for the file
+ * that will actually be translated. Does not claim the one-per-account grant.
+ */
+router.post('/estimate', requireAuth, estimateRateLimit, uploadPatternSafe, async (req: Request, res: Response) => {
+  const auth = req as AuthenticatedRequest;
+  const file = req.file;
+  if (!file) {
+    res.status(400).json({ error: 'No file provided.' });
+    return;
+  }
+
+  let translationCost: number;
+  let pages = 0;
+  try {
+    const metrics = await computeDocumentMetrics(file.buffer, file.mimetype, file.originalname);
+    translationCost = translationCostFromMetrics(metrics);
+    pages = metrics.pages;
+  } catch (err) {
+    console.error('[translate/estimate] Failed to analyze document for pricing:', err);
+    res.status(400).json({ error: 'Could not read the document.' });
+    return;
+  }
+
+  let previewEligible = false;
+  let previewEndPage: number | null = null;
+  if (canOfferFreePreview(auth) && hasFreePreviewAvailable(auth.userSub)) {
+    try {
+      const plan = await planDocumentPreview(file.buffer, file.mimetype, file.originalname);
+      if (plan) {
+        previewEligible = true;
+        previewEndPage = plan.previewEndPage;
+      }
+    } catch (err) {
+      console.warn('[translate/estimate] Preview plan failed; reporting paid path:', err);
+    }
+  }
+
+  res.json({
+    translationCost,
+    previewEligible,
+    previewEndPage,
+    pages,
+  });
+});
+
 router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, async (req: Request, res: Response) => {
   const { userSub } = req as AuthenticatedRequest;
   const file = req.file;
@@ -561,44 +605,26 @@ router.post('/', requireTranslateAuth, translateRateLimit, uploadPatternSafe, as
   let remainingCost = 0;
   if (canOfferFreePreview(req as AuthenticatedRequest) && hasFreePreviewAvailable(userSub)) {
     try {
-      const extracted = await extractSourceHtml(file.buffer, file.mimetype, file.originalname);
-      if (extracted.html.replace(/<[^>]+>/g, '').trim()) {
-        const cut = cutPreviewHtml(extracted.html);
-        const isPdf = extracted.kind === 'pdf';
-        let candidatePreviewHtml = cut.previewHtml;
-        let candidateRemainingHtml = cut.remainingHtml;
-        if (isPdf) {
-          candidatePreviewHtml = htmlForPageRange(cut.segments, 1, cut.previewEndPage);
-          candidateRemainingHtml = htmlForPageRange(cut.segments, cut.previewEndPage + 1, Number.POSITIVE_INFINITY);
-        }
-        const remainderCut = {
-          ...cut,
-          previewHtml: candidatePreviewHtml,
-          remainingHtml: candidateRemainingHtml,
-        };
-        if (
-          candidatePreviewHtml.replace(/<[^>]+>/g, '').trim()
-          && previewLeavesMeaningfulRemainder(remainderCut, { isPdf })
-        ) {
-          const jobId = createTranslationJobId();
-          if (claimFreePreview(userSub, jobId)) {
-            previewJobId = jobId;
-            previewEndPage = cut.previewEndPage;
-            previewSourceHtml = candidatePreviewHtml;
-            remainingSourceHtml = candidateRemainingHtml;
-            if (isPdf) {
-              try {
-                previewPdf = await slicePdfPages(file.buffer, 1, cut.previewEndPage);
-                remainingPdf = await slicePdfPages(file.buffer, cut.previewEndPage + 1, Number.POSITIVE_INFINITY);
-              } catch (err) {
-                console.warn('[translate] PDF page slice failed; falling back to text extract:', err);
-                previewPdf = null;
-                remainingPdf = null;
-              }
+      const plan = await planDocumentPreview(file.buffer, file.mimetype, file.originalname);
+      if (plan) {
+        const jobId = createTranslationJobId();
+        if (claimFreePreview(userSub, jobId)) {
+          previewJobId = jobId;
+          previewEndPage = plan.previewEndPage;
+          previewSourceHtml = plan.previewHtml;
+          remainingSourceHtml = plan.remainingHtml;
+          if (plan.isPdf) {
+            try {
+              previewPdf = await slicePdfPages(file.buffer, 1, plan.previewEndPage);
+              remainingPdf = await slicePdfPages(file.buffer, plan.previewEndPage + 1, Number.POSITIVE_INFINITY);
+            } catch (err) {
+              console.warn('[translate] PDF page slice failed; falling back to text extract:', err);
+              previewPdf = null;
+              remainingPdf = null;
             }
-            remainingCost = fullCost;
-            cost = 0;
           }
+          remainingCost = fullCost;
+          cost = 0;
         }
       }
     } catch (err) {

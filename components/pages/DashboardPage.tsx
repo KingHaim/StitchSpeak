@@ -12,7 +12,8 @@ import { TranslationLanguageModal } from '../TranslationLanguageModal';
 import { TranslationJobCard } from '../TranslationJobCard';
 import { FileThumbnail } from '../FileThumbnail';
 import { SelectDropdown } from '../SelectDropdown';
-import { translatePatternStream, unlockTranslation, fetchTranslationJob, startChatSession, sendChatMessage } from '../../services/translationService';
+import { translatePatternStream, unlockTranslation, fetchTranslationJob, startChatSession, sendChatMessage, estimateTranslation } from '../../services/translationService';
+import { documentPreviewWillRun, translationStartLabel } from '../../services/previewCta';
 import { TranslationPreviewLock } from '../TranslationPreviewLock';
 import {
   clearPendingPreviewUnlock,
@@ -129,7 +130,6 @@ function aggregatePdfMetrics(metricsList: PdfMetrics[]): PdfMetrics | null {
 export const DashboardPage: React.FC = () => {
   const { user, idToken, isAuthenticated, googleIdentityReady } = useAuth();
   const { balance, applyBalance, refreshBalance, startCheckout, freePreviewAvailable, freePreviewMode, checkoutReturnStatus } = useCredits();
-  const canStartFreePreview = freePreviewMode !== 'off' && freePreviewAvailable;
 
   const [jobs, setJobs] = useState<TranslationJob[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -151,6 +151,13 @@ export const DashboardPage: React.FC = () => {
   const [buyCreditsInitialIdx, setBuyCreditsInitialIdx] = useState<number | undefined>(undefined);
   const [modalStartError, setModalStartError] = useState<string | null>(null);
   const [isStartingFromModal, setIsStartingFromModal] = useState(false);
+  const [modalDocumentPreviewEligible, setModalDocumentPreviewEligible] = useState(false);
+  const canStartFreePreview = documentPreviewWillRun({
+    freePreviewMode,
+    freePreviewAvailable,
+    documentPreviewEligible: modalDocumentPreviewEligible,
+    fileCount: modalFiles.length,
+  });
 
   const openBuyCredits = useCallback((placement: string) => {
     setBuyCreditsPlacement(placement);
@@ -273,6 +280,7 @@ export const DashboardPage: React.FC = () => {
     setModalFileMetrics([]);
     setModalPriceEstimate(null);
     setModalFilePriceEstimates([]);
+    setModalDocumentPreviewEligible(false);
     try {
       const results = await Promise.allSettled(files.map((file) => analyzeFile(file)));
       const failedIndex = results.findIndex((result) => result.status === 'rejected');
@@ -288,6 +296,23 @@ export const DashboardPage: React.FC = () => {
       setModalPdfMetrics(aggregate);
       setModalFilePriceEstimates(metricsList.map(estimateTranslationCost));
       setModalPriceEstimate(estimate);
+
+      let documentPreviewEligible = false;
+      if (
+        isAuthenticated
+        && idToken
+        && freePreviewMode !== 'off'
+        && freePreviewAvailable
+        && files.length === 1
+      ) {
+        try {
+          const serverEstimate = await estimateTranslation(files[0], idToken);
+          documentPreviewEligible = serverEstimate.previewEligible === true;
+        } catch {
+          documentPreviewEligible = false;
+        }
+      }
+      setModalDocumentPreviewEligible(documentPreviewEligible);
       captureEvent('pattern_analysis_completed', {
         flow_id: flowId,
         file_count: files.length,
@@ -309,10 +334,11 @@ export const DashboardPage: React.FC = () => {
         duration_ms: Math.round(performance.now() - startedAt),
       });
       setModalAnalyzeError(err instanceof Error ? err.message : 'Could not analyze the files. Please try different files.');
+      setModalDocumentPreviewEligible(false);
     } finally {
       setIsModalAnalyzing(false);
     }
-  }, [balance]);
+  }, [balance, isAuthenticated, idToken, freePreviewMode, freePreviewAvailable]);
 
   const openLanguageModalWithFiles = useCallback(
     (files: File[], existingLanguages?: string[], sourceOrigin: 'upload' | 'saved_pattern' = 'upload') => {
@@ -334,6 +360,7 @@ export const DashboardPage: React.FC = () => {
       setModalFileMetrics([]);
       setModalPriceEstimate(null);
       setModalFilePriceEstimates([]);
+      setModalDocumentPreviewEligible(false);
       setModalAnalyzeError(null);
       setIsLanguageModalOpen(true);
       const totalMegabytes = files.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024);
@@ -499,6 +526,7 @@ export const DashboardPage: React.FC = () => {
     setModalFileMetrics([]);
     setModalPriceEstimate(null);
     setModalFilePriceEstimates([]);
+    setModalDocumentPreviewEligible(false);
     setModalAnalyzeError(null);
     setModalStartError(null);
     setIsStartingFromModal(false);
@@ -1108,13 +1136,13 @@ export const DashboardPage: React.FC = () => {
     Boolean(modalPriceEstimate) &&
     !canStartFreePreview &&
     balance < modalCreditCost - 0.001;
-  const modalStartLabel = modalInsufficientCredits
-    ? 'Buy credits to continue'
-    : isAuthenticated && canStartFreePreview
-      ? 'Start free preview'
-      : isAuthenticated
-        ? `Start ${modalFileCount > 1 ? `${modalFileCount} translations` : 'translation'} (${modalCreditCost.toFixed(1)} credits)`
-        : `Start ${modalFileCount > 1 ? `${modalFileCount} translations` : 'translation'}`;
+  const modalStartLabel = translationStartLabel({
+    isAuthenticated,
+    insufficientCredits: modalInsufficientCredits,
+    previewWillRun: canStartFreePreview,
+    fileCount: modalFileCount,
+    creditCost: modalCreditCost,
+  });
 
   const modalStartDisabled =
     modalFileCount === 0 ||

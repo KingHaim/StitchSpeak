@@ -7,6 +7,7 @@ import {
   previewLeavesMeaningfulRemainder,
   segmentsFromHtml,
 } from '../src/services/previewCut';
+import { previewPlanFromCut } from '../src/services/previewPlan';
 
 function wrap(lines: string[]): string {
   return lines.map((line) => `<p>${line}</p>`).join('\n');
@@ -212,5 +213,39 @@ describe('preview cut craft rule', () => {
     expect(previewLeavesMeaningfulRemainder(longPdf, { isPdf: true })).toBe(true);
     expect(longPdf.previewEndPage / documentPageCount(longPdf.segments)).toBeLessThanOrEqual(PREVIEW_MAX_COVERAGE);
     expect(longPdf.previewEndPage).toBeLessThan(documentPageCount(longPdf.segments));
+  });
+
+  it('caps a 3-page no-chart PDF to a 1-page preview when craft rules want page 2', () => {
+    // Title/materials on page 1, cast-on on page 2 — the craft cut snaps to
+    // page 2, and 2/3 > 50% used to reject the preview entirely.
+    const html = [
+      '<p data-page="1">Willow Wrap Cardigan</p>',
+      '<p data-page="1">Pattern pu-068</p>',
+      '<p data-page="1">Yarn: 200 (220, 240, 260) g</p>',
+      '<p data-page="1">Gauge: 20 sts = 10 cm</p>',
+      '<p data-page="1">80 (90, 100, 110) stitches.</p>',
+      '<p data-page="2">Cast on 80 (90, 100, 110) stitches.</p>',
+      '<p data-page="2">Row 1: Knit 2, purl 2; repeat from * to end.</p>',
+      '<p data-page="3">Later sleeve section row 20: continue in pattern until the piece measures the length given for your size.</p>',
+      '<p data-page="3">Later sleeve section row 21: bind off all stitches.</p>',
+    ].join('\n');
+    const cut = cutPreviewHtml(html);
+    expect(documentPageCount(cut.segments)).toBe(3);
+    expect(cut.previewEndPage).toBeGreaterThanOrEqual(2);
+    expect(previewLeavesMeaningfulRemainder(cut, { isPdf: true })).toBe(false);
+
+    const plan = previewPlanFromCut(cut, true);
+    expect(plan).not.toBeNull();
+    expect(plan?.previewEndPage).toBe(1);
+    expect(plan?.previewHtml).toContain('Willow Wrap Cardigan');
+    expect(plan?.previewHtml).not.toContain('Later sleeve section');
+    expect(plan?.remainingHtml).toContain('Cast on 80');
+    expect(plan?.remainingHtml).toContain('Later sleeve section');
+    expect(previewLeavesMeaningfulRemainder({
+      ...cut,
+      previewEndPage: plan!.previewEndPage,
+      previewHtml: plan!.previewHtml,
+      remainingHtml: plan!.remainingHtml,
+    }, { isPdf: true })).toBe(true);
   });
 });

@@ -50,5 +50,10 @@ export function buildAbbreviationRegex(langCode: string): RegExp | null {
 
   // JavaScript \b only understands ASCII word characters, so it treats accented
   // letters as boundaries and can highlight abbreviations inside words like "bébé".
-  return new RegExp(`(?<![\\p{L}\\p{N}])(${escaped.join('|')})(?![\\p{L}\\p{N}])`, 'gu');
+  // Hyphens that glue letters to digits (pu-068, ab-123, DROPS 234-78) are also
+  // token characters so publisher codes are not treated as abbreviations.
+  return new RegExp(
+    `(?<![\\p{L}\\p{N}])(?<![\\p{L}\\p{N}]-)(${escaped.join('|')})(?![\\p{L}\\p{N}])(?!-[\\p{L}\\p{N}])`,
+    'giu',
+  );
 }
