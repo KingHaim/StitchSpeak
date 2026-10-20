@@ -1,3 +1,5 @@
+import { PDF_FONT_FAMILY, registerNotoSans } from './pdfFonts';
+
 const EXPORT_WIDTH_PX = 816;
 const PAGE_MARGIN_PT = 36;
 const EMU_PER_PIXEL = 9525;
@@ -734,40 +736,145 @@ function decodePdfLiteral(value: string): string {
     .replace(/\\([()\\])/g, '$1');
 }
 
-function decodePdfHex(value: string): string {
-  const bytes = value.match(/[0-9a-fA-F]{2}/g) ?? [];
-  if (bytes.length >= 2 && bytes[0] === 'fe' && bytes[1] === 'ff') {
-    const chars: string[] = [];
-    for (let i = 2; i + 1 < bytes.length; i += 2) {
-      chars.push(String.fromCharCode((parseInt(bytes[i], 16) << 8) + parseInt(bytes[i + 1], 16)));
-    }
-    return chars.join('');
-  }
-  return bytes.map((pair) => String.fromCharCode(parseInt(pair, 16))).join('');
-}
-
-/** Extract selectable text operators from a jsPDF / pdf-lib text PDF. */
-export function extractPdfTextLayer(bytes: Uint8Array): string {
+export function extractPdfLinks(bytes: Uint8Array): string[] {
   const raw = new TextDecoder('latin1').decode(bytes);
-  const parts: string[] = [];
-  for (const match of raw.matchAll(/\(((?:\\.|[^\\)])*)\)\s*Tj/g)) {
-    parts.push(decodePdfLiteral(match[1]));
+  const links: string[] = [];
+  for (const match of raw.matchAll(/\/URI\s*\(((?:\\.|[^\\)])*)\)/g)) {
+    links.push(decodePdfLiteral(match[1]));
   }
-  for (const match of raw.matchAll(/\[((?:\\.|[^\\\]])*)\]\s*TJ/g)) {
-    for (const item of match[1].matchAll(/\(((?:\\.|[^\\)])*)\)/g)) {
-      parts.push(decodePdfLiteral(item[1]));
-    }
-  }
-  for (const match of raw.matchAll(/<([0-9A-Fa-f]+)>\s*Tj/g)) {
-    parts.push(decodePdfHex(match[1]));
-  }
-  return parts.join(' ').replace(/\s+/g, ' ').trim();
+  return [...new Set(links)];
 }
 
 export function countPdfPages(bytes: Uint8Array): number {
   const raw = new TextDecoder('latin1').decode(bytes);
   const counted = raw.match(/\/Type\s*\/Page(?!s)\b/g);
   return counted?.length && counted.length > 0 ? counted.length : 1;
+}
+
+function parseTableSpan(raw: string | null): number {
+  const value = raw ? Number.parseInt(raw, 10) : 1;
+  return Number.isFinite(value) && value > 1 ? value : 1;
+}
+
+interface PdfTableCell {
+  text: string;
+  isHeader: boolean;
+  colSpan: number;
+  rowSpan: number;
+  col: number;
+  row: number;
+}
+
+function buildPdfTableGrid(table: HTMLTableElement): {
+  cells: Array<Array<PdfTableCell | null>>;
+  headerRowCount: number;
+  columnCount: number;
+} {
+  const rows = Array.from(table.querySelectorAll('tr'));
+  const occupancy: Array<Array<PdfTableCell | 'skip' | undefined>> = [];
+
+  rows.forEach((tr, rowIndex) => {
+    if (!occupancy[rowIndex]) occupancy[rowIndex] = [];
+    const htmlCells = Array.from(tr.children).filter((child) => /^(td|th)$/i.test(child.tagName));
+    let column = 0;
+    for (const element of htmlCells) {
+      while (occupancy[rowIndex][column] === 'skip') column += 1;
+      const colSpan = parseTableSpan(element.getAttribute('colspan'));
+      const rowSpan = parseTableSpan(element.getAttribute('rowspan'));
+      const cell: PdfTableCell = {
+        text: (element.textContent || '').replace(/\s+/g, ' ').trim(),
+        isHeader: element.tagName.toLowerCase() === 'th',
+        colSpan,
+        rowSpan,
+        col: column,
+        row: rowIndex,
+      };
+      occupancy[rowIndex][column] = cell;
+      for (let rowOffset = 0; rowOffset < rowSpan; rowOffset += 1) {
+        if (!occupancy[rowIndex + rowOffset]) occupancy[rowIndex + rowOffset] = [];
+        for (let colOffset = 0; colOffset < colSpan; colOffset += 1) {
+          if (rowOffset === 0 && colOffset === 0) continue;
+          occupancy[rowIndex + rowOffset][column + colOffset] = 'skip';
+        }
+      }
+      column += colSpan;
+    }
+  });
+
+  const columnCount = Math.max(1, ...occupancy.map((row) => row.length), 1);
+  const cells = occupancy.map((row) => (
+    Array.from({ length: columnCount }, (_, index) => {
+      const value = row[index];
+      return value && value !== 'skip' ? value : null;
+    })
+  ));
+
+  const theadCount = table.querySelector('thead')?.querySelectorAll('tr').length ?? 0;
+  let headerRowCount = theadCount;
+  if (headerRowCount === 0) {
+    for (const row of cells) {
+      const present = row.filter((cell): cell is PdfTableCell => cell !== null);
+      if (present.length > 0 && present.every((cell) => cell.isHeader)) headerRowCount += 1;
+      else break;
+    }
+  }
+
+  return { cells, headerRowCount, columnCount };
+}
+
+function listItemPrefix(item: Element): string {
+  const parent = item.parentElement;
+  if (!parent || parent.tagName.toLowerCase() !== 'ol') return '• ';
+  const startRaw = Number.parseInt(parent.getAttribute('start') || '1', 10);
+  const start = Number.isFinite(startRaw) ? startRaw : 1;
+  const index = Array.from(parent.children)
+    .filter((child) => child.tagName.toLowerCase() === 'li')
+    .indexOf(item);
+  return `${start + Math.max(0, index)}. `;
+}
+
+interface PdfTextSpan {
+  text: string;
+  href?: string;
+}
+
+function linkDisplayText(visible: string, href: string): string {
+  const text = visible.replace(/\s+/g, ' ').trim();
+  const url = href.trim();
+  if (!text) return url;
+  const stripSlash = (value: string) => value.replace(/\/+$/, '');
+  const stripProtocol = (value: string) => value.replace(/^https?:\/\//i, '');
+  if (stripSlash(text) === stripSlash(url)) return text;
+  if (stripSlash(text) === stripSlash(stripProtocol(url))) return text;
+  return `${text} (${url})`;
+}
+
+function spansFromElement(element: Element): PdfTextSpan[] {
+  const spans: PdfTextSpan[] = [];
+  const walk = (node: Node, href?: string): void => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const raw = node.textContent ?? '';
+      if (raw) spans.push({ text: raw, href });
+      return;
+    }
+    if (!(node instanceof HTMLElement)) return;
+    const tag = node.tagName.toLowerCase();
+    if (tag === 'br') {
+      spans.push({ text: '\n', href });
+      return;
+    }
+    if (tag === 'a') {
+      const nextHref = node.getAttribute('href')?.trim() || href;
+      const visible = (node.textContent || '').replace(/\s+/g, ' ').trim();
+      if (nextHref) {
+        spans.push({ text: linkDisplayText(visible, nextHref), href: nextHref });
+        return;
+      }
+    }
+    Array.from(node.childNodes).forEach((child) => walk(child, href));
+  };
+  walk(element);
+  return spans;
 }
 
 async function imageDataUrl(img: HTMLImageElement): Promise<{ dataUrl: string; format: 'JPEG' | 'PNG' } | null> {
@@ -797,9 +904,14 @@ async function imageDataUrl(img: HTMLImageElement): Promise<{ dataUrl: string; f
   }
 }
 
+type PatternPdf = InstanceType<typeof import('jspdf').jsPDF>;
+
 export async function buildPatternPdfBytes(html: string): Promise<Uint8Array> {
   const { jsPDF } = await import('jspdf');
-  const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4', compress: false });
+  const pdf: PatternPdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4', compress: false });
+  await registerNotoSans(pdf);
+  pdf.setFont(PDF_FONT_FAMILY, 'normal');
+
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const left = PAGE_MARGIN_PT;
@@ -814,60 +926,236 @@ export async function buildPatternPdfBytes(html: string): Promise<Uint8Array> {
     return new Uint8Array(pdf.output('arraybuffer'));
   }
 
-  const ensureSpace = (needed: number): void => {
-    if (y + needed <= bottom) return;
+  const addPage = (): void => {
     pdf.addPage();
     y = top;
   };
 
-  const writeLines = (text: string, fontSize: number, style: 'normal' | 'bold' | 'italic', extraAfter = 6): void => {
-    const cleaned = text.replace(/\s+/g, ' ').trim();
-    if (!cleaned) return;
-    pdf.setFont('helvetica', style);
+  const ensureSpace = (needed: number): void => {
+    if (y + needed <= bottom) return;
+    addPage();
+  };
+
+  // Inline bold/italic inside paragraphs is intentionally dropped (known limitation).
+  const writeSpans = (
+    spans: PdfTextSpan[],
+    fontSize: number,
+    weight: 'normal' | 'bold',
+    extraAfter = 6,
+  ): void => {
+    const meaningful = spans.some((span) => span.text.replace(/\s+/g, ' ').trim());
+    if (!meaningful) return;
+    pdf.setFont(PDF_FONT_FAMILY, weight);
     pdf.setFontSize(fontSize);
     pdf.setTextColor(0, 0, 0);
-    const lines = pdf.splitTextToSize(cleaned, contentWidth) as string[];
     const lineHeight = fontSize * 1.35;
-    for (const line of lines) {
-      ensureSpace(lineHeight);
-      pdf.text(line, left, y + fontSize * 0.85);
-      y += lineHeight;
+
+    type Piece = { text: string; href?: string; width: number };
+    const pieces: Piece[] = [];
+    for (const span of spans) {
+      for (const part of span.text.split(/(\n)/)) {
+        if (part === '\n') {
+          pieces.push({ text: '\n', href: span.href, width: 0 });
+          continue;
+        }
+        for (const word of part.split(/(\s+)/)) {
+          if (!word) continue;
+          pieces.push({ text: word, href: span.href, width: pdf.getTextWidth(word) });
+        }
+      }
     }
-    y += extraAfter;
+
+    let x = left;
+    let lineStarted = false;
+    ensureSpace(lineHeight);
+
+    const breakLine = (): void => {
+      y += lineHeight;
+      x = left;
+      lineStarted = false;
+      ensureSpace(lineHeight);
+    };
+
+    const paint = (text: string, href: string | undefined, width: number): void => {
+      const baseline = (): number => y + fontSize * 0.85;
+      const write = (value: string, atX: number): number => {
+        if (href) return pdf.textWithLink(value, atX, baseline(), { url: href });
+        pdf.text(value, atX, baseline());
+        return pdf.getTextWidth(value);
+      };
+
+      if (text === '\n') {
+        breakLine();
+        return;
+      }
+      if (/^\s+$/.test(text)) {
+        if (!lineStarted) return;
+        if (x + width > left + contentWidth) {
+          breakLine();
+          return;
+        }
+        x += width;
+        return;
+      }
+      if (lineStarted && x + width > left + contentWidth + 0.5) {
+        breakLine();
+      }
+      if (!lineStarted && width > contentWidth) {
+        let chunk = '';
+        for (const character of text) {
+          const next = chunk + character;
+          if (chunk && pdf.getTextWidth(next) > contentWidth) {
+            write(chunk, x);
+            breakLine();
+            chunk = character;
+          } else {
+            chunk = next;
+          }
+        }
+        if (chunk) {
+          x += write(chunk, x);
+          lineStarted = true;
+        }
+        return;
+      }
+      x += write(text, x);
+      lineStarted = true;
+    };
+
+    for (const piece of pieces) paint(piece.text, piece.href, piece.width);
+    y += lineHeight + extraAfter;
   };
 
   const writeTable = (table: HTMLTableElement): void => {
-    const rows = Array.from(table.querySelectorAll('tr'));
-    if (rows.length === 0) return;
-    const colCount = Math.max(...rows.map((row) => row.children.length), 1);
-    const colWidth = contentWidth / colCount;
+    const { cells, headerRowCount, columnCount } = buildPdfTableGrid(table);
+    if (cells.length === 0) return;
+
+    const colWidth = contentWidth / columnCount;
     const fontSize = 10;
     const padding = 5;
-    pdf.setFontSize(fontSize);
-    pdf.setDrawColor(180, 160, 145);
-    pdf.setLineWidth(0.4);
+    const lineHeight = fontSize * 1.3;
+    const minRowHeight = fontSize + padding * 2;
 
-    for (const row of rows) {
-      const cells = Array.from(row.children);
-      const isHeader = cells.some((cell) => cell.tagName.toLowerCase() === 'th');
-      pdf.setFont('helvetica', isHeader ? 'bold' : 'normal');
-      const cellLines = cells.map((cell) => pdf.splitTextToSize((cell.textContent || '').replace(/\s+/g, ' ').trim(), colWidth - padding * 2) as string[]);
-      const lineHeight = fontSize * 1.3;
-      const rowHeight = Math.max(fontSize + padding * 2, ...cellLines.map((lines) => lines.length * lineHeight + padding * 2));
-      ensureSpace(rowHeight);
-      if (isHeader) {
-        pdf.setFillColor(250, 246, 241);
-        pdf.rect(left, y, contentWidth, rowHeight, 'F');
+    type PreparedRow = {
+      origins: Array<{ cell: PdfTableCell; lines: string[] } | null>;
+      lineCount: number;
+      isHeader: boolean;
+    };
+
+    const wrapCell = (text: string, span: number, bold: boolean): string[] => {
+      pdf.setFont(PDF_FONT_FAMILY, bold ? 'bold' : 'normal');
+      pdf.setFontSize(fontSize);
+      const width = Math.max(24, colWidth * span - padding * 2);
+      const lines = pdf.splitTextToSize(text || ' ', width) as string[];
+      return lines.length > 0 ? lines : [' '];
+    };
+
+    const prepared: PreparedRow[] = cells.map((row) => {
+      const origins = row.map((cell) => (
+        cell ? { cell, lines: wrapCell(cell.text, cell.colSpan, cell.isHeader) } : null
+      ));
+      return {
+        origins,
+        lineCount: Math.max(1, ...origins.map((origin) => origin?.lines.length ?? 0)),
+        isHeader: origins.some((origin) => origin?.cell.isHeader),
+      };
+    });
+
+    const heightForLines = (count: number): number => Math.max(minRowHeight, count * lineHeight + padding * 2);
+    const remaining = (): number => bottom - y;
+
+    const drawRowSlice = (
+      rowIndex: number,
+      startLine: number,
+      endLine: number,
+      extendRowSpan: boolean,
+    ): void => {
+      const row = prepared[rowIndex];
+      const sliceLines = Math.max(1, endLine - startLine);
+      let rowHeight = heightForLines(sliceLines);
+      if (extendRowSpan) {
+        for (const origin of row.origins) {
+          if (!origin || origin.cell.rowSpan <= 1) continue;
+          let extra = 0;
+          for (let offset = 1; offset < origin.cell.rowSpan; offset += 1) {
+            const next = prepared[rowIndex + offset];
+            if (!next) break;
+            extra += heightForLines(next.lineCount);
+          }
+          rowHeight = Math.max(rowHeight, heightForLines(sliceLines) + extra);
+        }
       }
-      cells.forEach((_cell, index) => {
-        const x = left + index * colWidth;
-        pdf.rect(x, y, colWidth, rowHeight);
-        const lines = cellLines[index] ?? [];
-        lines.forEach((line, lineIndex) => {
+
+      if (row.isHeader) {
+        pdf.setFillColor(250, 246, 241);
+        pdf.rect(left, y, contentWidth, heightForLines(sliceLines), 'F');
+      }
+      pdf.setDrawColor(180, 160, 145);
+      pdf.setLineWidth(0.4);
+      pdf.setTextColor(0, 0, 0);
+
+      row.origins.forEach((origin) => {
+        if (!origin) return;
+        const x = left + origin.cell.col * colWidth;
+        const width = origin.cell.colSpan * colWidth;
+        const boxHeight = extendRowSpan && origin.cell.rowSpan > 1
+          ? rowHeight
+          : heightForLines(sliceLines);
+        if (origin.cell.isHeader) {
+          pdf.setFillColor(250, 246, 241);
+          pdf.rect(x, y, width, boxHeight, 'F');
+        }
+        pdf.rect(x, y, width, boxHeight);
+        pdf.setFont(PDF_FONT_FAMILY, origin.cell.isHeader ? 'bold' : 'normal');
+        pdf.setFontSize(fontSize);
+        origin.lines.slice(startLine, endLine).forEach((line, lineIndex) => {
           pdf.text(line, x + padding, y + padding + fontSize * 0.85 + lineIndex * lineHeight);
         });
       });
-      y += rowHeight;
+      y += heightForLines(sliceLines);
+    };
+
+    const headerHeight = prepared
+      .slice(0, headerRowCount)
+      .reduce((sum, row) => sum + heightForLines(row.lineCount), 0);
+    const maxBodyOnPage = Math.max(minRowHeight, bottom - top - headerHeight);
+
+    const drawHeader = (): void => {
+      for (let rowIndex = 0; rowIndex < headerRowCount; rowIndex += 1) {
+        const row = prepared[rowIndex];
+        if (y + heightForLines(row.lineCount) > bottom) addPage();
+        drawRowSlice(rowIndex, 0, row.lineCount, true);
+      }
+    };
+
+    if (headerRowCount > 0 && y + headerHeight + minRowHeight > bottom) addPage();
+    if (headerRowCount > 0) drawHeader();
+
+    for (let rowIndex = headerRowCount; rowIndex < prepared.length; rowIndex += 1) {
+      const row = prepared[rowIndex];
+      let line = 0;
+      while (line < row.lineCount) {
+        if (remaining() < minRowHeight) {
+          addPage();
+          if (headerRowCount > 0) drawHeader();
+        }
+        const available = Math.min(remaining(), line === 0 ? remaining() : maxBodyOnPage);
+        const maxLines = Math.max(1, Math.floor((available - padding * 2) / lineHeight));
+        const take = Math.min(row.lineCount - line, maxLines);
+        const fullRow = line === 0 && take === row.lineCount;
+        const rowSpanFits = fullRow && row.origins.every((origin) => {
+          if (!origin || origin.cell.rowSpan <= 1) return true;
+          let needed = 0;
+          for (let offset = 1; offset < origin.cell.rowSpan; offset += 1) {
+            const next = prepared[rowIndex + offset];
+            if (!next) return false;
+            needed += heightForLines(next.lineCount);
+          }
+          return remaining() >= heightForLines(row.lineCount) + needed;
+        });
+        drawRowSlice(rowIndex, line, line + take, rowSpanFits);
+        line += take;
+      }
     }
     y += 10;
   };
@@ -884,7 +1172,7 @@ export async function buildPatternPdfBytes(html: string): Promise<Uint8Array> {
       pdf.addImage(encoded.dataUrl, encoded.format, left, y, width, height, undefined, 'FAST');
       y += height + 10;
     } catch {
-      writeLines(img.getAttribute('alt') || '', 10, 'italic');
+      writeSpans([{ text: img.getAttribute('alt') || '' }], 10, 'normal');
     }
   };
 
@@ -906,11 +1194,12 @@ export async function buildPatternPdfBytes(html: string): Promise<Uint8Array> {
       continue;
     }
     const nestedImages = Array.from(block.querySelectorAll('img'));
-    const text = (block.textContent || '').replace(/\s+/g, ' ').trim();
-    const prefix = tag === 'li' ? '• ' : '';
+    const weight: 'normal' | 'bold' = /^h[1-6]$/.test(tag) ? 'bold' : 'normal';
     const fontSize = headingFontSize(tag);
-    const style: 'normal' | 'bold' | 'italic' = /^h[1-6]$/.test(tag) ? 'bold' : tag === 'blockquote' ? 'italic' : 'normal';
-    writeLines(prefix + text, fontSize, style, /^h[1-6]$/.test(tag) ? 8 : 6);
+    const prefix = tag === 'li' ? listItemPrefix(block) : '';
+    const spans = spansFromElement(block);
+    if (prefix) spans.unshift({ text: prefix });
+    writeSpans(spans, fontSize, weight, /^h[1-6]$/.test(tag) ? 8 : 6);
     for (const img of nestedImages) {
       await writeImage(img);
     }

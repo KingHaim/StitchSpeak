@@ -6,6 +6,7 @@ import {
   PREVIEW_MAX_COVERAGE,
   previewLeavesMeaningfulRemainder,
   segmentsFromHtml,
+  type PreviewSegment,
 } from '../src/services/previewCut';
 import { previewPlanFromCut } from '../src/services/previewPlan';
 
@@ -247,5 +248,51 @@ describe('preview cut craft rule', () => {
       previewHtml: plan!.previewHtml,
       remainingHtml: plan!.remainingHtml,
     }, { isPdf: true })).toBe(true);
+  });
+
+  it('sets HTML previewEndPage from the shrunk end, not the original cut', () => {
+    const segment = (index: number, page: number, text: string): PreviewSegment => ({
+      index,
+      text,
+      html: `<p>${text}</p>`,
+      page,
+      isSizeRow: false,
+      isRepeatOpener: false,
+      isRepeatCloser: false,
+      isSelfContainedRepeat: false,
+      hasNumbers: /\d/.test(text),
+      hasGlossaryTerm: /cast on/i.test(text),
+      isCastOn: /cast on/i.test(text),
+      isBodyOrYoke: false,
+      isRowOrRound: /row/i.test(text),
+      isHeading: false,
+      isChart: false,
+      isLegend: false,
+      isSizeTable: false,
+    });
+    const segments = Array.from({ length: 10 }, (_, index) => (
+      segment(
+        index,
+        index < 6 ? 1 : 2,
+        index < 6 ? 'Cast on 80 stitches.' : 'Later sleeve row continue in pattern.',
+      )
+    ));
+    const end = 8;
+    const cut = {
+      end,
+      segments,
+      previewHtml: segments.slice(0, end).map((item) => item.html).join('\n'),
+      remainingHtml: segments.slice(end).map((item) => item.html).join('\n'),
+      previewHasNumbers: true,
+      previewHasGlossaryTerm: true,
+      documentHasGlossaryTerm: true,
+      previewEndPage: 2,
+    };
+
+    const plan = previewPlanFromCut(cut, false);
+    expect(plan).not.toBeNull();
+    expect(plan!.previewEndPage).toBe(choosePreviewEndPage(segments, 5));
+    expect(plan!.previewEndPage).toBe(1);
+    expect(plan!.previewEndPage).not.toBe(cut.previewEndPage);
   });
 });

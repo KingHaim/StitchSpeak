@@ -1,5 +1,6 @@
 import { extractSourceHtml } from './documentExtract.js';
 import {
+  choosePreviewEndPage,
   cutPreviewHtml,
   documentPageCount,
   htmlForPageRange,
@@ -76,7 +77,7 @@ export function previewPlanFromCut(cut: PreviewCut, isPdf: boolean): PreviewPlan
       return {
         previewHtml,
         remainingHtml,
-        previewEndPage: candidate.previewEndPage,
+        previewEndPage: choosePreviewEndPage(cut.segments, end),
         isPdf: false,
       };
     }
