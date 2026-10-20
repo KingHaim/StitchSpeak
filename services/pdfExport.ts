@@ -921,7 +921,11 @@ export async function buildPatternPdfBytes(html: string): Promise<Uint8Array> {
 
 export async function exportPatternPdf(html: string, options?: PatternExportOptions): Promise<void> {
   const bytes = await buildPatternPdfBytes(html);
-  triggerDownload(new Blob([bytes], { type: 'application/pdf' }), getExportFileName(html, 'pdf', options));
+  const blob = new Blob(
+    [bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer],
+    { type: 'application/pdf' },
+  );
+  triggerDownload(blob, getExportFileName(html, 'pdf', options));
 }
 
 export function exportPatternHtml(html: string, options?: PatternExportOptions): void {
