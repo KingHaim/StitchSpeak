@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   MAX_DOCX_IMAGE_HEIGHT_PX,
   MAX_DOCX_IMAGE_WIDTH_PX,
@@ -14,6 +16,7 @@ import {
   getExportLanguageCode,
   getDocxImageSize,
 } from './pdfExport';
+import { setNotoSansAssetLoaderForTests, type NotoSansAssets } from './pdfFonts';
 
 async function extractPdfTextLayer(bytes: Uint8Array): Promise<string> {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
@@ -235,5 +238,37 @@ describe('Pattern PDF text layer', () => {
     expect(text).toContain('Size row 60');
     expect(text).toContain('NoteToken001');
     expect(text).toContain('NoteToken090');
+  });
+
+  afterEach(() => {
+    setNotoSansAssetLoaderForTests(null);
+  });
+
+  it('falls back to Helvetica when the font fetch fails and retries on the next export', async () => {
+    const fetchFonts = vi.fn(async (): Promise<NotoSansAssets> => {
+      throw new Error('Failed to load font');
+    });
+    setNotoSansAssetLoaderForTests(fetchFonts);
+
+    const first = await buildPatternPdfBytes('<p>Weekend scarf</p>');
+    const firstRaw = new TextDecoder('latin1').decode(first);
+    expect(firstRaw).toMatch(/Helvetica/);
+    expect(firstRaw).not.toMatch(/NotoSans/);
+    expect(await extractPdfTextLayer(first)).toMatch(/Weekend scarf/);
+    expect(fetchFonts).toHaveBeenCalledTimes(1);
+
+    fetchFonts.mockImplementation(async () => {
+      const [regular, bold] = await Promise.all([
+        readFile(join(process.cwd(), 'services/fonts/NotoSans-Regular.ttf'), 'base64'),
+        readFile(join(process.cwd(), 'services/fonts/NotoSans-Bold.ttf'), 'base64'),
+      ]);
+      return { regular, bold };
+    });
+
+    const second = await buildPatternPdfBytes('<p>Weekend scarf</p>');
+    expect(fetchFonts).toHaveBeenCalledTimes(2);
+    const secondRaw = new TextDecoder('latin1').decode(second);
+    expect(secondRaw).toMatch(/NotoSans/);
+    expect(await extractPdfTextLayer(second)).toMatch(/Weekend scarf/);
   });
 });

@@ -8,7 +8,10 @@ const BOLD_FILE = 'NotoSans-Bold.ttf';
 const REGULAR_URL = new URL(`./fonts/${REGULAR_FILE}`, import.meta.url);
 const BOLD_URL = new URL(`./fonts/${BOLD_FILE}`, import.meta.url);
 
-let fontBase64Promise: Promise<{ regular: string; bold: string }> | null = null;
+export type NotoSansAssets = { regular: string; bold: string };
+
+let fontBase64Promise: Promise<NotoSansAssets> | null = null;
+let loadFontAssets = defaultLoadFontAssets;
 
 function bytesToBase64(bytes: Uint8Array): string {
   if (typeof Buffer !== 'undefined') {
@@ -62,15 +65,31 @@ async function readAssetBytes(fileName: string, url: URL): Promise<Uint8Array> {
   return new Uint8Array(await response.arrayBuffer());
 }
 
+async function defaultLoadFontAssets(): Promise<NotoSansAssets> {
+  const [regular, bold] = await Promise.all([
+    readAssetBytes(REGULAR_FILE, REGULAR_URL).then(bytesToBase64),
+    readAssetBytes(BOLD_FILE, BOLD_URL).then(bytesToBase64),
+  ]);
+  return { regular, bold };
+}
+
 /** Lazy-load Noto Sans regular + bold as base64 so the JS bundle stays small. */
-export function loadNotoSansBase64(): Promise<{ regular: string; bold: string }> {
+export function loadNotoSansBase64(): Promise<NotoSansAssets> {
   if (!fontBase64Promise) {
-    fontBase64Promise = Promise.all([
-      readAssetBytes(REGULAR_FILE, REGULAR_URL).then(bytesToBase64),
-      readAssetBytes(BOLD_FILE, BOLD_URL).then(bytesToBase64),
-    ]).then(([regular, bold]) => ({ regular, bold }));
+    fontBase64Promise = loadFontAssets().catch((error) => {
+      fontBase64Promise = null;
+      throw error;
+    });
   }
   return fontBase64Promise;
+}
+
+/** Test-only: swap the asset reader and drop any cached (including rejected) promise. */
+export function setNotoSansAssetLoaderForTests(
+  loader: (() => Promise<NotoSansAssets>) | null,
+): void {
+  fontBase64Promise = null;
+  loadFontAssets = loader ?? defaultLoadFontAssets;
 }
 
 export async function registerNotoSans(pdf: {

@@ -909,8 +909,14 @@ type PatternPdf = InstanceType<typeof import('jspdf').jsPDF>;
 export async function buildPatternPdfBytes(html: string): Promise<Uint8Array> {
   const { jsPDF } = await import('jspdf');
   const pdf: PatternPdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4', compress: false });
-  await registerNotoSans(pdf);
-  pdf.setFont(PDF_FONT_FAMILY, 'normal');
+  let fontFamily = PDF_FONT_FAMILY;
+  try {
+    await registerNotoSans(pdf);
+  } catch {
+    // Font fetch failed — keep the built-in WinAnsi Helvetica so export still works.
+    fontFamily = 'helvetica';
+  }
+  pdf.setFont(fontFamily, 'normal');
 
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
@@ -945,7 +951,7 @@ export async function buildPatternPdfBytes(html: string): Promise<Uint8Array> {
   ): void => {
     const meaningful = spans.some((span) => span.text.replace(/\s+/g, ' ').trim());
     if (!meaningful) return;
-    pdf.setFont(PDF_FONT_FAMILY, weight);
+    pdf.setFont(fontFamily, weight);
     pdf.setFontSize(fontSize);
     pdf.setTextColor(0, 0, 0);
     const lineHeight = fontSize * 1.35;
@@ -1043,7 +1049,7 @@ export async function buildPatternPdfBytes(html: string): Promise<Uint8Array> {
     };
 
     const wrapCell = (text: string, span: number, bold: boolean): string[] => {
-      pdf.setFont(PDF_FONT_FAMILY, bold ? 'bold' : 'normal');
+      pdf.setFont(fontFamily, bold ? 'bold' : 'normal');
       pdf.setFontSize(fontSize);
       const width = Math.max(24, colWidth * span - padding * 2);
       const lines = pdf.splitTextToSize(text || ' ', width) as string[];
@@ -1106,7 +1112,7 @@ export async function buildPatternPdfBytes(html: string): Promise<Uint8Array> {
           pdf.rect(x, y, width, boxHeight, 'F');
         }
         pdf.rect(x, y, width, boxHeight);
-        pdf.setFont(PDF_FONT_FAMILY, origin.cell.isHeader ? 'bold' : 'normal');
+        pdf.setFont(fontFamily, origin.cell.isHeader ? 'bold' : 'normal');
         pdf.setFontSize(fontSize);
         origin.lines.slice(startLine, endLine).forEach((line, lineIndex) => {
           pdf.text(line, x + padding, y + padding + fontSize * 0.85 + lineIndex * lineHeight);
