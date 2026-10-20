@@ -1,3 +1,5 @@
+import { PDF_FONT_FAMILY, registerNotoSans } from './pdfFonts';
+
 const EXPORT_WIDTH_PX = 816;
 const PAGE_MARGIN_PT = 36;
 const EMU_PER_PIXEL = 9525;
@@ -690,102 +692,535 @@ export async function buildDocxDocumentXml(html: string): Promise<{ documentXml:
   return { documentXml, images };
 }
 
-async function waitForImages(container: HTMLElement): Promise<void> {
-  const images = Array.from(container.querySelectorAll('img'));
-  await Promise.all(
-    images.map(async (img) => {
-      if (img.complete) return;
-      if ('decode' in img) {
-        try {
-          await img.decode();
-          return;
-        } catch {
-          // Fall back to load/error listeners.
+/** Hard cap used by tests — a short pattern must stay well under a few MB. */
+export const PATTERN_PDF_SIZE_LIMIT_BYTES = 2.5 * 1024 * 1024;
+
+function headingFontSize(tag: string): number {
+  switch (tag) {
+    case 'h1': return 22;
+    case 'h2': return 16;
+    case 'h3': return 14;
+    case 'h4': return 13;
+    default: return 11;
+  }
+}
+
+function collectExportBlocks(root: Element): Element[] {
+  const blocks: Element[] = [];
+  const walk = (element: Element): void => {
+    const tag = element.tagName.toLowerCase();
+    if (tag === 'script' || tag === 'style') return;
+    if (tag === 'table' || tag === 'img' || tag === 'hr') {
+      blocks.push(element);
+      return;
+    }
+    if (/^h[1-6]$/.test(tag) || tag === 'p' || tag === 'li' || tag === 'pre' || tag === 'blockquote') {
+      blocks.push(element);
+      return;
+    }
+    if (element.children.length === 0) {
+      if (element.textContent?.trim()) blocks.push(element);
+      return;
+    }
+    Array.from(element.children).forEach(walk);
+  };
+  walk(root);
+  return blocks;
+}
+
+function decodePdfLiteral(value: string): string {
+  return value
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '')
+    .replace(/\\t/g, '\t')
+    .replace(/\\([()\\])/g, '$1');
+}
+
+export function extractPdfLinks(bytes: Uint8Array): string[] {
+  const raw = new TextDecoder('latin1').decode(bytes);
+  const links: string[] = [];
+  for (const match of raw.matchAll(/\/URI\s*\(((?:\\.|[^\\)])*)\)/g)) {
+    links.push(decodePdfLiteral(match[1]));
+  }
+  return [...new Set(links)];
+}
+
+export function countPdfPages(bytes: Uint8Array): number {
+  const raw = new TextDecoder('latin1').decode(bytes);
+  const counted = raw.match(/\/Type\s*\/Page(?!s)\b/g);
+  return counted?.length && counted.length > 0 ? counted.length : 1;
+}
+
+function parseTableSpan(raw: string | null): number {
+  const value = raw ? Number.parseInt(raw, 10) : 1;
+  return Number.isFinite(value) && value > 1 ? value : 1;
+}
+
+interface PdfTableCell {
+  text: string;
+  isHeader: boolean;
+  colSpan: number;
+  rowSpan: number;
+  col: number;
+  row: number;
+}
+
+function buildPdfTableGrid(table: HTMLTableElement): {
+  cells: Array<Array<PdfTableCell | null>>;
+  headerRowCount: number;
+  columnCount: number;
+} {
+  const rows = Array.from(table.querySelectorAll('tr'));
+  const occupancy: Array<Array<PdfTableCell | 'skip' | undefined>> = [];
+
+  rows.forEach((tr, rowIndex) => {
+    if (!occupancy[rowIndex]) occupancy[rowIndex] = [];
+    const htmlCells = Array.from(tr.children).filter((child) => /^(td|th)$/i.test(child.tagName));
+    let column = 0;
+    for (const element of htmlCells) {
+      while (occupancy[rowIndex][column] === 'skip') column += 1;
+      const colSpan = parseTableSpan(element.getAttribute('colspan'));
+      const rowSpan = parseTableSpan(element.getAttribute('rowspan'));
+      const cell: PdfTableCell = {
+        text: (element.textContent || '').replace(/\s+/g, ' ').trim(),
+        isHeader: element.tagName.toLowerCase() === 'th',
+        colSpan,
+        rowSpan,
+        col: column,
+        row: rowIndex,
+      };
+      occupancy[rowIndex][column] = cell;
+      for (let rowOffset = 0; rowOffset < rowSpan; rowOffset += 1) {
+        if (!occupancy[rowIndex + rowOffset]) occupancy[rowIndex + rowOffset] = [];
+        for (let colOffset = 0; colOffset < colSpan; colOffset += 1) {
+          if (rowOffset === 0 && colOffset === 0) continue;
+          occupancy[rowIndex + rowOffset][column + colOffset] = 'skip';
         }
       }
-      await new Promise<void>((resolve) => {
-        const done = () => resolve();
-        img.addEventListener('load', done, { once: true });
-        img.addEventListener('error', done, { once: true });
+      column += colSpan;
+    }
+  });
+
+  const columnCount = Math.max(1, ...occupancy.map((row) => row.length), 1);
+  const cells = occupancy.map((row) => (
+    Array.from({ length: columnCount }, (_, index) => {
+      const value = row[index];
+      return value && value !== 'skip' ? value : null;
+    })
+  ));
+
+  const theadCount = table.querySelector('thead')?.querySelectorAll('tr').length ?? 0;
+  let headerRowCount = theadCount;
+  if (headerRowCount === 0) {
+    for (const row of cells) {
+      const present = row.filter((cell): cell is PdfTableCell => cell !== null);
+      if (present.length > 0 && present.every((cell) => cell.isHeader)) headerRowCount += 1;
+      else break;
+    }
+  }
+
+  return { cells, headerRowCount, columnCount };
+}
+
+function listItemPrefix(item: Element): string {
+  const parent = item.parentElement;
+  if (!parent || parent.tagName.toLowerCase() !== 'ol') return '• ';
+  const startRaw = Number.parseInt(parent.getAttribute('start') || '1', 10);
+  const start = Number.isFinite(startRaw) ? startRaw : 1;
+  const index = Array.from(parent.children)
+    .filter((child) => child.tagName.toLowerCase() === 'li')
+    .indexOf(item);
+  return `${start + Math.max(0, index)}. `;
+}
+
+interface PdfTextSpan {
+  text: string;
+  href?: string;
+}
+
+function linkDisplayText(visible: string, href: string): string {
+  const text = visible.replace(/\s+/g, ' ').trim();
+  const url = href.trim();
+  if (!text) return url;
+  const stripSlash = (value: string) => value.replace(/\/+$/, '');
+  const stripProtocol = (value: string) => value.replace(/^https?:\/\//i, '');
+  if (stripSlash(text) === stripSlash(url)) return text;
+  if (stripSlash(text) === stripSlash(stripProtocol(url))) return text;
+  return `${text} (${url})`;
+}
+
+function spansFromElement(element: Element): PdfTextSpan[] {
+  const spans: PdfTextSpan[] = [];
+  const walk = (node: Node, href?: string): void => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const raw = node.textContent ?? '';
+      if (raw) spans.push({ text: raw, href });
+      return;
+    }
+    if (!(node instanceof HTMLElement)) return;
+    const tag = node.tagName.toLowerCase();
+    if (tag === 'br') {
+      spans.push({ text: '\n', href });
+      return;
+    }
+    if (tag === 'a') {
+      const nextHref = node.getAttribute('href')?.trim() || href;
+      const visible = (node.textContent || '').replace(/\s+/g, ' ').trim();
+      if (nextHref) {
+        spans.push({ text: linkDisplayText(visible, nextHref), href: nextHref });
+        return;
+      }
+    }
+    Array.from(node.childNodes).forEach((child) => walk(child, href));
+  };
+  walk(element);
+  return spans;
+}
+
+async function imageDataUrl(img: HTMLImageElement): Promise<{ dataUrl: string; format: 'JPEG' | 'PNG' } | null> {
+  const src = img.getAttribute('src') || img.src;
+  if (!src) return null;
+  if (src.startsWith('data:image/jpeg') || src.startsWith('data:image/jpg')) {
+    return { dataUrl: src, format: 'JPEG' };
+  }
+  if (src.startsWith('data:image/png') && src.length < 400_000) {
+    return { dataUrl: src, format: 'PNG' };
+  }
+  try {
+    const canvas = document.createElement('canvas');
+    const width = Math.max(1, img.naturalWidth || img.width || 400);
+    const height = Math.max(1, img.naturalHeight || img.height || 300);
+    const scale = Math.min(1, 1200 / width);
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const context = canvas.getContext('2d');
+    if (!context) return src.startsWith('data:image/') ? { dataUrl: src, format: 'PNG' } : null;
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return { dataUrl: canvas.toDataURL('image/jpeg', 0.72), format: 'JPEG' };
+  } catch {
+    return src.startsWith('data:image/') ? { dataUrl: src, format: 'PNG' } : null;
+  }
+}
+
+type PatternPdf = InstanceType<typeof import('jspdf').jsPDF>;
+
+export async function buildPatternPdfBytes(html: string): Promise<Uint8Array> {
+  const { jsPDF } = await import('jspdf');
+  const pdf: PatternPdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4', compress: false });
+  let fontFamily = PDF_FONT_FAMILY;
+  try {
+    await registerNotoSans(pdf);
+  } catch {
+    // Font fetch failed — keep the built-in WinAnsi Helvetica so export still works.
+    fontFamily = 'helvetica';
+  }
+  pdf.setFont(fontFamily, 'normal');
+
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const left = PAGE_MARGIN_PT;
+  const contentWidth = pageWidth - PAGE_MARGIN_PT * 2;
+  const top = PAGE_MARGIN_PT;
+  const bottom = pageHeight - PAGE_MARGIN_PT;
+  let y = top;
+
+  const parsed = new DOMParser().parseFromString(`<div class="pdf-pattern">${html}</div>`, 'text/html');
+  const root = parsed.body.firstElementChild;
+  if (!root) {
+    return new Uint8Array(pdf.output('arraybuffer'));
+  }
+
+  const addPage = (): void => {
+    pdf.addPage();
+    y = top;
+  };
+
+  const ensureSpace = (needed: number): void => {
+    if (y + needed <= bottom) return;
+    addPage();
+  };
+
+  // Inline bold/italic inside paragraphs is intentionally dropped (known limitation).
+  const writeSpans = (
+    spans: PdfTextSpan[],
+    fontSize: number,
+    weight: 'normal' | 'bold',
+    extraAfter = 6,
+  ): void => {
+    const meaningful = spans.some((span) => span.text.replace(/\s+/g, ' ').trim());
+    if (!meaningful) return;
+    pdf.setFont(fontFamily, weight);
+    pdf.setFontSize(fontSize);
+    pdf.setTextColor(0, 0, 0);
+    const lineHeight = fontSize * 1.35;
+
+    type Piece = { text: string; href?: string; width: number };
+    const pieces: Piece[] = [];
+    for (const span of spans) {
+      for (const part of span.text.split(/(\n)/)) {
+        if (part === '\n') {
+          pieces.push({ text: '\n', href: span.href, width: 0 });
+          continue;
+        }
+        for (const word of part.split(/(\s+)/)) {
+          if (!word) continue;
+          pieces.push({ text: word, href: span.href, width: pdf.getTextWidth(word) });
+        }
+      }
+    }
+
+    let x = left;
+    let lineStarted = false;
+    ensureSpace(lineHeight);
+
+    const breakLine = (): void => {
+      y += lineHeight;
+      x = left;
+      lineStarted = false;
+      ensureSpace(lineHeight);
+    };
+
+    const paint = (text: string, href: string | undefined, width: number): void => {
+      const baseline = (): number => y + fontSize * 0.85;
+      const write = (value: string, atX: number): number => {
+        if (href) return pdf.textWithLink(value, atX, baseline(), { url: href });
+        pdf.text(value, atX, baseline());
+        return pdf.getTextWidth(value);
+      };
+
+      if (text === '\n') {
+        breakLine();
+        return;
+      }
+      if (/^\s+$/.test(text)) {
+        if (!lineStarted) return;
+        if (x + width > left + contentWidth) {
+          breakLine();
+          return;
+        }
+        x += width;
+        return;
+      }
+      if (lineStarted && x + width > left + contentWidth + 0.5) {
+        breakLine();
+      }
+      if (!lineStarted && width > contentWidth) {
+        let chunk = '';
+        for (const character of text) {
+          const next = chunk + character;
+          if (chunk && pdf.getTextWidth(next) > contentWidth) {
+            write(chunk, x);
+            breakLine();
+            chunk = character;
+          } else {
+            chunk = next;
+          }
+        }
+        if (chunk) {
+          x += write(chunk, x);
+          lineStarted = true;
+        }
+        return;
+      }
+      x += write(text, x);
+      lineStarted = true;
+    };
+
+    for (const piece of pieces) paint(piece.text, piece.href, piece.width);
+    y += lineHeight + extraAfter;
+  };
+
+  const writeTable = (table: HTMLTableElement): void => {
+    const { cells, headerRowCount, columnCount } = buildPdfTableGrid(table);
+    if (cells.length === 0) return;
+
+    const colWidth = contentWidth / columnCount;
+    const fontSize = 10;
+    const padding = 5;
+    const lineHeight = fontSize * 1.3;
+    const minRowHeight = fontSize + padding * 2;
+
+    type PreparedRow = {
+      origins: Array<{ cell: PdfTableCell; lines: string[] } | null>;
+      lineCount: number;
+      isHeader: boolean;
+    };
+
+    const wrapCell = (text: string, span: number, bold: boolean): string[] => {
+      pdf.setFont(fontFamily, bold ? 'bold' : 'normal');
+      pdf.setFontSize(fontSize);
+      const width = Math.max(24, colWidth * span - padding * 2);
+      const lines = pdf.splitTextToSize(text || ' ', width) as string[];
+      return lines.length > 0 ? lines : [' '];
+    };
+
+    const prepared: PreparedRow[] = cells.map((row) => {
+      const origins = row.map((cell) => (
+        cell ? { cell, lines: wrapCell(cell.text, cell.colSpan, cell.isHeader) } : null
+      ));
+      return {
+        origins,
+        lineCount: Math.max(1, ...origins.map((origin) => origin?.lines.length ?? 0)),
+        isHeader: origins.some((origin) => origin?.cell.isHeader),
+      };
+    });
+
+    const heightForLines = (count: number): number => Math.max(minRowHeight, count * lineHeight + padding * 2);
+    const remaining = (): number => bottom - y;
+
+    const drawRowSlice = (
+      rowIndex: number,
+      startLine: number,
+      endLine: number,
+      extendRowSpan: boolean,
+    ): void => {
+      const row = prepared[rowIndex];
+      const sliceLines = Math.max(1, endLine - startLine);
+      let rowHeight = heightForLines(sliceLines);
+      if (extendRowSpan) {
+        for (const origin of row.origins) {
+          if (!origin || origin.cell.rowSpan <= 1) continue;
+          let extra = 0;
+          for (let offset = 1; offset < origin.cell.rowSpan; offset += 1) {
+            const next = prepared[rowIndex + offset];
+            if (!next) break;
+            extra += heightForLines(next.lineCount);
+          }
+          rowHeight = Math.max(rowHeight, heightForLines(sliceLines) + extra);
+        }
+      }
+
+      if (row.isHeader) {
+        pdf.setFillColor(250, 246, 241);
+        pdf.rect(left, y, contentWidth, heightForLines(sliceLines), 'F');
+      }
+      pdf.setDrawColor(180, 160, 145);
+      pdf.setLineWidth(0.4);
+      pdf.setTextColor(0, 0, 0);
+
+      row.origins.forEach((origin) => {
+        if (!origin) return;
+        const x = left + origin.cell.col * colWidth;
+        const width = origin.cell.colSpan * colWidth;
+        const boxHeight = extendRowSpan && origin.cell.rowSpan > 1
+          ? rowHeight
+          : heightForLines(sliceLines);
+        if (origin.cell.isHeader) {
+          pdf.setFillColor(250, 246, 241);
+          pdf.rect(x, y, width, boxHeight, 'F');
+        }
+        pdf.rect(x, y, width, boxHeight);
+        pdf.setFont(fontFamily, origin.cell.isHeader ? 'bold' : 'normal');
+        pdf.setFontSize(fontSize);
+        origin.lines.slice(startLine, endLine).forEach((line, lineIndex) => {
+          pdf.text(line, x + padding, y + padding + fontSize * 0.85 + lineIndex * lineHeight);
+        });
       });
-    }),
-  );
+      y += heightForLines(sliceLines);
+    };
+
+    const headerHeight = prepared
+      .slice(0, headerRowCount)
+      .reduce((sum, row) => sum + heightForLines(row.lineCount), 0);
+    const maxBodyOnPage = Math.max(minRowHeight, bottom - top - headerHeight);
+
+    const drawHeader = (): void => {
+      for (let rowIndex = 0; rowIndex < headerRowCount; rowIndex += 1) {
+        const row = prepared[rowIndex];
+        if (y + heightForLines(row.lineCount) > bottom) addPage();
+        drawRowSlice(rowIndex, 0, row.lineCount, true);
+      }
+    };
+
+    if (headerRowCount > 0 && y + headerHeight + minRowHeight > bottom) addPage();
+    if (headerRowCount > 0) drawHeader();
+
+    for (let rowIndex = headerRowCount; rowIndex < prepared.length; rowIndex += 1) {
+      const row = prepared[rowIndex];
+      let line = 0;
+      while (line < row.lineCount) {
+        if (remaining() < minRowHeight) {
+          addPage();
+          if (headerRowCount > 0) drawHeader();
+        }
+        const available = Math.min(remaining(), line === 0 ? remaining() : maxBodyOnPage);
+        const maxLines = Math.max(1, Math.floor((available - padding * 2) / lineHeight));
+        const take = Math.min(row.lineCount - line, maxLines);
+        const fullRow = line === 0 && take === row.lineCount;
+        const rowSpanFits = fullRow && row.origins.every((origin) => {
+          if (!origin || origin.cell.rowSpan <= 1) return true;
+          let needed = 0;
+          for (let offset = 1; offset < origin.cell.rowSpan; offset += 1) {
+            const next = prepared[rowIndex + offset];
+            if (!next) return false;
+            needed += heightForLines(next.lineCount);
+          }
+          return remaining() >= heightForLines(row.lineCount) + needed;
+        });
+        drawRowSlice(rowIndex, line, line + take, rowSpanFits);
+        line += take;
+      }
+    }
+    y += 10;
+  };
+
+  const writeImage = async (img: HTMLImageElement): Promise<void> => {
+    const encoded = await imageDataUrl(img);
+    if (!encoded) return;
+    const width = Math.min(contentWidth, 420);
+    const naturalWidth = img.naturalWidth || img.width || width;
+    const naturalHeight = img.naturalHeight || img.height || width * 0.6;
+    const height = width * (naturalHeight / Math.max(1, naturalWidth));
+    ensureSpace(height + 8);
+    try {
+      pdf.addImage(encoded.dataUrl, encoded.format, left, y, width, height, undefined, 'FAST');
+      y += height + 10;
+    } catch {
+      writeSpans([{ text: img.getAttribute('alt') || '' }], 10, 'normal');
+    }
+  };
+
+  for (const block of collectExportBlocks(root)) {
+    const tag = block.tagName.toLowerCase();
+    if (tag === 'hr') {
+      ensureSpace(12);
+      pdf.setDrawColor(232, 221, 211);
+      pdf.line(left, y + 4, left + contentWidth, y + 4);
+      y += 12;
+      continue;
+    }
+    if (tag === 'table') {
+      writeTable(block as HTMLTableElement);
+      continue;
+    }
+    if (tag === 'img') {
+      await writeImage(block as HTMLImageElement);
+      continue;
+    }
+    const nestedImages = Array.from(block.querySelectorAll('img'));
+    const weight: 'normal' | 'bold' = /^h[1-6]$/.test(tag) ? 'bold' : 'normal';
+    const fontSize = headingFontSize(tag);
+    const prefix = tag === 'li' ? listItemPrefix(block) : '';
+    const spans = spansFromElement(block);
+    if (prefix) spans.unshift({ text: prefix });
+    writeSpans(spans, fontSize, weight, /^h[1-6]$/.test(tag) ? 8 : 6);
+    for (const img of nestedImages) {
+      await writeImage(img);
+    }
+  }
+
+  return new Uint8Array(pdf.output('arraybuffer'));
 }
 
 export async function exportPatternPdf(html: string, options?: PatternExportOptions): Promise<void> {
-  const [{ jsPDF }, { default: html2canvas }] = await Promise.all([
-    import('jspdf'),
-    import('html2canvas'),
-  ]);
-  const style = document.createElement('style');
-  style.textContent = PATTERN_EXPORT_CSS;
-  const container = document.createElement('div');
-  container.style.position = 'fixed';
-  container.style.left = '-10000px';
-  container.style.top = '0';
-  container.style.width = `${EXPORT_WIDTH_PX}px`;
-  container.style.pointerEvents = 'none';
-  container.style.zIndex = '-1';
-  const wrapper = document.createElement('div');
-  wrapper.className = 'pdf-pattern';
-  wrapper.innerHTML = html;
-  container.appendChild(wrapper);
-  document.head.appendChild(style);
-  document.body.appendChild(container);
-
-  try {
-    await document.fonts.ready;
-    await waitForImages(container);
-
-    const canvas = await html2canvas(wrapper, {
-      backgroundColor: '#ffffff',
-      logging: false,
-      scale: 2,
-      useCORS: true,
-      windowWidth: EXPORT_WIDTH_PX,
-    });
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const contentWidthPt = pageWidth - PAGE_MARGIN_PT * 2;
-    const contentHeightPt = pageHeight - PAGE_MARGIN_PT * 2;
-    const pixelsPerPoint = canvas.width / contentWidthPt;
-    const pageSliceHeightPx = Math.max(1, Math.floor(contentHeightPt * pixelsPerPoint));
-
-    let sourceY = 0;
-    let pageIndex = 0;
-    while (sourceY < canvas.height) {
-      const sliceHeight = Math.min(pageSliceHeightPx, canvas.height - sourceY);
-      const pageCanvas = document.createElement('canvas');
-      pageCanvas.width = canvas.width;
-      pageCanvas.height = sliceHeight;
-      const context = pageCanvas.getContext('2d');
-      if (!context) break;
-
-      context.fillStyle = '#ffffff';
-      context.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-      context.drawImage(canvas, 0, sourceY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
-
-      if (pageIndex > 0) pdf.addPage();
-      const sliceHeightPt = sliceHeight / pixelsPerPoint;
-      pdf.addImage(
-        pageCanvas.toDataURL('image/png'),
-        'PNG',
-        PAGE_MARGIN_PT,
-        PAGE_MARGIN_PT,
-        contentWidthPt,
-        sliceHeightPt,
-      );
-
-      sourceY += sliceHeight;
-      pageIndex += 1;
-    }
-
-    pdf.save(getExportFileName(html, 'pdf', options));
-  } finally {
-    container.remove();
-    style.remove();
-  }
+  const bytes = await buildPatternPdfBytes(html);
+  const blob = new Blob(
+    [bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer],
+    { type: 'application/pdf' },
+  );
+  triggerDownload(blob, getExportFileName(html, 'pdf', options));
 }
 
 export function exportPatternHtml(html: string, options?: PatternExportOptions): void {

@@ -170,7 +170,12 @@ function escapeRegExp(value: string): string {
 function tokenPattern(token: string): RegExp {
   // Custom boundaries: letters/digits on either side keep "sl" from matching
   // inside "sleeve" while still matching tokens like "k2tog", "w&t", "i-cord".
-  return new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(token)}(?![\\p{L}\\p{N}])`, 'iu');
+  // Hyphens that glue letters to digits (pu-068, ab-123, DROPS 234-78) are
+  // also token characters so publisher codes are not treated as abbreviations.
+  return new RegExp(
+    `(?<![\\p{L}\\p{N}])(?<![\\p{L}\\p{N}]-)${escapeRegExp(token)}(?![\\p{L}\\p{N}])(?!-[\\p{L}\\p{N}])`,
+    'iu',
+  );
 }
 
 /**

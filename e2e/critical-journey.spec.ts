@@ -214,6 +214,18 @@ test('free preview stays locked until credits unlock export', async ({ page }) =
       body: JSON.stringify({ balance: 0, betaAccess: false, freePreviewMode: 'on', freePreviewAvailable: true }),
     });
   });
+  await page.route('**/api/translate/estimate', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        translationCost: 6.5,
+        previewEligible: true,
+        previewEndPage: 1,
+        pages: 3,
+      }),
+    });
+  });
   await page.route('**/api/translate', async (route) => {
     await route.fulfill({
       status: 200,

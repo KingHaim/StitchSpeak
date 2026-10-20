@@ -113,6 +113,34 @@ async function checkedFetch(
 
 export { TranslationError };
 
+export interface TranslationEstimate {
+  translationCost: number;
+  previewEligible: boolean;
+  previewEndPage: number | null;
+  pages: number;
+}
+
+/** Server-authoritative cost and per-document preview eligibility. */
+export const estimateTranslation = async (
+  file: File,
+  idToken: string | null,
+): Promise<TranslationEstimate> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await checkedFetch(
+    apiUrl('/translate/estimate'),
+    { method: 'POST', headers: authHeaders(idToken), body: formData },
+    'Estimate',
+  );
+  const data = await response.json() as Record<string, unknown>;
+  return {
+    translationCost: typeof data.translationCost === 'number' ? data.translationCost : 0,
+    previewEligible: data.previewEligible === true,
+    previewEndPage: typeof data.previewEndPage === 'number' ? data.previewEndPage : null,
+    pages: typeof data.pages === 'number' ? data.pages : 0,
+  };
+};
+
 export const translatePattern = async (
   file: File,
   language: string,
