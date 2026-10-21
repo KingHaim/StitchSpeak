@@ -286,6 +286,21 @@ describe('US7b quieter strip', () => {
     expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNRESTORABLE']);
     expect(result.reviewWarnings[0].sourceId).toBe('seg-2');
   });
+
+  it('keeps the source inch symbol across a size run and ships no number warning', async () => {
+    const html = '<p data-seg="1" data-o="Bust: 36¼&quot;-39⅜&quot;-41¾&quot;-45&quot;-48&quot;">'
+      + 'Busto: 36¼"-39⅜"-41¾"-45 in-48 in</p>';
+    const result = await finalizeTranslatedHtmlWithRecovery(
+      html,
+      'Spanish',
+      'English',
+      { recoveryBudgetCredits: 0 },
+      undefined,
+    );
+    expect(result.html).toContain('36¼"-39⅜"-41¾"-45"-48"');
+    expect(result.html).not.toMatch(/45 in/);
+    expect(result.reviewWarnings).toEqual([]);
+  });
 });
 
 describe('US7 escalation', () => {
@@ -606,5 +621,7 @@ describe('US7 verifier prompt craft bar', () => {
     expect(prompt).toMatch(/KEEP is always the safe answer/);
     // Locale tolerance is explicit — unit spellings and decimal commas match.
     expect(prompt).toContain('pulgadas');
+    expect(prompt).toContain('Hyphen-joined size runs');
+    expect(prompt).toContain('3 MM = US 2.5');
   });
 });

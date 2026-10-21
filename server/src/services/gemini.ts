@@ -205,7 +205,10 @@ function getHandcraftedLanguageRules(language: string): string {
     - "as indicated above" -> como se indica arriba, using present-tense instructional wording
     - "the short tail of the yarn" -> el cabo suelto del hilo (NEVER "un trozo de la misma lana")
     - Replace vague "trabaja el gráfico como se ha establecido" with the specific chart name and size from the source.
-    - Spanish measurements use decimal commas, a space before units (170 m, 50 g, 10 cm, 2 pts), and en dashes for ranges (8–10 cm, 1–3 meses). Keep the source values, unit system, and number of sizes unchanged.
+    - Spanish measurements use decimal commas, a space before units (170 m, 50 g, 10 cm, 2 pts), and en dashes for two-number ranges (8–10 cm, 1–3 meses). Keep the source values, unit system, and number of sizes unchanged.
+    - A hyphen-joined size run such as 23-23-24-24-25-25 cm is a list of sizes, not a set of ranges. Keep every value, including repeats, in the same order. Do not collapse duplicates.
+    - Needle equivalences such as "3 MM = US 2.5" keep both numbers and the "=". Uppercase MM is millimeters, not a different unit. Do not drop the US size or convert either side.
+    - When a size run uses the inch symbol ("), keep " on every value in that run. Never mix " and in (never 36¼"-45 in). Follow the source's unit notation.
     - Preserve the intentional yarn-weight terms "fingering", "DK", and "light worsted" consistently.
 
     ### CHART-LEGEND EXAMPLES (Spanish) — never leave these English forms:
@@ -310,7 +313,10 @@ function getHandcraftedLanguageRules(language: string): string {
 const createSizeFormatPreservationRules = (sectionNumber: number) => `
 ### ${sectionNumber}. SIZE FORMAT PRESERVATION (CRITICAL):
 - Multi-size instructions must preserve the source pattern's exact size structure across the whole translated pattern.
-- Keep the same punctuation and grouping used by the source for each size list: parentheses, brackets, commas, slashes, spacing, and the position of every bold/plain size marker.
+- Keep the same punctuation and grouping used by the source for each size list: parentheses, brackets, commas, slashes, hyphens, spacing, and the position of every bold/plain size marker.
+- A hyphen-joined size run such as 23-23-24-24-25-25 or 192-208-224-240 is a list of per-size values, including repeated values. Keep every number in order. Do not treat the hyphens as ranges and do not drop a duplicate.
+- Keep the source's unit notation consistently across each size run (cm, mm, in, or "). If the source writes 36¼"-39⅜"-45", keep the " symbol on every size; never mix " and in (never 36¼"-45 in).
+- Needle lines such as "3 MM = US 2.5" keep both numbers, the "=", and the US size. Uppercase MM means millimeters.
 - Never convert one sizing convention into another. For example, if the source has "18 (20, 23, 25, 27, 30)", keep that structure; if the source alternates "<strong>18</strong> (20, <strong>23</strong>, 25, <strong>27</strong>, 30)", keep those same bold slots and parentheses.
 - Apply the source's size-format convention consistently everywhere the same size sequence appears. Do not invent a global alternating rule and do not normalize all later sizes into parentheses unless the source does that.
 `;
@@ -868,16 +874,19 @@ export function extractDanishQaBlocks(html: string): DanishQaBlock[] {
 }
 
 function extractProtectedNumbers(text: string): string[] {
-  return text.match(/\d+(?:[.,]\d+)?(?:\s*[–—-]\s*\d+(?:[.,]\d+)?)?(?:\/\d+(?:[.,]\d+)?)?/g) ?? [];
+  // Individual atoms only — hyphens in size runs / ranges are separators.
+  // Must stay in lockstep with NUMBER_TOKEN_SOURCE in translationNumberAudit.ts.
+  return text.match(/\d+(?:[.,]\d+)?(?:\/\d+(?:[.,]\d+)?)?/g) ?? [];
 }
 
 function extractProtectedUnits(text: string): string[] {
   const units: string[] = [];
   // Bare `m` is intentionally excluded: in Danish knitting prose it is the
   // standard abbreviation for maske/masker and commonly follows a stitch count.
-  const measurementPattern = /\d+(?:[.,]\d+)?(?:\s*[–—-]\s*\d+(?:[.,]\d+)?)?\s*(cm|mm|in|g|kg|yd|yds)(?![\p{L}\p{N}])/gu;
+  // Case-insensitive so source "3 MM" (millimeters) matches translated "3 mm".
+  const measurementPattern = /\d+(?:[.,]\d+)?(?:\s*[–—-]\s*\d+(?:[.,]\d+)?)?\s*(cm|mm|in|g|kg|yd|yds)(?![\p{L}\p{N}])/giu;
   let match: RegExpExecArray | null;
-  while ((match = measurementPattern.exec(text)) !== null) units.push(match[1]);
+  while ((match = measurementPattern.exec(text)) !== null) units.push(match[1].toLocaleLowerCase());
   return units;
 }
 

@@ -223,9 +223,12 @@ function normalizeTokenText(text: string): string {
   return normalizeGaugeSeparators(normalizeVulgarFractions(text));
 }
 
-// Mirrors extractProtectedNumbers in gemini.ts: plain numbers with optional
-// decimal part, optional dash range, optional fraction suffix.
-const NUMBER_TOKEN_SOURCE = '\\d+(?:[.,]\\d+)?(?:\\s*[‐‑‒–—-]\\s*\\d+(?:[.,]\\d+)?)?(?:\\/\\d+(?:[.,]\\d+)?)?';
+// Mirrors extractProtectedNumbers in gemini.ts: one decimal/integer/fraction
+// atom. Hyphens in DROPS-style size runs (`23-23-24-24-25-25`) and two-number
+// ranges (`5-7`) are separators, not part of the token — pairing them as
+// `23–23` / `5–7` false-positives when the translation keeps every value but
+// respells the join as commas, spaces, or a different dash.
+const NUMBER_TOKEN_SOURCE = '\\d+(?:[.,]\\d+)?(?:\\/\\d+(?:[.,]\\d+)?)?';
 
 interface TokenMatch {
   start: number;
@@ -246,7 +249,9 @@ function numberMatches(text: string): TokenMatch[] {
 /**
  * Canonical form of one numeric token: decimal commas become dots, every dash
  * variant becomes an en dash, and trailing zeros are dropped so legitimate
- * locale reformatting ("2.5" → "2,50", "5-7" → "5–7") never counts as drift.
+ * locale reformatting ("2.5" → "2,50") never counts as drift. Dash-joined
+ * size runs and ranges are flattened to their individual values, so
+ * "5-7" ↔ "5–7" ↔ "5, 7" agree when the numbers match.
  */
 function canonicalNumberToken(token: string): string {
   return token

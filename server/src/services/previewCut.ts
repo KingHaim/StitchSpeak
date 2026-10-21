@@ -41,6 +41,7 @@ export interface PreviewSegment {
   isChart: boolean;
   isLegend: boolean;
   isSizeTable: boolean;
+  isTipOrNote: boolean;
 }
 
 export interface PreviewCut {
@@ -66,8 +67,16 @@ const CAST_ON_RE =
   /\b(cast\s*on|\bco\b|montar(?:\s+puntos)?|anschlagen|monter les mailles|avviare|opzetten|l[aä]gga upp|legge opp|slå op|luoda silmukat)\b/i;
 const BODY_YOKE_RE = /\b(body|yoke|canes[uú]|cuerpo|rumpf|empi[eè]cement|delantero|back|manga|sleeve)\b/i;
 const ROW_ROUND_RE =
-  /\b((?:row|round|rang|tour|vuelta|reihe|md)\s*\.?\s*\d|\b(knit|purl|k\d|p\d|derecho|revés)\b)/i;
+  /\b((?:row|round|rang|tour|vuelta|reihe|md)\s*\.?\s*\d|\b(knit|purl|derecho|revés)\b|\bk\d+(?![a-zA-Z])|\bp\d+(?![a-zA-Z]))/i;
 const HEADING_RE = /^h[1-6]$/i;
+/**
+ * Tip / note / consejo labels. Anchored at the start so "Row 1: note the
+ * marker" is not treated as a tip section. "DECREASE TIP" and
+ * "CONSEJO DE DISMINUCIÓN" are the prod false-start that used to steal the
+ * first-worked-section cut.
+ */
+const TIP_NOTE_RE =
+  /^(decrease\s+tip|increase\s+tip|cast[- ]on\s+tip|bind[- ]off\s+tip|tip|hint|note|notes|consejo(?:\s+de\s+\w+)?|nota|notas|astuce|hinweis|conseil)\b/i;
 
 /**
  * High-signal craft terms (full forms and multi-character abbreviations).
@@ -123,7 +132,37 @@ export function classifySegmentText(text: string, tag = 'p'): Omit<PreviewSegmen
     isChart: CHART_RE.test(text),
     isLegend: LEGEND_RE.test(text),
     isSizeTable: tag === 'table' && (isSizeRow || SIZE_ROW_RE.test(text)),
+    isTipOrNote: TIP_NOTE_RE.test(text.trim()),
   };
+}
+
+function isTipHeading(segment: Pick<PreviewSegment, 'text' | 'isHeading' | 'isCastOn' | 'isTipOrNote'>): boolean {
+  if (!segment.isTipOrNote || segment.isCastOn) return false;
+  if (segment.isHeading) return true;
+  // Short label paragraphs used as faux headings ("DECREASE TIP").
+  return segment.text.trim().length <= 80 && !/\d/.test(segment.text);
+}
+
+/**
+ * True for each segment that sits inside a tip/note/consejo block (the
+ * heading plus following body until the next real heading).
+ */
+function tipSectionFlags(segments: Array<Pick<PreviewSegment, 'text' | 'isHeading' | 'isCastOn' | 'isTipOrNote' | 'hasNumbers' | 'isBodyOrYoke'>>): boolean[] {
+  const flags = segments.map(() => false);
+  let inTip = false;
+  for (let i = 0; i < segments.length; i += 1) {
+    const segment = segments[i];
+    const startsWorked = (segment.isCastOn && segment.hasNumbers) || segment.isBodyOrYoke;
+    if (startsWorked) {
+      inTip = false;
+    } else if (isTipHeading(segment)) {
+      inTip = true;
+    } else if (segment.isHeading) {
+      inTip = false;
+    }
+    flags[i] = inTip;
+  }
+  return flags;
 }
 
 function assignPages(
@@ -169,15 +208,29 @@ export function segmentsFromHtml(html: string): PreviewSegment[] {
   return assignPages(raw);
 }
 
-function firstWorkedSectionEnd(segments: PreviewSegment[]): number {
+/**
+ * Index of the first real worked instruction (cast-on with stitch counts,
+ * or the first numbered row/round / size row). Tip/note/consejo sections
+ * are skipped — "DECREASE TIP" / "CONSEJO DE DISMINUCIÓN" is not the
+ * first worked section even when it mentions k2tog.
+ */
+export function firstWorkedSectionStart(segments: PreviewSegment[]): number {
+  if (segments.length === 0) return -1;
+  const inTip = tipSectionFlags(segments);
+  const castOn = segments.findIndex((segment, index) =>
+    !inTip[index] && segment.isCastOn && segment.hasNumbers);
+  if (castOn >= 0) return castOn;
+  return segments.findIndex((segment, index) =>
+    !inTip[index] && segment.hasNumbers && (segment.isRowOrRound || segment.isSizeRow));
+}
+
+export function firstWorkedSectionEnd(segments: PreviewSegment[]): number {
   if (segments.length === 0) return 0;
 
-  const castOn = segments.findIndex((segment) => segment.isCastOn && segment.hasNumbers);
-  const start = castOn >= 0
-    ? castOn
-    : segments.findIndex((segment) => segment.hasNumbers && (segment.isRowOrRound || segment.isSizeRow));
+  const start = firstWorkedSectionStart(segments);
   if (start < 0) {
-    const anyNumbered = segments.findIndex((segment) => segment.hasNumbers);
+    const inTip = tipSectionFlags(segments);
+    const anyNumbered = segments.findIndex((segment, index) => !inTip[index] && segment.hasNumbers);
     return anyNumbered >= 0 ? anyNumbered + 1 : Math.min(1, segments.length);
   }
 

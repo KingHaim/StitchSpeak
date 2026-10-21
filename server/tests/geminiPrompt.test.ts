@@ -46,7 +46,18 @@ describe('Gemini translation prompts', () => {
     expect(prompt).toContain(
       'if the source alternates "<strong>18</strong> (20, <strong>23</strong>, 25, <strong>27</strong>, 30)", keep those same bold slots and parentheses',
     );
+    expect(prompt).toContain('hyphen-joined size run');
+    expect(prompt).toContain('keep the " symbol on every size');
+    expect(prompt).toContain('3 MM = US 2.5');
     expect(prompt).not.toMatch(/alternating bold pattern/i);
+  });
+
+  it('tells Spanish translation to keep inch marks and hyphen-joined size runs', () => {
+    const prompt = createSystemInstruction('Spanish', 'English');
+    expect(prompt).toMatch(/Never mix " and in/);
+    expect(prompt).toMatch(/hyphen-joined size run/);
+    expect(prompt).toContain('3 MM = US 2.5');
+    expect(prompt).toMatch(/Sweater -> Jersey/);
   });
 
   it('does not reintroduce the old global sizing algorithm', () => {

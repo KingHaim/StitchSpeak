@@ -45,4 +45,22 @@ describe('translation output sanitizers', () => {
     expect(normalized.match(/cm/g)).toHaveLength(2);
     expect(normalized.match(/in/g)).toHaveLength(2);
   });
+
+  it('keeps the source inch symbol across a size run instead of mixing " and in', () => {
+    const source = '36¼"-39⅜"-41¾"-45"-48"';
+    const mixed = '36¼"-39⅜"-41¾"-45 in-48 in';
+    const html = `<p data-o="${source.replaceAll('"', '&quot;')}">${mixed}</p>`;
+    const normalized = normalizeSpanishMeasurementsInHtml(html);
+
+    expect(normalized).toContain('36¼"-39⅜"-41¾"-45"-48"');
+    expect(normalized).not.toMatch(/45 in/);
+    expect(normalized).not.toMatch(/48 in/);
+  });
+
+  it('still converts leftover " to in when the source size run uses in', () => {
+    const html = '<p data-o="Finished bust: 36.25 in-39.375 in-45 in">36¼"-39⅜"-45"</p>';
+    const normalized = normalizeSpanishMeasurementsInHtml(html);
+    expect(normalized).toContain('36¼ in-39⅜ in-45 in');
+    expect(normalized).not.toMatch(/45"/);
+  });
 });

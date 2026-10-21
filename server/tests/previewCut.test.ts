@@ -250,6 +250,56 @@ describe('preview cut craft rule', () => {
     }, { isPdf: true })).toBe(true);
   });
 
+  it('does not treat DECREASE TIP / CONSEJO as the first worked section', () => {
+    const html = [
+      '<p data-page="1">October Magic Sweater</p>',
+      '<p data-page="1">Sizes S M L XL XXL XXXL</p>',
+      '<p data-page="1">Yarn: 400 (450, 500, 550, 600, 650) g</p>',
+      '<h2 data-page="1">DECREASE TIP</h2>',
+      '<p data-page="1">When decreasing, k2tog at the marker. This is a note, not the sweater.</p>',
+      '<h2 data-page="1">CONSEJO DE DISMINUCIÓN</h2>',
+      '<p data-page="1">Al disminuir, 2pjD en el marcador.</p>',
+      '<p data-page="2">Cast on 80 (90, 100, 110, 120, 130) stitches.</p>',
+      '<p data-page="2">Row 1: Knit 2, purl 2; repeat from * to end.</p>',
+      '<p data-page="3">Later sleeve section row 20: continue in pattern.</p>',
+      '<p data-page="4">Later chart row 40: continue in pattern.</p>',
+      '<p data-page="5">Later finishing row 60: bind off all stitches.</p>',
+    ].join('\n');
+    const cut = cutPreviewHtml(html);
+    expect(cut.previewHtml).toContain('Cast on 80 (90, 100, 110, 120, 130) stitches.');
+    expect(cut.previewHtml).toContain('Row 1: Knit 2, purl 2');
+    expect(cut.previewEndPage).toBeGreaterThanOrEqual(2);
+
+    const plan = previewPlanFromCut(cut, true);
+    expect(plan).not.toBeNull();
+    expect(plan?.previewEndPage).toBe(2);
+    expect(plan?.previewHtml).toContain('Cast on 80 (90, 100, 110, 120, 130) stitches.');
+    expect(plan?.remainingHtml).toContain('Later sleeve section');
+    expect(previewLeavesMeaningfulRemainder({
+      ...cut,
+      previewEndPage: plan!.previewEndPage,
+      previewHtml: plan!.previewHtml,
+      remainingHtml: plan!.remainingHtml,
+    }, { isPdf: true })).toBe(true);
+  });
+
+  it('keeps a 3-page PDF on page 1 when including the first worked page would break the remainder', () => {
+    const html = [
+      '<p data-page="1">Willow Wrap Cardigan</p>',
+      '<h2 data-page="1">DECREASE TIP</h2>',
+      '<p data-page="1">When decreasing, k2tog at the marker.</p>',
+      '<p data-page="2">Cast on 80 (90, 100, 110) stitches.</p>',
+      '<p data-page="2">Row 1: Knit 2, purl 2; repeat from * to end.</p>',
+      '<p data-page="3">Later sleeve section row 20: continue in pattern until the piece measures the length given for your size.</p>',
+    ].join('\n');
+    const cut = cutPreviewHtml(html);
+    const plan = previewPlanFromCut(cut, true);
+    expect(plan).not.toBeNull();
+    expect(plan?.previewEndPage).toBe(1);
+    expect(plan?.previewHtml).not.toContain('Cast on 80');
+    expect(plan?.remainingHtml).toContain('Cast on 80');
+  });
+
   it('sets HTML previewEndPage from the shrunk end, not the original cut', () => {
     const segment = (index: number, page: number, text: string): PreviewSegment => ({
       index,
@@ -269,6 +319,7 @@ describe('preview cut craft rule', () => {
       isChart: false,
       isLegend: false,
       isSizeTable: false,
+      isTipOrNote: false,
     });
     const segments = Array.from({ length: 10 }, (_, index) => (
       segment(

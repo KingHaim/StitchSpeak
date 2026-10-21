@@ -203,6 +203,73 @@ describe('translation number fidelity enforcement', () => {
       expect(result.reviewWarnings).toEqual([]);
     });
 
+    // US10 admin re-test (5-page EN→ES sweater): hyphen-joined size runs,
+    // uppercase MM, and US-size equivalences were flagged as NUMBER_RESTORED
+    // even when every value survived. These are verifier false positives.
+    describe('hyphen-joined size runs and needle equivalences', () => {
+      it('does not flag a yoke-length run with repeated values when separators change', () => {
+        const html = '<p data-seg="1" data-o="Yoke length: 23-23-24-24-25-25 cm">'
+          + 'Largo de canesú: 23, 23, 24, 24, 25, 25 cm</p>';
+        const result = enforceTranslatedNumberFidelity(html);
+        expect(result.html).toBe(html);
+        expect(result.reviewWarnings).toEqual([]);
+        expect(canonicalNumberTokens('23-23-24-24-25-25 cm')).toEqual(
+          ['23', '23', '24', '24', '25', '25'],
+        );
+      });
+
+      it('does not flag a stitch-count size run kept as hyphen-joined values', () => {
+        const html = '<p data-seg="2" data-o="Cast on 192-208-224-240-256-272 sts">'
+          + 'Monta 192-208-224-240-256-272 pts</p>';
+        const result = enforceTranslatedNumberFidelity(html);
+        expect(result.html).toBe(html);
+        expect(result.reviewWarnings).toEqual([]);
+      });
+
+      it('does not flag uppercase MM or a US needle-size equivalence', () => {
+        const html = '<p data-seg="3" data-o="Rib needle: 3 MM = US 2.5">'
+          + 'Aguja de elástico: 3 mm = US 2,5</p>';
+        const result = enforceTranslatedNumberFidelity(html);
+        expect(result.html).toBe(html);
+        expect(result.reviewWarnings).toEqual([]);
+        expect(canonicalUnitTokens('3 MM = US 2.5')).toEqual(['mm']);
+        expect(canonicalNumberTokens('3 MM = US 2.5')).toEqual(['3', '2.5']);
+        expect(textMatchesNumberSkeleton('3 MM = US 2.5', '3 mm = US 2,5')).toBe(true);
+      });
+
+      it('does not flag a sleeve-length run of repeated values', () => {
+        const html = '<p data-seg="4" data-o="Sleeve length: 39-39-39-40-40-41 cm">'
+          + 'Largo de manga: 39–39–39–40–40–41 cm</p>';
+        const result = enforceTranslatedNumberFidelity(html);
+        expect(result.html).toBe(html);
+        expect(result.reviewWarnings).toEqual([]);
+      });
+
+      it('does not flag the 3 mm DPN line when MM is uppercased in the source', () => {
+        const html = '<p data-seg="5" data-o="DPN: 3 MM">'
+          + 'Agujas de doble punta: 3 mm</p>';
+        const result = enforceTranslatedNumberFidelity(html);
+        expect(result.html).toBe(html);
+        expect(result.reviewWarnings).toEqual([]);
+      });
+
+      it('still restores a real dropped size in a hyphen-joined run', () => {
+        const html = '<p data-seg="6" data-o="Yoke length: 23-23-24-24-25-25 cm">'
+          + 'Largo de canesú: 23-23-24-25-25 cm</p>';
+        const result = enforceTranslatedNumberFidelity(html);
+        expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNRESTORABLE']);
+        expect(result.reviewWarnings[0].message).toContain('23, 23, 24, 24, 25, 25');
+      });
+
+      it('still restores a drifted US needle size', () => {
+        const html = '<p data-seg="7" data-o="Rib needle: 3 MM = US 2.5">'
+          + 'Aguja de elástico: 3 mm = US 3</p>';
+        const result = enforceTranslatedNumberFidelity(html);
+        expect(result.html).toContain('3 mm = US 2.5');
+        expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_RESTORED']);
+      });
+    });
+
     // Jaime follow-up after US7: a translated segment whose number/unit list
     // is identical to the source skeleton — locale spelling included — must
     // never be flagged (it was a false-positive KEEP: the strip showed
