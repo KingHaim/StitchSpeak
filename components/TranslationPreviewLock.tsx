@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { formatUnlockConfirm } from '../utils/unlockConfirm';
+import { websiteCopy, type WebsiteLocale } from '../utils/websiteLocalization';
 
 interface TranslationPreviewLockProps {
   remainingCost?: number;
@@ -8,6 +9,7 @@ interface TranslationPreviewLockProps {
   balance?: number;
   waitingForCredits?: boolean;
   unlocking?: boolean;
+  locale?: WebsiteLocale;
   onUnlock: () => void;
 }
 
@@ -30,8 +32,10 @@ export const TranslationPreviewLock: React.FC<TranslationPreviewLockProps> = ({
   balance,
   waitingForCredits = false,
   unlocking = false,
+  locale,
   onUnlock,
 }) => {
+  const confirmCopy = websiteCopy(locale).unlockConfirm;
   const unlockPrice = quotedUnlockCost(fullCost, remainingCost);
   const [confirming, setConfirming] = useState(false);
   const [confirmLocked, setConfirmLocked] = useState(false);
@@ -119,7 +123,7 @@ export const TranslationPreviewLock: React.FC<TranslationPreviewLockProps> = ({
             onMouseDown={(event) => event.stopPropagation()}
           >
             <h2 id="unlock-confirm-title" className="font-headline text-2xl text-on-surface">
-              {formatUnlockConfirm(unlockPrice, balance)}
+              {formatUnlockConfirm(unlockPrice, balance, locale)}
             </h2>
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button
@@ -128,7 +132,7 @@ export const TranslationPreviewLock: React.FC<TranslationPreviewLockProps> = ({
                 disabled={busy}
                 className="min-h-12 rounded-xl px-5 font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
               >
-                Cancel
+                {confirmCopy.cancel}
               </button>
               <button
                 type="button"
@@ -136,7 +140,7 @@ export const TranslationPreviewLock: React.FC<TranslationPreviewLockProps> = ({
                 disabled={busy}
                 className="min-h-12 rounded-xl bg-primary px-5 font-semibold text-on-primary hover:bg-primary-container disabled:opacity-70"
               >
-                {unlocking ? 'Unlocking…' : 'Unlock'}
+                {unlocking ? confirmCopy.unlocking : confirmCopy.unlock}
               </button>
             </div>
           </div>

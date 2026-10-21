@@ -95,6 +95,37 @@ describe('TranslationPreviewLock', () => {
     expect(onUnlock).not.toHaveBeenCalled();
   });
 
+  it('uses Spanish confirm copy when the website locale is es', async () => {
+    const onUnlock = vi.fn();
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(
+        <TranslationPreviewLock
+          remainingCost={6.5}
+          fullCost={6.5}
+          balance={20}
+          locale="es"
+          onUnlock={onUnlock}
+        />,
+      );
+    });
+
+    const lock = container.querySelector('[data-testid="translation-preview-lock"]');
+    await act(async () => {
+      lock?.querySelector('button')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const dialog = container.querySelector('[data-testid="unlock-confirm-dialog"]');
+    expect(dialog?.textContent).toContain(
+      '¿Desbloquear la traducción completa por 6.5 créditos? Saldo 20.0 → 13.5',
+    );
+    expect(Array.from(dialog?.querySelectorAll('button') ?? []).map((button) => button.textContent))
+      .toEqual(['Cancelar', 'Desbloquear']);
+    expect(dialog?.textContent).not.toMatch(/\bAI\b/i);
+  });
+
   it('disables Unlock while the request is in flight so a double tap cannot fire twice', async () => {
     const onUnlock = vi.fn();
     container = document.createElement('div');
