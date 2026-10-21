@@ -374,7 +374,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
   // ── Stitch ──
   { id: 'k2tog', category: 'stitch', terms: {
     en: { abbreviation: 'K2tog', full: 'knit two together' },
-    es: { abbreviation: '2pjD', full: '2 puntos juntos derecho' },
+    es: { abbreviation: '', full: 'teje 2 puntos juntos del derecho' },
     de: { abbreviation: '2 re zus', full: '2 rechts zusammenstricken' },
     fr: { abbreviation: '2 m ens end', full: '2 mailles ensemble à l\'endroit' },
     pt: { abbreviation: '2pjT', full: '2 pontos juntos em tricô' },

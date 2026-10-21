@@ -220,15 +220,17 @@ function normalizeGaugeSeparators(text: string): string {
 
 /** Shared pre-tokenization normalization for numbers, units, and skeletons. */
 function normalizeTokenText(text: string): string {
-  return normalizeGaugeSeparators(normalizeVulgarFractions(text));
+  return normalizeGaugeSeparators(text);
 }
 
 // Mirrors extractProtectedNumbers in gemini.ts: one decimal/integer/fraction
-// atom. Hyphens in DROPS-style size runs (`23-23-24-24-25-25`) and two-number
+// atom, including unicode vulgar fractions so restore can copy 2⅜ rather than
+// 2.375. Hyphens in DROPS-style size runs (`23-23-24-24-25-25`) and two-number
 // ranges (`5-7`) are separators, not part of the token — pairing them as
 // `23–23` / `5–7` false-positives when the translation keeps every value but
 // respells the join as commas, spaces, or a different dash.
-const NUMBER_TOKEN_SOURCE = '\\d+(?:[.,]\\d+)?(?:\\/\\d+(?:[.,]\\d+)?)?';
+const NUMBER_TOKEN_SOURCE =
+  '(?:\\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\\d+(?:[.,]\\d+)?(?:\\/\\d+(?:[.,]\\d+)?)?)';
 
 interface TokenMatch {
   start: number;
@@ -254,7 +256,7 @@ function numberMatches(text: string): TokenMatch[] {
  * "5-7" ↔ "5–7" ↔ "5, 7" agree when the numbers match.
  */
 function canonicalNumberToken(token: string): string {
-  return token
+  return normalizeVulgarFractions(token)
     .replace(/,/g, '.')
     .replace(/\s*[‐‑‒–—-]\s*/g, '–')
     .replace(/\d+(?:\.\d+)?/g, (value) => String(Number.parseFloat(value)));
@@ -310,6 +312,7 @@ const UNIT_CANONICAL: Record<string, string> = {
   pouces: 'in',
   '"': 'in',
   '″': 'in',
+  us: 'us',
   g: 'g',
   gr: 'g',
   grs: 'g',
@@ -413,7 +416,8 @@ function hasMassContextAfter(text: string, index: number): boolean {
  * prose (M1/M1L/M1R, "lifting …") — see BARE_GRAM_TOKENS above.
  */
 function unitMatches(text: string): UnitMatch[] {
-  const pattern = new RegExp(`(?<=\\d)\\s*(${UNIT_ALTERNATIVES})(?![\\p{L}\\p{N}])`, 'giu');
+  // Vulgar fractions are not `\d`, so `9½"` must still see the inch mark.
+  const pattern = new RegExp(`(?<=[\\d½¼¾⅛⅜⅝⅞])\\s*(${UNIT_ALTERNATIVES})(?![\\p{L}\\p{N}])`, 'giu');
   const matches: UnitMatch[] = [];
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(text)) !== null) {
@@ -431,12 +435,38 @@ function unitMatches(text: string): UnitMatch[] {
     const start = match.index + match[0].length - raw.length;
     matches.push({ start, end: pattern.lastIndex, raw, canonical: UNIT_CANONICAL[lowered] ?? lowered });
   }
+  const usPattern = /(?<![\p{L}\p{N}])US(?=\s*\d)/giu;
+  let usMatch: RegExpExecArray | null;
+  while ((usMatch = usPattern.exec(text)) !== null) {
+    matches.push({
+      start: usMatch.index,
+      end: usPattern.lastIndex,
+      raw: usMatch[0],
+      canonical: 'us',
+    });
+  }
+  matches.sort((a, b) => a.start - b.start || a.end - b.end);
   return matches;
 }
 
 /** Canonical measurement-unit sequence of a text. */
 export function canonicalUnitTokens(text: string): string[] {
   return unitMatches(normalizeTokenText(text)).map((match) => match.canonical);
+}
+
+const INCH_RUN_RE =
+  /(?:\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\d+(?:[.,]\d+)?)(?:\s*[‐‑‒–—-]\s*(?:\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\d+(?:[.,]\d+)?))*\s*(?:["″]|in\b|inch(?:es)?\b|pulgadas?\b|pulg\b)/giu;
+
+/** Number atoms that belong to an inch / imperial run (`9-9-9½"` / `4 in`). */
+export function imperialNumberTokens(text: string): string[] {
+  return [...normalizeTokenText(text).matchAll(INCH_RUN_RE)]
+    .flatMap((match) => canonicalNumberTokens(match[0]));
+}
+
+/** Number atoms that belong to a US needle-size equivalence (`US 2.5`). */
+export function usSizeNumberTokens(text: string): string[] {
+  return [...text.matchAll(/\bUS\s*(\d+(?:[.,]\d+)?)/gi)]
+    .map((match) => canonicalNumberToken(match[1]));
 }
 
 function displaySequence(tokens: string[]): string {
@@ -474,13 +504,125 @@ function hasDrift(prints: SegmentFingerprints): boolean {
     || prints.sourceUnits.join('|') !== prints.translatedUnits.join('|');
 }
 
+function hasDroppedEquivalence(sourceText: string, translatedText: string): boolean {
+  // Only dual `cm / "` runs and `US n` needle equivalences — a standalone
+  // `4 in` → `4 tommer` is a localized unit, not a dropped conversion.
+  if (extractDualMeasurementClauses(sourceText).some((clause) => clause.metricUnit === 'cm')) {
+    const sourceImperial = imperialNumberTokens(sourceText);
+    const translatedImperial = imperialNumberTokens(translatedText);
+    if (sourceImperial.length > 0 && translatedImperial.join('|') !== sourceImperial.join('|')) {
+      return true;
+    }
+  }
+  const sourceUs = usSizeNumberTokens(sourceText);
+  const translatedUs = usSizeNumberTokens(translatedText);
+  return sourceUs.length > 0 && translatedUs.join('|') !== sourceUs.join('|');
+}
+
 /**
  * Token-surgical restore: splice the source numeric/unit tokens over the
  * drifted ones inside the translated inner HTML, leaving every surrounding
  * target-language word and inline tag untouched. Returns null when a safe
  * 1:1 token mapping does not exist.
  */
+interface DualMeasurementClause {
+  metricUnit: 'cm' | 'mm';
+  joiner: string;
+  extra: string;
+  extraNumbers: string[];
+}
+
+const DUAL_INCH_CLAUSE_RE =
+  /((?:\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\d+(?:[.,]\d+)?)(?:\s*[‐‑‒–—-]\s*(?:\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\d+(?:[.,]\d+)?))*\s*cm)\s*\/\s*((?:\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\d+(?:[.,]\d+)?)(?:\s*[‐‑‒–—-]\s*(?:\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\d+(?:[.,]\d+)?))*\s*["″])/giu;
+
+const DUAL_US_CLAUSE_RE =
+  /((?:\d+(?:[.,]\d+)?)\s*mm)\s*=\s*(US\s*\d+(?:[.,]\d+)?)/gi;
+
+function extractDualMeasurementClauses(sourceText: string): DualMeasurementClause[] {
+  const clauses: DualMeasurementClause[] = [];
+  for (const match of sourceText.matchAll(DUAL_INCH_CLAUSE_RE)) {
+    clauses.push({
+      metricUnit: 'cm',
+      joiner: ' / ',
+      extra: match[2].replace(/\s+/g, ''),
+      extraNumbers: canonicalNumberTokens(match[2]),
+    });
+  }
+  for (const match of sourceText.matchAll(DUAL_US_CLAUSE_RE)) {
+    clauses.push({
+      metricUnit: 'mm',
+      joiner: ' = ',
+      extra: match[2].replace(/\s+/g, ' ').trim(),
+      extraNumbers: usSizeNumberTokens(match[2]),
+    });
+  }
+  return clauses;
+}
+
+function insertAfterMetricUnit(
+  innerHtml: string,
+  metricUnit: 'cm' | 'mm',
+  joiner: string,
+  extra: string,
+): string {
+  const parts = innerHtml.split(/(<[^>]*>)/);
+  const extraFolded = `${joiner}${extra}`.replace(/\s+/g, '').toLocaleLowerCase();
+  for (let index = 0; index < parts.length; index += 1) {
+    const part = parts[index];
+    if (part.startsWith('<')) continue;
+    const lower = part.toLocaleLowerCase();
+    let searchFrom = 0;
+    while (searchFrom < lower.length) {
+      const found = lower.indexOf(metricUnit, searchFrom);
+      if (found < 0) break;
+      const end = found + metricUnit.length;
+      const afterFolded = part.slice(end).replace(/\s+/g, '').toLocaleLowerCase();
+      if (afterFolded.startsWith(extraFolded) || afterFolded.startsWith('/') || afterFolded.startsWith('=')) {
+        searchFrom = end;
+        continue;
+      }
+      parts[index] = `${part.slice(0, end)}${joiner}${extra}${part.slice(end)}`;
+      return parts.join('');
+    }
+  }
+  return `${innerHtml}${joiner}${extra}`;
+}
+
+/**
+ * When the translation kept the metric side but dropped the inch run or
+ * "= US n" needle equivalence, splice the missing source clause back in.
+ */
+function restoreMissingEquivalenceClauses(segment: PositionedSegment): string | null {
+  const clauses = extractDualMeasurementClauses(segment.sourceText);
+  if (clauses.length === 0) return null;
+  let next = segment.innerHtml;
+  let changed = false;
+  for (const clause of clauses) {
+    const visible = plainTextFromHtml(next);
+    const extraBare = clause.extra.replace(/["″]|(?:^|\s)US\s*/gi, '').replace(/\s+/g, '');
+    const existingExtra = clause.metricUnit === 'cm'
+      ? imperialNumberTokens(visible)
+      : usSizeNumberTokens(visible);
+    // Wrong values still count as "present" — the 1:1 token restore fixes
+    // those. Only splice a missing `/ Y"` or `= US n` when the extra side
+    // is gone entirely.
+    const haveExtra = existingExtra.length > 0
+      || (extraBare.length > 0 && visible.replace(/\s+/g, '').includes(extraBare));
+    if (haveExtra) continue;
+    if (!new RegExp(`${clause.metricUnit}\\b`, 'i').test(visible)) continue;
+    const inserted = insertAfterMetricUnit(next, clause.metricUnit, clause.joiner, clause.extra);
+    if (inserted !== next) {
+      next = inserted;
+      changed = true;
+    }
+  }
+  return changed ? next : null;
+}
+
 function restoreSegmentInnerHtml(segment: PositionedSegment, prints: SegmentFingerprints): string | null {
+  const equivalenceRestore = restoreMissingEquivalenceClauses(segment);
+  if (equivalenceRestore !== null) return equivalenceRestore;
+
   const sourceNumberTokens = numberMatches(normalizeTokenText(segment.sourceText));
 
   // Split into text/tag parts so replacements can never touch markup.
@@ -566,7 +708,9 @@ function findFirstDriftedSegment(html: string, skipKeys?: ReadonlySet<string>): 
     const key = segment.sourceId ?? `cell:${occurrence}:${segment.sourceText}`;
     if (skipKeys?.has(key)) continue;
     const prints = fingerprintSegment(segment);
-    if (!hasDrift(prints)) continue;
+    if (!hasDrift(prints) && !hasDroppedEquivalence(segment.sourceText, segment.translatedText)) {
+      continue;
+    }
     return { segment, prints, key };
   }
   return null;
@@ -586,6 +730,9 @@ function restoredWarning(drift: DriftedSegment): TranslationTopologyWarning {
   }
   if (prints.sourceUnits.join('|') !== prints.translatedUnits.join('|')) {
     details.push(`units [${displaySequence(prints.translatedUnits)}] → [${displaySequence(prints.sourceUnits)}]`);
+  }
+  if (details.length === 0) {
+    details.push('dropped inch or US-size equivalence');
   }
   return {
     code: 'NUMBER_RESTORED',
@@ -631,7 +778,8 @@ export function sourceNumberSkeleton(sourceText: string): { numbers: string[]; u
  */
 export function textMatchesNumberSkeleton(sourceText: string, candidateText: string): boolean {
   return canonicalNumberTokens(sourceText).join('|') === canonicalNumberTokens(candidateText).join('|')
-    && canonicalUnitTokens(sourceText).join('|') === canonicalUnitTokens(candidateText).join('|');
+    && canonicalUnitTokens(sourceText).join('|') === canonicalUnitTokens(candidateText).join('|')
+    && !hasDroppedEquivalence(sourceText, candidateText);
 }
 
 function segmentKey(segment: PositionedSegment, occurrence: number): string {

@@ -58,6 +58,10 @@ describe('Gemini translation prompts', () => {
     expect(prompt).toMatch(/hyphen-joined size run/);
     expect(prompt).toContain('3 MM = US 2.5');
     expect(prompt).toMatch(/Sweater -> Jersey/);
+    expect(prompt).toMatch(/keep BOTH sides/i);
+    expect(prompt).toMatch(/Copy inch strings exactly/i);
+    expect(prompt).toMatch(/Yarn colour \/ product names/i);
+    expect(prompt).toContain('teje 2 puntos juntos del derecho');
   });
 
   it('does not reintroduce the old global sizing algorithm', () => {
@@ -77,7 +81,8 @@ describe('Gemini translation prompts', () => {
     expect(prompt).toContain('Símbolo');
     expect(prompt).toContain('Significado');
     expect(prompt).toContain('k2tog');
-    expect(prompt).toContain('2pjD');
+    expect(prompt).toContain('teje 2 puntos juntos del derecho');
+    expect(prompt).toMatch(/never 2pjD/i);
     expect(prompt).toContain('DDC');
     expect(prompt).toMatch(/Leaving English knitting abbreviations untranslated/i);
     expect(prompt).toMatch(/English abbreviations are NOT "international"/i);
@@ -259,7 +264,7 @@ describe('Gemini translation prompts', () => {
       <p>Sizes: (Preemie 00), <strong>Newborn</strong>, (1–3 months), <strong>6–9 months</strong>.</p>
     </div>`);
     const translated = `<div>
-      <p data-seg="1" data-o="K2TOG: Knit two stitches together.">2pjD: Tejer dos puntos juntos.</p>
+      <p data-seg="1" data-o="K2TOG: Knit two stitches together.">teje 2 puntos juntos del derecho: Tejer dos puntos juntos.</p>
       <p data-seg="2" data-o="Sizes: (Preemie 00), Newborn, (1–3 months), 6–9 months.">Tallas: (Prematuro 00), Recién nacido, (1–3 meses), 6–9 meses.</p>
     </div>`;
 
@@ -267,7 +272,7 @@ describe('Gemini translation prompts', () => {
       {
         id: 'emphasis-1',
         originalText: 'K2TOG: Knit two stitches together.',
-        currentText: '2pjD: Tejer dos puntos juntos.',
+        currentText: 'teje 2 puntos juntos del derecho: Tejer dos puntos juntos.',
         boldSourceTexts: ['K2TOG:'],
       },
       {
@@ -279,11 +284,11 @@ describe('Gemini translation prompts', () => {
     ]);
 
     const repaired = applyInlineEmphasisRepairs(translated, hints, [
-      { id: 'emphasis-1', boldTexts: ['2pjD:'] },
+      { id: 'emphasis-1', boldTexts: ['teje 2 puntos juntos del derecho:'] },
       { id: 'emphasis-2', boldTexts: ['Recién nacido', '6–9 meses'] },
     ]);
 
-    expect(repaired).toContain('<strong>2pjD:</strong> Tejer dos puntos juntos.');
+    expect(repaired).toContain('<strong>teje 2 puntos juntos del derecho:</strong> Tejer dos puntos juntos.');
     expect(repaired).toContain(
       'Tallas: (Prematuro 00), <strong>Recién nacido</strong>, (1–3 meses), <strong>6–9 meses</strong>.',
     );
@@ -440,7 +445,9 @@ describe('Gemini translation prompts', () => {
     expect(prompt).toMatch(/BOR.*CV.*comienzo de vuelta/i);
     expect(prompt).toMatch(/agujas de mayor grosor.*agujas de menor grosor/i);
     expect(prompt).toMatch(/cabo suelto del hilo/i);
-    expect(prompt).toMatch(/LD.*LR.*CV.*pts.*A1D.*A1I.*2pjD.*dm.*pm/i);
+    expect(prompt).toMatch(/LD.*LR.*CV.*pts.*A1D.*A1I.*dm.*pm/i);
+    expect(prompt).toContain('teje 2 puntos juntos del derecho');
+    expect(prompt).toMatch(/never 2pjD/i);
   });
 
   it('requires the Spanish QA pass to inspect construction context and size-specific references', () => {
@@ -456,30 +463,37 @@ describe('Gemini translation prompts', () => {
 
   it('applies Spanish terminology repairs without changing measurements or protected abbreviations', () => {
     const html = `<div>
-      <p data-o="Row 1: pm, knit 9.5 cm to sm at BOR; M1R, M1L, k2tog.">Vuelta 1: pm, teje 9.5cm hasta sm en BOR; Aum1D, Aum1I, 2pjD.</p>
+      <p data-o="Row 1: pm, knit 9.5 cm to sm at BOR; M1R, M1L, k2tog.">Vuelta 1: pm, teje 9.5cm hasta sm en BOR; Aum1D, Aum1I, k2tog.</p>
     </div>`;
     const blocks = extractDanishQaBlocks(html);
 
     const repaired = applySpanishQaRepairs(html, blocks, [{
       id: 'da-qa-1',
-      text: 'Fila 1: pm, teje 9,5 cm hasta dm en CV; A1D, A1I, 2pjD.',
+      text: 'Fila 1: pm, teje 9,5 cm hasta dm en CV; A1D, A1I, teje 2 puntos juntos del derecho.',
       remove: false,
     }]);
-    expect(repaired).toContain('>Fila 1: pm, teje 9,5 cm hasta dm en CV; A1D, A1I, 2pjD.</p>');
+    expect(repaired).toContain('>Fila 1: pm, teje 9,5 cm hasta dm en CV; A1D, A1I, teje 2 puntos juntos del derecho.</p>');
 
     const changedMeasurement = applySpanishQaRepairs(html, blocks, [{
       id: 'da-qa-1',
-      text: 'Fila 1: pm, teje 10,5 cm hasta dm en CV; A1D, A1I, 2pjD.',
+      text: 'Fila 1: pm, teje 10,5 cm hasta dm en CV; A1D, A1I, teje 2 puntos juntos del derecho.',
       remove: false,
     }]);
     expect(changedMeasurement).toBe(html);
 
     const swappedMarkers = applySpanishQaRepairs(html, blocks, [{
       id: 'da-qa-1',
-      text: 'Fila 1: dm, teje 9,5 cm hasta pm en CV; A1D, A1I, 2pjD.',
+      text: 'Fila 1: dm, teje 9,5 cm hasta pm en CV; A1D, A1I, teje 2 puntos juntos del derecho.',
       remove: false,
     }]);
     expect(swappedMarkers).toBe(html);
+
+    const unexplainedAbbrev = applySpanishQaRepairs(html, blocks, [{
+      id: 'da-qa-1',
+      text: 'Fila 1: pm, teje 9,5 cm hasta dm en CV; A1D, A1I, 2pjD.',
+      remove: false,
+    }]);
+    expect(unexplainedAbbrev).toBe(html);
   });
 
   it.each([

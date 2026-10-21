@@ -103,3 +103,114 @@ export function normalizeSpanishMeasurementsInHtml(html: string): string {
     },
   );
 }
+
+const VULGAR_TO_DECIMALS: Record<string, string[]> = {
+  '½': ['0.5', '0,5', '.5', ',5'],
+  '¼': ['0.25', '0,25', '.25', ',25'],
+  '¾': ['0.75', '0,75', '.75', ',75'],
+  '⅛': ['0.125', '0,125', '.125', ',125'],
+  '⅜': ['0.375', '0,375', '.375', ',375'],
+  '⅝': ['0.625', '0,625', '.625', ',625'],
+  '⅞': ['0.875', '0,875', '.875', ',875'],
+};
+
+const SOURCE_INCH_RUN_RE =
+  /(?:\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\d+(?:[.,]\d+)?)(?:\s*[‐‑‒–—-]\s*(?:\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\d+(?:[.,]\d+)?))*\s*["″]/gu;
+
+function decimalVariantsForInchAtom(atom: string): string[] {
+  const variants = new Set<string>([atom]);
+  const mixed = atom.match(/^(\d+)([½¼¾⅛⅜⅝⅞])$/);
+  const bare = atom.match(/^([½¼¾⅛⅜⅝⅞])$/);
+  const fraction = mixed?.[2] ?? bare?.[1];
+  if (fraction && VULGAR_TO_DECIMALS[fraction]) {
+    for (const decimal of VULGAR_TO_DECIMALS[fraction]) {
+      variants.add(mixed ? `${mixed[1]}${decimal.replace(/^0/, '')}` : decimal);
+      variants.add(mixed ? `${mixed[1]}${decimal}` : decimal);
+    }
+  }
+  return [...variants];
+}
+
+function inchRunCorruptions(sourceRun: string): string[] {
+  const mark = sourceRun.trim().endsWith('″') ? '″' : '"';
+  const body = sourceRun.replace(/["″]\s*$/, '').trim();
+  const atoms = body.split(/\s*[‐‑‒–—-]\s*/);
+  const atomVariants = atoms.map(decimalVariantsForInchAtom);
+  const joiners = ['-', '–', '-'];
+  const corruptions = new Set<string>();
+  for (const joiner of joiners) {
+    const combos = atomVariants.reduce<string[][]>((acc, options) => {
+      if (acc.length === 0) return options.map((option) => [option]);
+      return acc.flatMap((prefix) => options.map((option) => [...prefix, option]));
+    }, []);
+    for (const combo of combos) {
+      const joined = combo.join(joiner);
+      corruptions.add(`${joined}${mark}`);
+      corruptions.add(`${joined} in`);
+      corruptions.add(`${joined}in`);
+    }
+  }
+  return [...corruptions].filter((value) => value !== sourceRun);
+}
+
+/**
+ * Copy source inch strings exactly: unicode vulgar fractions and the " mark.
+ * Stops 2⅜" becoming 2,375 in / 2.375" after locale number formatting.
+ */
+export function restoreSourceInchStringsInHtml(html: string): string {
+  return html.replace(
+    /<(p|h[1-6]|li|th|td|blockquote)(\s[^>]*)?>([\s\S]*?)<\/\1>/gi,
+    (full, tag: string, attrs = '', inner: string) => {
+      const dataO = readAttribute(attrs, 'data-o');
+      if (dataO == null) return full;
+      const source = decodeEntities(dataO);
+      const runs = source.match(SOURCE_INCH_RUN_RE);
+      if (!runs || runs.length === 0) return full;
+      let next = inner;
+      for (const run of runs) {
+        const exact = run.replace(/\s+/g, '');
+        for (const corruption of inchRunCorruptions(exact)) {
+          next = next.split(corruption).join(exact);
+        }
+        next = next.replace(
+          new RegExp(
+            `${exact.replace(/["″]$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*(?:in|inch|inches)\\b`,
+            'gi',
+          ),
+          exact,
+        );
+      }
+      return `<${tag}${attrs}>${next}</${tag}>`;
+    },
+  );
+}
+
+/**
+ * A stray empty paragraph or <br> immediately after a heading (CUERPO: before
+ * the stitch-count run) is post-processing noise, not an intentional break.
+ */
+export function collapseStrayBreakAfterHeading(html: string): string {
+  const emptyBlock = '(?:<p\\b[^>]*>\\s*(?:<br\\s*\\/?>|&nbsp;|\\u00a0|\\s)*<\\/p>|<br\\s*\\/?>)';
+  return html
+    .replace(
+      new RegExp(`(<(h[1-6])\\b[^>]*>[\\s\\S]*?<\\/\\2>)\\s*(?:${emptyBlock}\\s*)+(?=<)`, 'gi'),
+      '$1',
+    )
+    .replace(
+      new RegExp(
+        `(<(p)\\b[^>]*>\\s*(?:<strong>)?[^<]{0,40}:\\s*(?:<\\/strong>)?\\s*<\\/p>)\\s*(?:${emptyBlock}\\s*)+(?=<(?:p|h[1-6]|table)\\b)`,
+        'gi',
+      ),
+      '$1',
+    )
+    .replace(
+      /(<(p)\b[^>]*>\s*(?:<strong>)?[^<]{0,40}:\s*(?:<\/strong>)?)\s*(?:<br\s*\/?>\s*)+(<\/p>)/gi,
+      '$1$3',
+    );
+}
+
+/** Spanish output writes k2tog in full — leftover 2pjD is unexplained. */
+export function expandSpanishK2togAbbreviation(html: string): string {
+  return mapVisibleText(html, (text) =>
+    text.replace(/(?<![\p{L}\p{N}])2pjD(?![\p{L}\p{N}-])/giu, 'teje 2 puntos juntos del derecho'));
+}

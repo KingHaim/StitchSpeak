@@ -3,6 +3,8 @@ import {
   buildUnrestorableDriftWarnings,
   canonicalNumberTokens,
   canonicalUnitTokens,
+  imperialNumberTokens,
+  usSizeNumberTokens,
   collectUnauditedNumericBlocks,
   collectUnrestorableNumberDrift,
   enforceTranslatedNumberFidelity,
@@ -232,7 +234,7 @@ describe('translation number fidelity enforcement', () => {
         const result = enforceTranslatedNumberFidelity(html);
         expect(result.html).toBe(html);
         expect(result.reviewWarnings).toEqual([]);
-        expect(canonicalUnitTokens('3 MM = US 2.5')).toEqual(['mm']);
+        expect(canonicalUnitTokens('3 MM = US 2.5')).toEqual(['mm', 'us']);
         expect(canonicalNumberTokens('3 MM = US 2.5')).toEqual(['3', '2.5']);
         expect(textMatchesNumberSkeleton('3 MM = US 2.5', '3 mm = US 2,5')).toBe(true);
       });
@@ -267,6 +269,35 @@ describe('translation number fidelity enforcement', () => {
         const result = enforceTranslatedNumberFidelity(html);
         expect(result.html).toContain('3 mm = US 2.5');
         expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_RESTORED']);
+      });
+
+      it('warns and restores a dropped inch run after a metric size list', () => {
+        const source = 'Yoke: 23-23-24-24-25-25 cm / 9-9-9½-9½-9¾-9¾&quot;';
+        const html = `<p data-seg="8" data-o="${source}">Canesú: 23-23-24-24-25-25 cm</p>`;
+        const result = enforceTranslatedNumberFidelity(html);
+        expect(result.html).toContain('23-23-24-24-25-25 cm / 9-9-9½-9½-9¾-9¾"');
+        expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_RESTORED']);
+        expect(textMatchesNumberSkeleton(
+          'Yoke: 23-23-24-24-25-25 cm / 9-9-9½-9½-9¾-9¾"',
+          'Canesú: 23-23-24-24-25-25 cm',
+        )).toBe(false);
+      });
+
+      it('warns and restores a dropped US needle equivalence beside 3 mm', () => {
+        const html = '<p data-seg="9" data-o="Rib needle: 3 mm = US 2.5">'
+          + 'Aguja de elástico: 3 mm</p>';
+        const result = enforceTranslatedNumberFidelity(html);
+        expect(result.html).toContain('3 mm = US 2.5');
+        expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_RESTORED']);
+        expect(textMatchesNumberSkeleton('3 mm = US 2.5', '3 mm')).toBe(false);
+      });
+
+      it('compares imperial and US-size atoms separately from the metric run', () => {
+        expect(imperialNumberTokens('23-23-24 cm / 9-9-9½"')).toEqual(['9', '9', '9.5']);
+        expect(usSizeNumberTokens('3 mm = US 2.5')).toEqual(['2.5']);
+        expect(canonicalNumberTokens('23-23-24 cm / 9-9-9½"')).toEqual(
+          ['23', '23', '24', '9', '9', '9.5'],
+        );
       });
     });
 

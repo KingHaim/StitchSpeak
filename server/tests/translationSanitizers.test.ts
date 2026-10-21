@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  collapseStrayBreakAfterHeading,
+  expandSpanishK2togAbbreviation,
   findMarkdownArtifacts,
   normalizeSpanishMeasurementsInHtml,
   restoreFrenchRepeatAsterisksInHtml,
+  restoreSourceInchStringsInHtml,
   sanitizeMarkdownArtifactsInHtml,
 } from '../src/services/translationSanitizers';
 
@@ -62,5 +65,47 @@ describe('translation output sanitizers', () => {
     const normalized = normalizeSpanishMeasurementsInHtml(html);
     expect(normalized).toContain('36¼ in-39⅜ in-45 in');
     expect(normalized).not.toMatch(/45"/);
+  });
+
+  it('copies source inch strings exactly and never converts vulgar fractions to decimals or in', () => {
+    const source = 'Cuff: 2⅜&quot; and 3⅛&quot;';
+    const corrupted = 'Puño: 2,375 in y 3,125 in';
+    const html = `<p data-o="${source}">${corrupted}</p>`;
+    const restored = restoreSourceInchStringsInHtml(
+      normalizeSpanishMeasurementsInHtml(html),
+    );
+
+    expect(restored).toContain('2⅜"');
+    expect(restored).toContain('3⅛"');
+    expect(restored).not.toMatch(/2,375|2\.375|3,125|3\.125/);
+    expect(restored).not.toMatch(/\bin\b/);
+  });
+
+  it('restores a hyphen-joined inch run that was decimalized', () => {
+    const source = 'Yoke: 23-23-24-24-25-25 cm / 9-9-9½-9½-9¾-9¾&quot;';
+    const html = `<p data-o="${source}">Canesú: 23-23-24-24-25-25 cm / 9-9-9.5-9.5-9.75-9.75 in</p>`;
+    const restored = restoreSourceInchStringsInHtml(html);
+    expect(restored).toContain('9-9-9½-9½-9¾-9¾"');
+    expect(restored).not.toMatch(/9\.5|9,5|9\.75|9,75|\bin\b/);
+  });
+
+  it('collapses a stray blank after a CUERPO: heading before the stitch-count run', () => {
+    const html = '<p>CUERPO:</p><p></p><p>192-208-224-240-256-272 pts</p>';
+    expect(collapseStrayBreakAfterHeading(html)).toBe(
+      '<p>CUERPO:</p><p>192-208-224-240-256-272 pts</p>',
+    );
+    expect(collapseStrayBreakAfterHeading(
+      '<h2>CUERPO:</h2>\n<p><br></p>\n<p>192-208-224 pts</p>',
+    )).toBe('<h2>CUERPO:</h2><p>192-208-224 pts</p>');
+    expect(collapseStrayBreakAfterHeading(
+      '<p>CUERPO:<br><br></p><p>192-208 pts</p>',
+    )).toBe('<p>CUERPO:</p><p>192-208 pts</p>');
+  });
+
+  it('expands leftover Spanish 2pjD to the written-out k2tog form', () => {
+    const html = '<p>Al disminuir, 2pjD en el marcador; luego 2pjD-ret.</p>';
+    expect(expandSpanishK2togAbbreviation(html)).toBe(
+      '<p>Al disminuir, teje 2 puntos juntos del derecho en el marcador; luego 2pjD-ret.</p>',
+    );
   });
 });

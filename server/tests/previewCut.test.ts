@@ -39,6 +39,31 @@ function filler(count: number, start = 10): string[] {
 }
 
 describe('preview cut craft rule', () => {
+  it('includes a cast-on followed by the first yoke increase round', () => {
+    const html = [
+      '<p data-page="1">October Magic Sweater</p>',
+      '<p data-page="1">Sizes S-M-L-XL-XXL-XXXL</p>',
+      '<p data-page="1">Yarn: 400-450-500-550-600-650 g</p>',
+      '<p data-page="2">Cast on 192-208-224-240-256-272 stitches.</p>',
+      '<h2 data-page="2">YOKE</h2>',
+      '<p data-page="2">Round 1 (increase): *K12, M1*, repeat from * to end. 208-224-240-256-272-288 sts.</p>',
+      '<p data-page="3">Round 2: Knit.</p>',
+      '<p data-page="4">Later sleeve section row 20: continue in pattern.</p>',
+      '<p data-page="5">Later finishing row 60: bind off all stitches.</p>',
+    ].join('\n');
+    const cut = cutPreviewHtml(html);
+    expect(cut.previewHtml).toContain('Cast on 192-208-224-240-256-272 stitches.');
+    expect(cut.previewHtml).toContain('Round 1 (increase)');
+    expect(cut.previewHtml).toContain('208-224-240-256-272-288 sts');
+    expect(cut.end).toBeLessThan(cut.segments.length);
+
+    const plan = previewPlanFromCut(cut, true);
+    expect(plan).not.toBeNull();
+    expect(plan?.previewHtml).toContain('Cast on 192-208-224-240-256-272 stitches.');
+    expect(plan?.previewHtml).toContain('Round 1 (increase)');
+    expect(plan!.previewEndPage / documentPageCount(cut.segments)).toBeLessThanOrEqual(PREVIEW_MAX_COVERAGE);
+  });
+
   it('covers the cast-on with all size columns and the first numbered rows', () => {
     const html = wrap([...OPENING, ...WORKED, ...BODY, ...filler(40)]);
     const cut = cutPreviewHtml(html);
@@ -258,7 +283,7 @@ describe('preview cut craft rule', () => {
       '<h2 data-page="1">DECREASE TIP</h2>',
       '<p data-page="1">When decreasing, k2tog at the marker. This is a note, not the sweater.</p>',
       '<h2 data-page="1">CONSEJO DE DISMINUCIÓN</h2>',
-      '<p data-page="1">Al disminuir, 2pjD en el marcador.</p>',
+      '<p data-page="1">Al disminuir, teje 2 puntos juntos del derecho en el marcador.</p>',
       '<p data-page="2">Cast on 80 (90, 100, 110, 120, 130) stitches.</p>',
       '<p data-page="2">Row 1: Knit 2, purl 2; repeat from * to end.</p>',
       '<p data-page="3">Later sleeve section row 20: continue in pattern.</p>',

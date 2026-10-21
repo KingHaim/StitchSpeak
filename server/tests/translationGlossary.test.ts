@@ -35,7 +35,8 @@ describe('buildGlossaryPromptSection', () => {
     expect(section).toMatch(/LOCKED end-to-end/);
     expect(section).toContain('- knit [K] -> derecho [D]');
     expect(section).toContain('- cast on [CO] -> montar puntos [MO]');
-    expect(section).toContain('2 puntos juntos derecho [2pjD]');
+    expect(section).toContain('teje 2 puntos juntos del derecho');
+    expect(section).not.toContain('2 puntos juntos derecho [2pjD]');
     expect(section).toContain('hebra / lazada [H]');
     expect(section).toMatch(/never mix regional variants/i);
     expect(section).toMatch(/STRICT language-specific rule above.*wins/i);
@@ -190,7 +191,7 @@ describe('auditTranslatedGlossary — English term leakage', () => {
   it('stays silent when locked terminology was applied', () => {
     const html = `<div>
       <p data-seg="1" data-o="Cast on 20 sts, then work yarn over at the marker.">Monta 20 pts, luego haz una H (hebra) en el marcador.</p>
-      <p data-seg="2" data-o="Row 3: k2tog, knit to end.">Fila 3: 2pjD, teje hasta el final.</p>
+      <p data-seg="2" data-o="Row 3: k2tog, knit to end.">Fila 3: teje 2 puntos juntos del derecho, teje hasta el final.</p>
     </div>`;
 
     expect(auditTranslatedGlossary(html, 'Spanish')).toEqual([]);
