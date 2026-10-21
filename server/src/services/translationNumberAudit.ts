@@ -527,32 +527,30 @@ function hasDroppedEquivalence(sourceText: string, translatedText: string): bool
  */
 interface DualMeasurementClause {
   metricUnit: 'cm' | 'mm';
-  joiner: string;
-  extra: string;
+  /** Exact source substring after the metric unit, including joiner and spacing. */
+  tail: string;
   extraNumbers: string[];
 }
 
-const DUAL_INCH_CLAUSE_RE =
-  /((?:\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\d+(?:[.,]\d+)?)(?:\s*[‐‑‒–—-]\s*(?:\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\d+(?:[.,]\d+)?))*\s*cm)\s*\/\s*((?:\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\d+(?:[.,]\d+)?)(?:\s*[‐‑‒–—-]\s*(?:\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\d+(?:[.,]\d+)?))*\s*["″])/giu;
-
-const DUAL_US_CLAUSE_RE =
-  /((?:\d+(?:[.,]\d+)?)\s*mm)\s*=\s*(US\s*\d+(?:[.,]\d+)?)/gi;
+const INCH_ATOM = '(?:\\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\\d+(?:[.,]\\d+)?)';
+const CM_CONVERSION_TAIL =
+  `\\s*(?:=|/)\\s*(?:${INCH_ATOM}["″](?:\\s*[‐‑‒–—-]\\s*${INCH_ATOM}["″])+|${INCH_ATOM}(?:\\s*[‐‑‒–—-]\\s*${INCH_ATOM})*\\s*["″])`;
+const CM_CONVERSION_RE = new RegExp(`(cm)(${CM_CONVERSION_TAIL})`, 'giu');
+const MM_CONVERSION_RE = /(mm)(\s*=\s*US\s*\d+(?:[.,]\d+)?)/gi;
 
 function extractDualMeasurementClauses(sourceText: string): DualMeasurementClause[] {
   const clauses: DualMeasurementClause[] = [];
-  for (const match of sourceText.matchAll(DUAL_INCH_CLAUSE_RE)) {
+  for (const match of sourceText.matchAll(CM_CONVERSION_RE)) {
     clauses.push({
       metricUnit: 'cm',
-      joiner: ' / ',
-      extra: match[2].replace(/\s+/g, ''),
+      tail: match[2],
       extraNumbers: canonicalNumberTokens(match[2]),
     });
   }
-  for (const match of sourceText.matchAll(DUAL_US_CLAUSE_RE)) {
+  for (const match of sourceText.matchAll(MM_CONVERSION_RE)) {
     clauses.push({
       metricUnit: 'mm',
-      joiner: ' = ',
-      extra: match[2].replace(/\s+/g, ' ').trim(),
+      tail: match[2],
       extraNumbers: usSizeNumberTokens(match[2]),
     });
   }
@@ -562,11 +560,10 @@ function extractDualMeasurementClauses(sourceText: string): DualMeasurementClaus
 function insertAfterMetricUnit(
   innerHtml: string,
   metricUnit: 'cm' | 'mm',
-  joiner: string,
-  extra: string,
+  tail: string,
 ): string {
   const parts = innerHtml.split(/(<[^>]*>)/);
-  const extraFolded = `${joiner}${extra}`.replace(/\s+/g, '').toLocaleLowerCase();
+  const tailFolded = tail.replace(/\s+/g, '').toLocaleLowerCase();
   for (let index = 0; index < parts.length; index += 1) {
     const part = parts[index];
     if (part.startsWith('<')) continue;
@@ -577,20 +574,21 @@ function insertAfterMetricUnit(
       if (found < 0) break;
       const end = found + metricUnit.length;
       const afterFolded = part.slice(end).replace(/\s+/g, '').toLocaleLowerCase();
-      if (afterFolded.startsWith(extraFolded) || afterFolded.startsWith('/') || afterFolded.startsWith('=')) {
+      if (afterFolded.startsWith(tailFolded) || afterFolded.startsWith('/') || afterFolded.startsWith('=')) {
         searchFrom = end;
         continue;
       }
-      parts[index] = `${part.slice(0, end)}${joiner}${extra}${part.slice(end)}`;
+      parts[index] = `${part.slice(0, end)}${tail}${part.slice(end)}`;
       return parts.join('');
     }
   }
-  return `${innerHtml}${joiner}${extra}`;
+  return `${innerHtml}${tail}`;
 }
 
 /**
  * When the translation kept the metric side but dropped the inch run or
- * "= US n" needle equivalence, splice the missing source clause back in.
+ * "= US n" needle equivalence, splice the source's own conversion tail
+ * back in — never a synthesized ` / 9-9-9½"` form.
  */
 function restoreMissingEquivalenceClauses(segment: PositionedSegment): string | null {
   const clauses = extractDualMeasurementClauses(segment.sourceText);
@@ -599,18 +597,15 @@ function restoreMissingEquivalenceClauses(segment: PositionedSegment): string | 
   let changed = false;
   for (const clause of clauses) {
     const visible = plainTextFromHtml(next);
-    const extraBare = clause.extra.replace(/["″]|(?:^|\s)US\s*/gi, '').replace(/\s+/g, '');
+    const extraBare = clause.tail.replace(/["″]|(?:^|\s)US\s*/gi, '').replace(/\s+/g, '');
     const existingExtra = clause.metricUnit === 'cm'
       ? imperialNumberTokens(visible)
       : usSizeNumberTokens(visible);
-    // Wrong values still count as "present" — the 1:1 token restore fixes
-    // those. Only splice a missing `/ Y"` or `= US n` when the extra side
-    // is gone entirely.
     const haveExtra = existingExtra.length > 0
       || (extraBare.length > 0 && visible.replace(/\s+/g, '').includes(extraBare));
     if (haveExtra) continue;
     if (!new RegExp(`${clause.metricUnit}\\b`, 'i').test(visible)) continue;
-    const inserted = insertAfterMetricUnit(next, clause.metricUnit, clause.joiner, clause.extra);
+    const inserted = insertAfterMetricUnit(next, clause.metricUnit, clause.tail);
     if (inserted !== next) {
       next = inserted;
       changed = true;

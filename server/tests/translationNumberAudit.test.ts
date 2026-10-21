@@ -283,6 +283,15 @@ describe('translation number fidelity enforcement', () => {
         )).toBe(false);
       });
 
+      it('copies the DROPS source conversion tail (cm = 9"-9") instead of synthesizing a slash form', () => {
+        const source = 'Yoke: 23-23-24 cm = 9&quot;-9&quot;-9½&quot;';
+        const html = `<p data-seg="10" data-o="${source}">Canesú: 23-23-24 cm</p>`;
+        const result = enforceTranslatedNumberFidelity(html);
+        expect(result.html).toContain('23-23-24 cm = 9"-9"-9½"');
+        expect(result.html).not.toContain('cm /');
+        expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_RESTORED']);
+      });
+
       it('warns and restores a dropped US needle equivalence beside 3 mm', () => {
         const html = '<p data-seg="9" data-o="Rib needle: 3 mm = US 2.5">'
           + 'Aguja de elástico: 3 mm</p>';

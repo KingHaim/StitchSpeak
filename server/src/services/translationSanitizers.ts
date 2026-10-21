@@ -72,7 +72,6 @@ function normalizeSpanishMeasurementText(text: string, inchNotation: InchNotatio
   }
   return next
     .replace(/(?<=\d)\.(?=\d)/g, ',')
-    .replace(/(?<=\d)\s*[-‐‑‒—]\s*(?=\d)/g, '–')
     .replace(/(\d)\s*(cm|mm|m|g|kg|in|pts)(?![\p{L}\p{N}])/gu, '$1 $2');
 }
 

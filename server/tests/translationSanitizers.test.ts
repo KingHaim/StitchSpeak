@@ -37,14 +37,22 @@ describe('translation output sanitizers', () => {
     const normalized = normalizeSpanishMeasurementsInHtml(html);
 
     expect(normalized).toContain('data-o="9.5 cm; 170m; 50g; 2pts; 8-10 cm; 3.25 in"');
-    expect(normalized).toContain('9,5 cm, 170 m, 50 g, 2 pts, 8–10 cm, 1–3 meses, 3,25 in.');
+    expect(normalized).toContain('9,5 cm, 170 m, 50 g, 2 pts, 8-10 cm, 1-3 meses, 3,25 in.');
+  });
+
+  it('does not rewrite hyphens between digits as en dashes in size runs or pattern IDs', () => {
+    const html = '<p data-o="Yoke 23-23-24 cm. Pattern DROPS 272-48.">Canesú 23-23-24 cm. Patrón DROPS 272-48.</p>';
+    const normalized = normalizeSpanishMeasurementsInHtml(html);
+    expect(normalized).toContain('23-23-24 cm');
+    expect(normalized).toContain('DROPS 272-48');
+    expect(normalized).not.toMatch(/–/);
   });
 
   it('does not change values, size count, or the source unit system', () => {
     const html = '<p>40-44 cm, 48-52 cm / 15.75-17.25 in, 18-20 in</p>';
     const normalized = normalizeSpanishMeasurementsInHtml(html);
 
-    expect(normalized).toBe('<p>40–44 cm, 48–52 cm / 15,75–17,25 in, 18–20 in</p>');
+    expect(normalized).toBe('<p>40-44 cm, 48-52 cm / 15,75-17,25 in, 18-20 in</p>');
     expect(normalized.match(/cm/g)).toHaveLength(2);
     expect(normalized.match(/in/g)).toHaveLength(2);
   });

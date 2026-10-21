@@ -209,10 +209,10 @@ function getHandcraftedLanguageRules(language: string): string {
     - "as indicated above" -> como se indica arriba, using present-tense instructional wording
     - "the short tail of the yarn" -> el cabo suelto del hilo (NEVER "un trozo de la misma lana")
     - Replace vague "trabaja el gráfico como se ha establecido" with the specific chart name and size from the source.
-    - Spanish measurements use decimal commas, a space before units (170 m, 50 g, 10 cm, 2 pts), and en dashes for two-number ranges (8–10 cm, 1–3 meses). Keep the source values, unit system, and number of sizes unchanged.
+    - Spanish measurements use decimal commas and a space before units (170 m, 50 g, 10 cm, 2 pts). Keep source hyphens exactly — size runs stay 23-23-24 and pattern IDs such as DROPS 272-48 are never rewritten as en dashes. Keep the source values, unit system, and number of sizes unchanged.
     - A hyphen-joined size run such as 23-23-24-24-25-25 cm is a list of sizes, not a set of ranges. Keep every value, including repeats, in the same order. Do not collapse duplicates.
     - Needle equivalences such as "3 MM = US 2.5" keep both numbers and the "=". Uppercase MM is millimeters, not a different unit. Do not drop the US size or convert either side. Always keep "= US n" next to the metric needle size.
-    - Dual measurements such as 23-23-24-24-25-25 cm / 9-9-9½-9½-9¾-9¾" keep BOTH sides: the metric run and the inch run. Never drop the inch equivalents.
+    - Dual measurements keep BOTH sides. DROPS form is 23-23-24 cm = 9"-9"-9½" (every inch value has its own " and "=" is the conversion). A slash form such as 23-23-24 cm / 9-9-9½" also keeps both sides. Never drop the inch equivalents. Copy the source separators, brackets, fractions, and " marks.
     - Copy inch strings exactly from the source: unicode vulgar fractions (½ ¼ ¾ ⅛ ⅜ ⅝ ⅞) and the " mark. Never convert 2⅜" to 2.375, 2,375, or 2⅜ in, and never switch to "in" when the source uses ".
     - When a size run uses the inch symbol ("), keep " on every value in that run. Never mix " and in (never 36¼"-45 in). Follow the source's unit notation.
     - Yarn colour / product names from the materials list (the name next to a colour number, e.g. Coffee, Cherry Jam, Rust, Moss Green, Olive Oil) are product names. Keep the source spelling in the yarn list, the instructions, and the chart key. Never translate them.
@@ -323,7 +323,7 @@ const createSizeFormatPreservationRules = (sectionNumber: number) => `
 - Keep the same punctuation and grouping used by the source for each size list: parentheses, brackets, commas, slashes, hyphens, spacing, and the position of every bold/plain size marker.
 - A hyphen-joined size run such as 23-23-24-24-25-25 or 192-208-224-240 is a list of per-size values, including repeated values. Keep every number in order. Do not treat the hyphens as ranges and do not drop a duplicate.
 - Keep the source's unit notation consistently across each size run (cm, mm, in, or "). If the source writes 36¼"-39⅜"-45", keep the " symbol on every size; never mix " and in (never 36¼"-45 in).
-- Dual measurements such as 23-23-24-24-25-25 cm / 9-9-9½-9½-9¾-9¾" keep BOTH sides. Never drop the inch equivalents.
+- Dual measurements keep BOTH sides. DROPS form is 23-23-24 cm = 9"-9"-9½" (every inch value has its own "; "=" is the conversion). Slash form 23-23-24 cm / 9-9-9½" also keeps both sides. Copy the source separators, brackets, fractions, and " marks. Never drop the inch equivalents.
 - Copy inch strings exactly: unicode vulgar fractions and the " mark. Never convert 2⅜" to 2.375, 2,375, or "in" when the source uses ".
 - Needle lines such as "3 MM = US 2.5" keep both numbers, the "=", and the US size. Uppercase MM means millimeters. Never drop "= US n".
 ${yarnColourPromptRule([])}
@@ -1172,7 +1172,7 @@ Required terminology and context:
 - Replace vague chart references with the specific chart name and size from the source. Use present-tense "como se indica arriba".
 
 Required validation:
-- Preserve every value and unit system. Use decimal commas, spaces before units, and en dashes, and confirm every sequence retains the same number of sizes and measurements as the source.
+- Preserve every value and unit system. Use decimal commas and spaces before units. Keep source hyphens (23-23-24, DROPS 272-48) — never rewrite them as en dashes. Confirm every sequence retains the same number of sizes and measurements as the source.
 - Preserve paragraph meaning and do not add English explanations, translator notes, or editing instructions.
 - Detect merged fragments, repeated text, omitted phrases, inconsistent terms, and literal Markdown artefacts such as **, __, backticks, or Markdown heading markers.
 - Return complete corrected plain text per block, never HTML. Return only changed blocks and do not alter source identifiers.`;
