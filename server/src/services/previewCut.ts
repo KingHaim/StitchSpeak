@@ -66,6 +66,12 @@ const REPEAT_CLOSE_RE = /end of (?:the )?repeat|rep(?:eat)? from \* to (?:end|la
 const CAST_ON_RE =
   /\b(cast\s*on|\bco\b|montar(?:\s+puntos)?|anschlagen|monter les mailles|avviare|opzetten|l[aä]gga upp|legge opp|slå op|luoda silmukat)\b/i;
 const BODY_YOKE_RE = /\b(body|yoke|canes[uú]|cuerpo|rumpf|empi[eè]cement|delantero|back|manga|sleeve)\b/i;
+/** The first worked garment part — not sleeves / finishing / charts. */
+const FIRST_WORKED_PART_RE =
+  /\b(body|yoke|canes[uú]|cuerpo|rumpf|empi[eè]cement|delantero|back|front|espalda|delantera)\b/i;
+/** Next major part after the first worked section. */
+const NEXT_PART_RE =
+  /\b(sleeves?|mangas?|finishing|acabado|assembly|ensamblaje|making up|charts?|gr[aá]ficos?|neck(?:line)?|collar|cuello|hood|capucha)\b/i;
 const ROW_ROUND_RE =
   /\b((?:row|round|rang|tour|vuelta|reihe|md)\s*\.?\s*\d|\b(knit|purl|derecho|revés)\b|\bk\d+(?![a-zA-Z])|\bp\d+(?![a-zA-Z]))/i;
 const HEADING_RE = /^h[1-6]$/i;
@@ -224,7 +230,12 @@ export function firstWorkedSectionStart(segments: PreviewSegment[]): number {
     !inTip[index] && segment.hasNumbers && (segment.isRowOrRound || segment.isSizeRow));
 }
 
-export function firstWorkedSectionEnd(segments: PreviewSegment[]): number {
+/**
+ * Exclusive end of the cast-on (all size columns) plus its first rows or
+ * rounds, snapped to a row / repeat boundary. Fallback when the full first
+ * worked section does not fit under the money cap.
+ */
+export function castOnAndFirstRowsEnd(segments: PreviewSegment[]): number {
   if (segments.length === 0) return 0;
 
   const start = firstWorkedSectionStart(segments);
@@ -268,7 +279,49 @@ export function firstWorkedSectionEnd(segments: PreviewSegment[]): number {
     break;
   }
 
-  return Math.max(end, start + 1);
+  return snapToSafeBoundary(segments, Math.max(end, start + 1));
+}
+
+function isLaterPartStart(segment: PreviewSegment): boolean {
+  const trimmed = segment.text.trim();
+  if (/^later\b/i.test(trimmed)) return true;
+  if (FIRST_WORKED_PART_RE.test(segment.text) && !NEXT_PART_RE.test(segment.text)) return false;
+  if (!NEXT_PART_RE.test(segment.text)) return false;
+  if (segment.isHeading) return true;
+  if (trimmed.length <= 80 && !segment.hasNumbers) return true;
+  return /^(sleeves?|mangas?|finishing|acabado|assembly|ensamblaje|making up|charts?|gr[aá]ficos?|neck(?:line)?|collar|cuello|hood|capucha)\b/i.test(trimmed);
+}
+
+/**
+ * Exclusive end of the first worked section (cast-on with stitch counts,
+ * then body/yoke rows until the next major part — sleeves, finishing,
+ * charts). Never stops mid-repeat.
+ */
+export function firstWorkedSectionEnd(segments: PreviewSegment[]): number {
+  const opening = castOnAndFirstRowsEnd(segments);
+  if (opening <= 0 || opening >= segments.length) return opening;
+
+  let end = opening;
+  while (end < segments.length) {
+    const segment = segments[end];
+    if (isLaterPartStart(segment)) break;
+    if (segment.isHeading && !FIRST_WORKED_PART_RE.test(segment.text) && !segment.isCastOn && !segment.isTipOrNote) {
+      break;
+    }
+    const keep = segment.isRowOrRound
+      || segment.isSizeRow
+      || segment.isCastOn
+      || segment.isBodyOrYoke
+      || segment.isRepeatOpener
+      || segment.isRepeatCloser
+      || segment.isSelfContainedRepeat
+      || segment.isTipOrNote
+      || (segment.isHeading && FIRST_WORKED_PART_RE.test(segment.text));
+    if (!keep) break;
+    end += 1;
+  }
+
+  return snapToSafeBoundary(segments, Math.max(end, opening));
 }
 
 function capEnd(segments: PreviewSegment[]): number {
@@ -305,6 +358,46 @@ function snapToSafeBoundary(segments: PreviewSegment[], end: number): number {
   }
 
   return next;
+}
+
+/** Exclusive end just before the last unclosed repeat opener (never mid-repeat). */
+function cutBeforeOpenRepeat(segments: PreviewSegment[], end: number): number {
+  let next = Math.max(0, Math.min(end, segments.length));
+  let openRepeats = 0;
+  let lastOpener = -1;
+  for (let i = 0; i < next; i += 1) {
+    if (segments[i].isSelfContainedRepeat) continue;
+    if (segments[i].isRepeatOpener) {
+      openRepeats += 1;
+      lastOpener = i;
+    }
+    if (segments[i].isRepeatCloser && openRepeats > 0) openRepeats -= 1;
+  }
+  if (openRepeats > 0 && lastOpener >= 0) return lastOpener;
+  return next;
+}
+
+/**
+ * Snap a segment cut to a safe boundary without crossing `maxEnd`. If a
+ * repeat would straddle the cap, cut before the opener — never mid `*…*` /
+ * "rep from".
+ */
+export function boundPreviewEnd(segments: PreviewSegment[], end: number, maxEnd: number): number {
+  const desired = Math.max(0, Math.min(end, segments.length));
+  const cap = Math.max(0, Math.min(maxEnd, segments.length));
+  const snapped = snapToSafeBoundary(segments, desired);
+  if (snapped <= cap) return snapped;
+  return cutBeforeOpenRepeat(segments, Math.min(desired, cap));
+}
+
+/**
+ * Whole-page cut that does not split a protected span and does not exceed
+ * `maxPage`. Walks back when a repeat / table / chart would cross the cap.
+ */
+export function boundPreviewPage(segments: PreviewSegment[], page: number, maxPage: number): number {
+  let n = Math.max(1, Math.min(page, maxPage));
+  while (n >= 1 && pageBoundarySplitsProtected(segments, n)) n -= 1;
+  return Math.max(1, n);
 }
 
 function ensureCraftCoverage(segments: PreviewSegment[], end: number): number {

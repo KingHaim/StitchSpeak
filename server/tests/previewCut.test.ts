@@ -346,4 +346,132 @@ describe('preview cut craft rule', () => {
     expect(plan!.previewEndPage).toBe(1);
     expect(plan!.previewEndPage).not.toBe(cut.previewEndPage);
   });
+
+  it('extends the preview to the first worked section when that section fits under the 50% cap', () => {
+    const html = [
+      '<p data-page="1">October Magic Sweater</p>',
+      '<p data-page="1">Yarn: 400 (450, 500, 550, 600, 650) g</p>',
+      '<p data-page="2">Cast on 80 (90, 100, 110, 120, 130) stitches.</p>',
+      '<p data-page="2">Row 1: Knit 2, purl 2; repeat from * to end.</p>',
+      '<p data-page="2">Row 2: Knit 2, purl 2; repeat from * to end.</p>',
+      '<p data-page="3">Row 3: Knit 80 (90, 100, 110, 120, 130) stitches.</p>',
+      '<p data-page="3">Row 4: Purl.</p>',
+      '<h2 data-page="4">SLEEVES</h2>',
+      '<p data-page="4">Later sleeve section row 20: continue in pattern.</p>',
+      '<p data-page="5">Later chart row 40: continue in pattern.</p>',
+      '<p data-page="6">Later finishing row 60: bind off all stitches.</p>',
+    ].join('\n');
+    const cut = cutPreviewHtml(html);
+    expect(documentPageCount(cut.segments)).toBe(6);
+    const plan = previewPlanFromCut(cut, true);
+    expect(plan).not.toBeNull();
+    expect(plan?.previewEndPage).toBe(3);
+    expect(plan?.previewHtml).toContain('Cast on 80 (90, 100, 110, 120, 130) stitches.');
+    expect(plan?.previewHtml).toContain('Row 3: Knit 80 (90, 100, 110, 120, 130) stitches.');
+    expect(plan?.previewHtml).not.toContain('SLEEVES');
+    expect(plan?.remainingHtml).toContain('SLEEVES');
+    expect(cut.previewHasNumbers).toBe(true);
+    expect(cut.previewHasGlossaryTerm).toBe(true);
+    expect(plan?.previewHtml).toMatch(/cast on|knit/i);
+    expect(previewLeavesMeaningfulRemainder({
+      ...cut,
+      previewEndPage: plan!.previewEndPage,
+      previewHtml: plan!.previewHtml,
+      remainingHtml: plan!.remainingHtml,
+    }, { isPdf: true })).toBe(true);
+  });
+
+  it('cuts after the cast-on and first rows when the first worked section is past the cap', () => {
+    const html = [
+      '<p data-page="1">October Magic Sweater</p>',
+      '<p data-page="1">Yarn: 400 (450, 500, 550, 600, 650) g</p>',
+      '<p data-page="2">Cast on 80 (90, 100, 110, 120, 130) stitches.</p>',
+      '<p data-page="2">Row 1: Knit 2, purl 2; repeat from * to end.</p>',
+      '<p data-page="2">Row 2: Knit 2, purl 2; repeat from * to end.</p>',
+      '<p data-page="3">Row 3: Knit 80 (90, 100, 110, 120, 130) stitches.</p>',
+      '<p data-page="3">Row 4: Purl.</p>',
+      '<p data-page="4">Row 5: Knit.</p>',
+      '<p data-page="4">Row 6: Purl.</p>',
+      '<h2 data-page="5">SLEEVES</h2>',
+      '<p data-page="5">Later sleeve section row 20: continue in pattern.</p>',
+      '<p data-page="6">Later finishing row 60: bind off all stitches.</p>',
+    ].join('\n');
+    const cut = cutPreviewHtml(html);
+    expect(documentPageCount(cut.segments)).toBe(6);
+    const plan = previewPlanFromCut(cut, true);
+    expect(plan).not.toBeNull();
+    expect(plan?.previewEndPage).toBe(2);
+    expect(plan?.previewHtml).toContain('Cast on 80 (90, 100, 110, 120, 130) stitches.');
+    expect(plan?.previewHtml).toContain('Row 1: Knit 2, purl 2');
+    expect(plan?.previewHtml).not.toContain('Row 5: Knit.');
+    expect(plan?.remainingHtml).toContain('Row 3: Knit 80');
+    expect(plan?.remainingHtml).toContain('SLEEVES');
+    expect(plan?.previewHtml).toMatch(/cast on|knit/i);
+    expect(previewLeavesMeaningfulRemainder({
+      ...cut,
+      previewEndPage: plan!.previewEndPage,
+      previewHtml: plan!.previewHtml,
+      remainingHtml: plan!.remainingHtml,
+    }, { isPdf: true })).toBe(true);
+  });
+
+  it('keeps the 50% page cap when even the cast-on sits past it', () => {
+    const html = [
+      '<p data-page="1">Willow Wrap Cardigan</p>',
+      '<p data-page="1">Yarn: 200 (220, 240, 260) g</p>',
+      '<p data-page="2">Cast on 80 (90, 100, 110) stitches.</p>',
+      '<p data-page="2">Row 1: Knit 2, purl 2; repeat from * to end.</p>',
+      '<p data-page="3">Later sleeve section row 20: continue in pattern.</p>',
+    ].join('\n');
+    const cut = cutPreviewHtml(html);
+    expect(documentPageCount(cut.segments)).toBe(3);
+    const plan = previewPlanFromCut(cut, true);
+    expect(plan).not.toBeNull();
+    expect(plan?.previewEndPage).toBe(1);
+    expect(plan?.previewHtml).toContain('Willow Wrap Cardigan');
+    expect(plan?.previewHtml).not.toContain('Cast on 80');
+    expect(plan?.remainingHtml).toContain('Cast on 80');
+    expect(plan!.previewEndPage / documentPageCount(cut.segments)).toBeLessThanOrEqual(PREVIEW_MAX_COVERAGE);
+    expect(plan!.previewEndPage).toBeLessThan(documentPageCount(cut.segments));
+  });
+
+  it('never lands a preview cut mid-repeat (* … * / rep from)', () => {
+    const fits = [
+      '<p data-page="1">October Magic Sweater</p>',
+      '<p data-page="1">Yarn: 400 (450, 500, 550) g</p>',
+      '<p data-page="2">Cast on 80 (90, 100, 110) stitches.</p>',
+      '<p data-page="2">Row 1: *Knit 2, purl 2; rep from *</p>',
+      '<p data-page="3">to last 2 stitches, knit 2.</p>',
+      '<p data-page="3">End of the repeat. Bind off.</p>',
+      '<p data-page="3">Row 3: Knit.</p>',
+      '<h2 data-page="4">SLEEVES</h2>',
+      '<p data-page="5">Later sleeve section row 20: continue in pattern.</p>',
+      '<p data-page="6">Later finishing row 60: bind off all stitches.</p>',
+    ].join('\n');
+    const fitsPlan = previewPlanFromCut(cutPreviewHtml(fits), true);
+    expect(fitsPlan).not.toBeNull();
+    expect(fitsPlan?.previewHtml).toContain('*Knit 2, purl 2; rep from *');
+    expect(fitsPlan?.previewHtml).toMatch(/end of the repeat/i);
+    expect(fitsPlan?.remainingHtml).not.toContain('*Knit 2, purl 2; rep from *');
+
+    const overCap = [
+      '<p data-page="1">Willow Wrap Cardigan</p>',
+      '<p data-page="1">Yarn: 200 (220, 240, 260) g</p>',
+      '<p data-page="2">Cast on 40 (44, 48) stitches.</p>',
+      '<p data-page="2">Row 1: *Knit 2, purl 2; rep from *</p>',
+      '<p data-page="3">to last 2 stitches, knit 2.</p>',
+      '<p data-page="3">End of the repeat. Bind off.</p>',
+      '<p data-page="4">Later sleeve section row 20: continue in pattern.</p>',
+    ].join('\n');
+    const overCapPlan = previewPlanFromCut(cutPreviewHtml(overCap), true);
+    expect(overCapPlan).not.toBeNull();
+    const openerInPreview = overCapPlan!.previewHtml.includes('*Knit 2, purl 2; rep from *');
+    const closerInPreview = /end of the repeat/i.test(overCapPlan!.previewHtml);
+    const openerInRemaining = overCapPlan!.remainingHtml.includes('*Knit 2, purl 2; rep from *');
+    const closerInRemaining = /end of the repeat/i.test(overCapPlan!.remainingHtml);
+    expect(openerInPreview && closerInRemaining && !closerInPreview).toBe(false);
+    expect(openerInRemaining && closerInPreview && !openerInPreview).toBe(false);
+    if (openerInPreview) expect(closerInPreview).toBe(true);
+    if (closerInRemaining) expect(openerInRemaining).toBe(true);
+  });
 });

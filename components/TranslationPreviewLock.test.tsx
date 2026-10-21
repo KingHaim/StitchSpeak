@@ -2,7 +2,11 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { TranslationPreviewLock, UNLOCK_TRANSLATION_LINE } from './TranslationPreviewLock';
+import {
+  formatUnlockConfirm,
+  TranslationPreviewLock,
+  UNLOCK_TRANSLATION_LINE,
+} from './TranslationPreviewLock';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -53,6 +57,97 @@ describe('TranslationPreviewLock', () => {
     });
     expect(container.textContent).toContain('Translation estimate: 6.5 credits');
     expect(container.textContent).not.toContain('0.5');
+  });
+
+  it('asks to confirm with the quoted cost and balance after before charging', async () => {
+    const onUnlock = vi.fn();
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(
+        <TranslationPreviewLock
+          remainingCost={6.5}
+          fullCost={6.5}
+          balance={20}
+          onUnlock={onUnlock}
+        />,
+      );
+    });
+
+    const lock = container.querySelector('[data-testid="translation-preview-lock"]');
+    await act(async () => {
+      lock?.querySelector('button')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(onUnlock).not.toHaveBeenCalled();
+
+    const dialog = container.querySelector('[data-testid="unlock-confirm-dialog"]');
+    expect(dialog).not.toBeNull();
+    expect(dialog?.textContent).toContain(formatUnlockConfirm(6.5, 20));
+    expect(dialog?.textContent).toContain('Unlock full translation for 6.5 credits? Balance 20.0 → 13.5');
+    expect(dialog?.textContent).not.toMatch(/\bAI\b/i);
+
+    const confirmButtons = Array.from(dialog?.querySelectorAll('button') ?? []);
+    expect(confirmButtons.map((button) => button.textContent)).toEqual(['Cancel', 'Unlock']);
+
+    await act(async () => {
+      confirmButtons.find((button) => button.textContent === 'Cancel')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(container.querySelector('[data-testid="unlock-confirm-dialog"]')).toBeNull();
+    expect(onUnlock).not.toHaveBeenCalled();
+  });
+
+  it('disables Unlock while the request is in flight so a double tap cannot fire twice', async () => {
+    const onUnlock = vi.fn();
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(
+        <TranslationPreviewLock
+          remainingCost={6.5}
+          fullCost={6.5}
+          balance={20}
+          onUnlock={onUnlock}
+        />,
+      );
+    });
+
+    const lock = container.querySelector('[data-testid="translation-preview-lock"]');
+    await act(async () => {
+      lock?.querySelector('button')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const dialog = container.querySelector('[data-testid="unlock-confirm-dialog"]');
+    const unlockButton = Array.from(dialog?.querySelectorAll('button') ?? [])
+      .find((button) => button.textContent === 'Unlock');
+    expect(unlockButton).toBeTruthy();
+
+    await act(async () => {
+      unlockButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      unlockButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(onUnlock).toHaveBeenCalledTimes(1);
+    expect(unlockButton?.disabled).toBe(true);
+  });
+
+  it('skips the confirm step when the balance cannot cover the quoted cost', async () => {
+    const onUnlock = vi.fn();
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(
+        <TranslationPreviewLock remainingCost={6.5} fullCost={6.5} balance={0} onUnlock={onUnlock} />,
+      );
+    });
+
+    await act(async () => {
+      container?.querySelector('button')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(container?.querySelector('[data-testid="unlock-confirm-dialog"]')).toBeNull();
+    expect(onUnlock).toHaveBeenCalledTimes(1);
   });
 
   it('shows payment polling copy instead of a dead end', async () => {
