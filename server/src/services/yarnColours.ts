@@ -56,68 +56,101 @@ function collectSourceText(html: string): string {
 }
 
 const COLOUR_LABEL = '(?:colou?r|col(?:or)?\\.?|n[úu]m(?:ero)?)';
-const COLOUR_CLAUSE_SPLIT = /[,;:.()]+/;
-const COLOUR_HARD_STOP = /^(para|el|la|los|las|en|y|con|hilo|hilos|yarn|un|una|al|a|o|u|the|for|of|and|with|to)$/iu;
+const COLOUR_PHRASE_STOP = /^(para|el|la|los|las|en|y|con|hilo|hilos|yarn|un|una|al|a|o|u|the|for|of|and|with|to)$/iu;
 const COLOUR_LINKER = /^(de|del)$/iu;
-const COLOUR_BRAND = /^(drops|yarn)$/iu;
+const GRAM_RUN_RE = /\d+(?:\s*[‐‑‒–—-]\s*\d+)+\s*g\b/iu;
+const NEXT_COLOUR_RE = /\b(?:colou?r|col(?:or)?\.?|n[úu]m(?:ero)?)\s*#?\s*\d/iu;
 
 function colourNameWords(region: string): string[] {
   return region
     .split(/\s+/u)
-    .map((word) => word.replace(/^[\s,:;–—.-]+|[\s,:;–—.-]+$/gu, '').trim())
+    .map((word) => word.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '').trim())
     .filter(Boolean);
 }
 
-function firstColourClause(region: string): string {
-  return region.replace(/^[\s,;:.()]+/, '').split(COLOUR_CLAUSE_SPLIT)[0]?.trim() ?? '';
+function sourceColourWordCount(sourceName: string): number {
+  return colourNameWords(sourceName).length;
 }
 
-function lastColourClause(region: string): string {
-  const trimmed = region.replace(/[\s,;:.()]+$/, '');
-  const parts = trimmed.split(COLOUR_CLAUSE_SPLIT);
-  return parts[parts.length - 1]?.trim() ?? '';
+/** Cut a materials-list colour span at line / list / next-item boundaries. */
+function cutStructuralColourSpan(text: string): string {
+  let span = text.split(/\n/)[0] ?? '';
+  span = span.split(';')[0] ?? '';
+  span = span.split('(')[0] ?? '';
+  const nextColour = span.search(NEXT_COLOUR_RE);
+  if (nextColour > 0) span = span.slice(0, nextColour);
+  const gramRun = span.search(GRAM_RUN_RE);
+  if (gramRun >= 0) span = span.slice(0, gramRun);
+  return span.replace(/^[\s,;:.]+/, '').trim();
 }
 
-function collectAdjacentColourNames(words: string[], direction: 'forward' | 'backward'): string | null {
-  const brandInClause = words.some((word) => COLOUR_BRAND.test(word) || COLOUR_HARD_STOP.test(word));
+function pushTaken(taken: string[], word: string, fromEnd: boolean): void {
+  if (fromEnd) taken.unshift(word);
+  else taken.push(word);
+}
+
+/**
+ * Fit a structural span to the known source colour name: take the same number
+ * of content words, plus an optional `de`/`del` glue (`Cherry Jam` →
+ * `Mermelada de cereza`). Phrase-starters like `para` are not part of the name.
+ */
+function fitAliasToSourceName(span: string, sourceName: string, fromEnd: boolean): string | null {
+  const words = colourNameWords(span);
+  const target = Math.max(1, sourceColourWordCount(sourceName));
+  if (words.length === 0) return null;
   const taken: string[] = [];
-  const step = direction === 'forward' ? 1 : -1;
-  for (
-    let index = direction === 'forward' ? 0 : words.length - 1;
-    index >= 0 && index < words.length && taken.length < 3;
-    index += step
-  ) {
+  let content = 0;
+  const start = fromEnd ? words.length - 1 : 0;
+  const step = fromEnd ? -1 : 1;
+  for (let index = start; index >= 0 && index < words.length; index += step) {
     const word = words[index];
-    if (COLOUR_HARD_STOP.test(word) || COLOUR_BRAND.test(word)) break;
+    const next = words[index + step];
+    const next2 = words[index + step + step];
     if (COLOUR_LINKER.test(word)) {
-      const next = words[index + step];
-      if (!next || COLOUR_HARD_STOP.test(next) || COLOUR_BRAND.test(next)) break;
-      if (direction === 'forward') taken.push(word);
-      else taken.unshift(word);
+      if (taken.length === 0 || !next || COLOUR_PHRASE_STOP.test(next)) break;
+      pushTaken(taken, word, fromEnd);
       continue;
     }
-    if (direction === 'forward') taken.push(word);
-    else taken.unshift(word);
-    // Yarn/brand prefix on the same clause (`hilo DROPS Air Café`): only the
-    // word touching `(color N)` is the colour name.
-    if (direction === 'backward' && brandInClause) break;
+    if (COLOUR_PHRASE_STOP.test(word)) break;
+    pushTaken(taken, word, fromEnd);
+    content += 1;
+    if (content < target) continue;
+    if (next && COLOUR_LINKER.test(next) && next2 && !COLOUR_PHRASE_STOP.test(next2)) {
+      pushTaken(taken, next, fromEnd);
+      pushTaken(taken, next2, fromEnd);
+    } else if (
+      !fromEnd
+      && target === 1
+      && next
+      && !COLOUR_LINKER.test(next)
+      && !COLOUR_PHRASE_STOP.test(next)
+      && (!next2 || COLOUR_PHRASE_STOP.test(next2))
+    ) {
+      // One-word source, two-word calque at end of span (`mezcla café`).
+      pushTaken(taken, next, fromEnd);
+    }
+    break;
   }
   return taken.length > 0 ? taken.join(' ') : null;
 }
 
 /** Visible colour-name tokens paired with a colour number — for tests and restore. */
-export function translatedNameForNumber(visible: string, number: string): string | null {
+export function translatedNameForNumber(
+  visible: string,
+  number: string,
+  sourceName: string,
+): string | null {
   const escaped = escapeRegExp(number);
+  const after = visible.match(new RegExp(`${COLOUR_LABEL}\\s*#?\\s*${escaped}([\\s\\S]*)`, 'iu'));
+  const afterName = after?.[1]
+    ? fitAliasToSourceName(cutStructuralColourSpan(after[1]), sourceName, false)
+    : null;
+  if (afterName) return afterName;
   const before = visible.match(
     new RegExp(`([\\s\\S]*?)\\(\\s*${COLOUR_LABEL}\\s*#?\\s*${escaped}\\s*\\)`, 'iu'),
   );
-  const beforeName = before?.[1]
-    ? collectAdjacentColourNames(colourNameWords(lastColourClause(before[1])), 'backward')
-    : null;
-  if (beforeName) return beforeName;
-  const after = visible.match(new RegExp(`${COLOUR_LABEL}\\s*#?\\s*${escaped}([\\s\\S]*)`, 'iu'));
-  return after?.[1]
-    ? collectAdjacentColourNames(colourNameWords(firstColourClause(after[1])), 'forward')
+  return before?.[1]
+    ? fitAliasToSourceName(cutStructuralColourSpan(before[1]), sourceName, true)
     : null;
 }
 
@@ -142,9 +175,9 @@ export function restoreYarnColourNamesInHtml(html: string): string {
   html.replace(
     /<(p|h[1-6]|li|th|td|blockquote)(\s[^>]*)?>([\s\S]*?)<\/\1>/gi,
     (_full, _tag: string, _attrs = '', inner: string) => {
-      const visible = decodeEntities(inner.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ');
+      const visible = decodeEntities(inner.replace(/<[^>]+>/g, '\n'));
       for (const colour of colours) {
-        const translated = translatedNameForNumber(visible, colour.number);
+        const translated = translatedNameForNumber(visible, colour.number, colour.name);
         if (translated && translated.localeCompare(colour.name, undefined, { sensitivity: 'accent' }) !== 0) {
           aliases.set(translated, colour.name);
         }

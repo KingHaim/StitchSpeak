@@ -74,7 +74,7 @@ describe('yarn colour product names', () => {
   });
 
   it('aliases only café in “color 08, café para el cuerpo”', () => {
-    expect(translatedNameForNumber('color 08, café para el cuerpo', '08')).toBe('café');
+    expect(translatedNameForNumber('color 08, café para el cuerpo', '08', 'Coffee')).toBe('café');
 
     const html = `
       <p data-o="Yarn A: Coffee (colour 08)">150 g color 08, café para el cuerpo</p>
@@ -88,12 +88,43 @@ describe('yarn colour product names', () => {
   });
 
   it('aliases only Café in “hilo DROPS Air Café (color 08)”', () => {
-    expect(translatedNameForNumber('hilo DROPS Air Café (color 08)', '08')).toBe('Café');
+    expect(translatedNameForNumber('hilo DROPS Air Café (color 08)', '08', 'Coffee')).toBe('Café');
 
     const html = '<p data-o="Yarn A: Coffee (colour 08)">hilo DROPS Air Café (color 08)</p>';
     const restored = restoreYarnColourNamesInHtml(html);
     expect(restored).toContain('hilo DROPS Air Coffee (color 08)');
     expect(restored).toContain('hilo DROPS Air');
     expect(restored).not.toMatch(/<(p)[^>]*>Coffee \(color 08\)<\/\1>/);
+  });
+
+  it('keeps multi-word colour names with de / two-word calques', () => {
+    expect(translatedNameForNumber(
+      '50-50-50-50-50-100-100 g color 20, Mermelada de cereza',
+      '20',
+      'Cherry Jam',
+    )).toBe('Mermelada de cereza');
+    expect(translatedNameForNumber('color 7230, Aceite de oliva', '7230', 'Olive Oil')).toBe('Aceite de oliva');
+    expect(translatedNameForNumber('color 7238, Verde musgo', '7238', 'Moss Green')).toBe('Verde musgo');
+
+    const html = `
+      <p data-o="Yarn B: 50-50-50-50-50-100-100 g colour 20, Cherry Jam">
+        50-50-50-50-50-100-100 g color 20, Mermelada de cereza
+      </p>
+      <p data-o="Yarn E: Olive Oil (colour 7230)">Hilo E: Aceite de oliva (color 7230)</p>
+      <p data-o="Yarn D: Moss Green (colour 7238)">Hilo D: Verde musgo (color 7238)</p>
+      <p data-o="Work Cherry Jam to the marker.">Teje Mermelada de cereza hasta el marcador.</p>
+    `;
+    const restored = restoreYarnColourNamesInHtml(html);
+
+    expect(restored).toContain('50-50-50-50-50-100-100 g color 20, Cherry Jam');
+    expect(restored).toContain('Olive Oil (color 7230)');
+    expect(restored).toContain('Moss Green (color 7238)');
+    expect(restored).toContain('Teje Cherry Jam hasta el marcador.');
+    expect(restored).not.toContain('Mermelada de cereza');
+    expect(restored).not.toContain('Cherry Jam de cereza');
+    expect(restored).not.toContain('Aceite de oliva');
+    expect(restored).not.toContain('de oliva');
+    expect(restored).not.toContain('Aceite de Olive Oil');
+    expect(restored).not.toContain('Verde musgo');
   });
 });
