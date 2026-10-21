@@ -187,10 +187,9 @@ export function restoreYarnColourNamesInHtml(html: string): {
       (name) => name.localeCompare(colour.name, undefined, { sensitivity: 'accent' }) !== 0,
     );
 
-    if (!sawMaterials || unconfident || usable.length > 1) {
-      if (sawMaterials || colours.length > 0) {
-        warnings.push(colourUnrestorableWarning(colour, materialsSource || colour.name, materialsSourceId));
-      }
+    if (!sawMaterials) continue;
+    if (unconfident || usable.length > 1) {
+      warnings.push(colourUnrestorableWarning(colour, materialsSource || colour.name, materialsSourceId));
       continue;
     }
     if (usable.length === 1) aliases.set(usable[0], colour.name);

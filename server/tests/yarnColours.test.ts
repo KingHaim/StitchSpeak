@@ -53,6 +53,14 @@ describe('yarn colour product names', () => {
     expect(yarnColourPromptRule([])).toMatch(/Never translate them/);
   });
 
+  it('emits no colour warning when there is no materials block and no colour entries', () => {
+    const html = '<p data-o="Cast on 20 stitches.">Monta 20 puntos.</p>';
+    const { html: restored, reviewWarnings } = restoreYarnColourNamesInHtml(html);
+    expect(restored).toBe(html);
+    expect(reviewWarnings).toEqual([]);
+    expect(reviewWarnings.some((warning) => warning.code === 'YARN_COLOUR_UNRESTORABLE')).toBe(false);
+  });
+
   it('does not treat DROPS yarn-list wording as the colour name', () => {
     const source = [
       'Yarn A: DROPS Air from Garnstudio (belongs to yarn group C)',
