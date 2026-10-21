@@ -79,7 +79,10 @@ describe('Spanish glossary terminology', () => {
     expect(spanish('slm')).toEqual({ abbreviation: 'dm', full: 'deslizar marcador' });
     expect(spanish('m1r')?.abbreviation).toBe('A1D');
     expect(spanish('m1l')?.abbreviation).toBe('A1I');
-    expect(spanish('k2tog')?.abbreviation).toBe('2pjD');
+    expect(spanish('k2tog')).toEqual({
+      abbreviation: '',
+      full: 'teje 2 puntos juntos del derecho',
+    });
   });
 
   it('uses LD and LR consistently for the right and wrong sides', () => {

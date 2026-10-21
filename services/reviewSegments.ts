@@ -54,5 +54,6 @@ export function flaggedSegIds(
 export function warningKindLabel(code: string): string {
   if (code.startsWith('NUMBER') || code === 'UNAUDITED_NUMBERS') return 'Numbers';
   if (code.startsWith('GLOSSARY')) return 'Glossary';
+  if (code.startsWith('YARN')) return 'Yarn';
   return 'Review';
 }

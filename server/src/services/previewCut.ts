@@ -41,6 +41,7 @@ export interface PreviewSegment {
   isChart: boolean;
   isLegend: boolean;
   isSizeTable: boolean;
+  isTipOrNote: boolean;
 }
 
 export interface PreviewCut {
@@ -60,14 +61,28 @@ const BLOCK_RE = /<(p|h[1-6]|li|tr|table|blockquote|pre)(\s[^>]*)?>[\s\S]*?<\/\1
 
 const SIZE_ROW_RE = /\d[\d.,/]*\s*\(\s*\d/;
 const NUMBER_RE = /\d/;
-const REPEAT_OPEN_RE = /\brepeat\b|\brep\.?\s+from|\brep\.?\s+\*|\*\s*$/i;
+const REPEAT_OPEN_RE = /\brep(?:eat)?\.?\s+from|\brep\.?\s+\*|\*\s*$/i;
 const REPEAT_CLOSE_RE = /end of (?:the )?repeat|rep(?:eat)? from \* to (?:end|last)|hasta el final/i;
 const CAST_ON_RE =
   /\b(cast\s*on|\bco\b|montar(?:\s+puntos)?|anschlagen|monter les mailles|avviare|opzetten|l[aä]gga upp|legge opp|slå op|luoda silmukat)\b/i;
 const BODY_YOKE_RE = /\b(body|yoke|canes[uú]|cuerpo|rumpf|empi[eè]cement|delantero|back|manga|sleeve)\b/i;
+/** The first worked garment part — not sleeves / finishing / charts. */
+const FIRST_WORKED_PART_RE =
+  /\b(body|yoke|canes[uú]|cuerpo|rumpf|empi[eè]cement|delantero|back|front|espalda|delantera)\b/i;
+/** Next major part after the first worked section. */
+const NEXT_PART_RE =
+  /\b(sleeves?|mangas?|finishing|acabado|assembly|ensamblaje|making up|charts?|gr[aá]ficos?|neck(?:line)?|collar|cuello|hood|capucha)\b/i;
 const ROW_ROUND_RE =
-  /\b((?:row|round|rang|tour|vuelta|reihe|md)\s*\.?\s*\d|\b(knit|purl|k\d|p\d|derecho|revés)\b)/i;
+  /\b((?:row|round|rang|tour|vuelta|reihe|md)\s*\.?\s*\d|\b(knit|purl|derecho|revés)\b|\bk\d+(?![a-zA-Z])|\bp\d+(?![a-zA-Z]))/i;
 const HEADING_RE = /^h[1-6]$/i;
+/**
+ * Tip / note / consejo labels. Anchored at the start so "Row 1: note the
+ * marker" is not treated as a tip section. "DECREASE TIP" and
+ * "CONSEJO DE DISMINUCIÓN" are the prod false-start that used to steal the
+ * first-worked-section cut.
+ */
+const TIP_NOTE_RE =
+  /^(decrease\s+tip|increase\s+tip|cast[- ]on\s+tip|bind[- ]off\s+tip|tip|hint|note|notes|consejo(?:\s+de\s+\w+)?|nota|notas|astuce|hinweis|conseil)\b/i;
 
 /**
  * High-signal craft terms (full forms and multi-character abbreviations).
@@ -105,8 +120,14 @@ function readTag(html: string): string {
 }
 
 export function classifySegmentText(text: string, tag = 'p'): Omit<PreviewSegment, 'index' | 'html' | 'page'> {
+  // A line that *ends* with "rep from *" / "repeat from *" continues on the
+  // next line even when it also has a leading `*`. Only treat `*…*` as
+  // self-contained when the repeat is closed on the same line.
+  const opensOntoNextLine = /(?:rep(?:eat)?\.?\s+from\s+\*|repeat from \*)\s*$/i.test(text.trim());
   const isSelfContainedRepeat =
-    REPEAT_OPEN_RE.test(text) && (REPEAT_CLOSE_RE.test(text) || /\*.+\*/.test(text) || /to end/i.test(text));
+    REPEAT_OPEN_RE.test(text)
+    && !opensOntoNextLine
+    && (REPEAT_CLOSE_RE.test(text) || /\*.+\*/.test(text) || /to end/i.test(text));
   const isSizeRow = SIZE_ROW_RE.test(text);
   return {
     text,
@@ -123,7 +144,37 @@ export function classifySegmentText(text: string, tag = 'p'): Omit<PreviewSegmen
     isChart: CHART_RE.test(text),
     isLegend: LEGEND_RE.test(text),
     isSizeTable: tag === 'table' && (isSizeRow || SIZE_ROW_RE.test(text)),
+    isTipOrNote: TIP_NOTE_RE.test(text.trim()),
   };
+}
+
+function isTipHeading(segment: Pick<PreviewSegment, 'text' | 'isHeading' | 'isCastOn' | 'isTipOrNote'>): boolean {
+  if (!segment.isTipOrNote || segment.isCastOn) return false;
+  if (segment.isHeading) return true;
+  // Short label paragraphs used as faux headings ("DECREASE TIP").
+  return segment.text.trim().length <= 80 && !/\d/.test(segment.text);
+}
+
+/**
+ * True for each segment that sits inside a tip/note/consejo block (the
+ * heading plus following body until the next real heading).
+ */
+function tipSectionFlags(segments: Array<Pick<PreviewSegment, 'text' | 'isHeading' | 'isCastOn' | 'isTipOrNote' | 'hasNumbers' | 'isBodyOrYoke'>>): boolean[] {
+  const flags = segments.map(() => false);
+  let inTip = false;
+  for (let i = 0; i < segments.length; i += 1) {
+    const segment = segments[i];
+    const startsWorked = (segment.isCastOn && segment.hasNumbers) || segment.isBodyOrYoke;
+    if (startsWorked) {
+      inTip = false;
+    } else if (isTipHeading(segment)) {
+      inTip = true;
+    } else if (segment.isHeading) {
+      inTip = false;
+    }
+    flags[i] = inTip;
+  }
+  return flags;
 }
 
 function assignPages(
@@ -169,15 +220,34 @@ export function segmentsFromHtml(html: string): PreviewSegment[] {
   return assignPages(raw);
 }
 
-function firstWorkedSectionEnd(segments: PreviewSegment[]): number {
+/**
+ * Index of the first real worked instruction (cast-on with stitch counts,
+ * or the first numbered row/round / size row). Tip/note/consejo sections
+ * are skipped — "DECREASE TIP" / "CONSEJO DE DISMINUCIÓN" is not the
+ * first worked section even when it mentions k2tog.
+ */
+export function firstWorkedSectionStart(segments: PreviewSegment[]): number {
+  if (segments.length === 0) return -1;
+  const inTip = tipSectionFlags(segments);
+  const castOn = segments.findIndex((segment, index) =>
+    !inTip[index] && segment.isCastOn && segment.hasNumbers);
+  if (castOn >= 0) return castOn;
+  return segments.findIndex((segment, index) =>
+    !inTip[index] && segment.hasNumbers && (segment.isRowOrRound || segment.isSizeRow));
+}
+
+/**
+ * Exclusive end of the cast-on (all size columns) plus its first rows or
+ * rounds, snapped to a row / repeat boundary. Fallback when the full first
+ * worked section does not fit under the money cap.
+ */
+export function castOnAndFirstRowsEnd(segments: PreviewSegment[]): number {
   if (segments.length === 0) return 0;
 
-  const castOn = segments.findIndex((segment) => segment.isCastOn && segment.hasNumbers);
-  const start = castOn >= 0
-    ? castOn
-    : segments.findIndex((segment) => segment.hasNumbers && (segment.isRowOrRound || segment.isSizeRow));
+  const start = firstWorkedSectionStart(segments);
   if (start < 0) {
-    const anyNumbered = segments.findIndex((segment) => segment.hasNumbers);
+    const inTip = tipSectionFlags(segments);
+    const anyNumbered = segments.findIndex((segment, index) => !inTip[index] && segment.hasNumbers);
     return anyNumbered >= 0 ? anyNumbered + 1 : Math.min(1, segments.length);
   }
 
@@ -200,6 +270,7 @@ function firstWorkedSectionEnd(segments: PreviewSegment[]): number {
       }
       break;
     }
+    if (isLaterPartStart(segment)) break;
     if (segment.isRowOrRound || segment.isRepeatOpener) {
       end += 1;
       includedRows += 1;
@@ -215,7 +286,50 @@ function firstWorkedSectionEnd(segments: PreviewSegment[]): number {
     break;
   }
 
-  return Math.max(end, start + 1);
+  return snapToSafeBoundary(segments, Math.max(end, start + 1));
+}
+
+function isLaterPartStart(segment: PreviewSegment): boolean {
+  const trimmed = segment.text.trim();
+  if (/^later\b/i.test(trimmed)) return true;
+  if (FIRST_WORKED_PART_RE.test(segment.text) && !NEXT_PART_RE.test(segment.text)) return false;
+  if (!NEXT_PART_RE.test(segment.text)) return false;
+  if (segment.isHeading) return true;
+  if (trimmed.length <= 80 && !segment.hasNumbers) return true;
+  return /^(sleeves?|mangas?|finishing|acabado|assembly|ensamblaje|making up|charts?|gr[aá]ficos?|neck(?:line)?|collar|cuello|hood|capucha)\b/i.test(trimmed);
+}
+
+/**
+ * Exclusive end of the first worked section (cast-on with stitch counts,
+ * then body/yoke rows until the next major part — sleeves, finishing,
+ * charts). Never stops mid-repeat.
+ */
+export function firstWorkedSectionEnd(segments: PreviewSegment[]): number {
+  const opening = castOnAndFirstRowsEnd(segments);
+  if (opening <= 0 || opening >= segments.length) return opening;
+
+  let end = opening;
+  while (end < segments.length) {
+    const segment = segments[end];
+    if (isLaterPartStart(segment)) break;
+    if (segment.isHeading && !FIRST_WORKED_PART_RE.test(segment.text) && !segment.isCastOn && !segment.isTipOrNote) {
+      break;
+    }
+    const instructionalRow = /^(row|round|rang|tour|vuelta|reihe|md)\s*\.?\s*\d/i.test(segment.text.trim());
+    const keep = instructionalRow
+      || segment.isSizeRow
+      || segment.isCastOn
+      || segment.isBodyOrYoke
+      || segment.isRepeatOpener
+      || segment.isRepeatCloser
+      || segment.isSelfContainedRepeat
+      || segment.isTipOrNote
+      || (segment.isHeading && FIRST_WORKED_PART_RE.test(segment.text));
+    if (!keep) break;
+    end += 1;
+  }
+
+  return snapToSafeBoundary(segments, Math.max(end, opening));
 }
 
 function capEnd(segments: PreviewSegment[]): number {
@@ -252,6 +366,46 @@ function snapToSafeBoundary(segments: PreviewSegment[], end: number): number {
   }
 
   return next;
+}
+
+/** Exclusive end just before the last unclosed repeat opener (never mid-repeat). */
+function cutBeforeOpenRepeat(segments: PreviewSegment[], end: number): number {
+  const next = Math.max(0, Math.min(end, segments.length));
+  let openRepeats = 0;
+  let lastOpener = -1;
+  for (let i = 0; i < next; i += 1) {
+    if (segments[i].isSelfContainedRepeat) continue;
+    if (segments[i].isRepeatOpener) {
+      openRepeats += 1;
+      lastOpener = i;
+    }
+    if (segments[i].isRepeatCloser && openRepeats > 0) openRepeats -= 1;
+  }
+  if (openRepeats > 0 && lastOpener >= 0) return lastOpener;
+  return next;
+}
+
+/**
+ * Snap a segment cut to a safe boundary without crossing `maxEnd`. If a
+ * repeat would straddle the cap, cut before the opener — never mid `*…*` /
+ * "rep from".
+ */
+export function boundPreviewEnd(segments: PreviewSegment[], end: number, maxEnd: number): number {
+  const desired = Math.max(0, Math.min(end, segments.length));
+  const cap = Math.max(0, Math.min(maxEnd, segments.length));
+  const snapped = snapToSafeBoundary(segments, desired);
+  if (snapped <= cap) return snapped;
+  return cutBeforeOpenRepeat(segments, Math.min(desired, cap));
+}
+
+/**
+ * Whole-page cut that does not split a protected span and does not exceed
+ * `maxPage`. Walks back when a repeat / table / chart would cross the cap.
+ */
+export function boundPreviewPage(segments: PreviewSegment[], page: number, maxPage: number): number {
+  let n = Math.max(1, Math.min(page, maxPage));
+  while (n >= 1 && pageBoundarySplitsProtected(segments, n)) n -= 1;
+  return Math.max(1, n);
 }
 
 function ensureCraftCoverage(segments: PreviewSegment[], end: number): number {

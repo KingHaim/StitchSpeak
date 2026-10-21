@@ -1475,6 +1475,7 @@ export const DashboardPage: React.FC = () => {
                       <TranslationPreviewLock
                         remainingCost={selectedJob.remainingCost}
                         fullCost={selectedJob.fullCost ?? selectedJob.priceEstimate?.translationCost}
+                        balance={balance}
                         waitingForCredits={waitingForPreviewCredits}
                         unlocking={previewUnlocking || selectedJob.status === 'unlocking'}
                         onUnlock={handleUnlockPreview}
@@ -1533,6 +1534,7 @@ export const DashboardPage: React.FC = () => {
                   <TranslationPreviewLock
                     remainingCost={selectedJob.remainingCost}
                     fullCost={selectedJob.fullCost ?? selectedJob.priceEstimate?.translationCost}
+                    balance={balance}
                     waitingForCredits={waitingForPreviewCredits}
                     unlocking={previewUnlocking || selectedJob.status === 'unlocking'}
                     onUnlock={handleUnlockPreview}

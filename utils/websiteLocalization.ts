@@ -234,6 +234,12 @@ export const ENGLISH_WEBSITE_COPY = {
     retry: 'Retry',
     dismiss: 'Dismiss',
   },
+  unlockConfirm: {
+    message: 'Unlock full translation for {cost} credits? Balance {balance} → {after}',
+    unlock: 'Unlock',
+    cancel: 'Cancel',
+    unlocking: 'Unlocking…',
+  },
   footer: {
     copyright: 'StitchSpeak. Operated by Innovai Studio S.L.',
     privacy: 'Privacy Policy',
@@ -470,6 +476,12 @@ export const SPANISH_WEBSITE_COPY: WebsiteCopy = {
     supportAction: 'Escribir a soporte',
     retry: 'Reintentar',
     dismiss: 'Cerrar',
+  },
+  unlockConfirm: {
+    message: '¿Desbloquear la traducción completa por {cost} créditos? Saldo {balance} → {after}',
+    unlock: 'Desbloquear',
+    cancel: 'Cancelar',
+    unlocking: 'Desbloqueando…',
   },
   footer: {
     copyright: 'StitchSpeak. Operado por Innovai Studio S.L.',

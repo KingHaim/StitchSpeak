@@ -220,12 +220,17 @@ function normalizeGaugeSeparators(text: string): string {
 
 /** Shared pre-tokenization normalization for numbers, units, and skeletons. */
 function normalizeTokenText(text: string): string {
-  return normalizeGaugeSeparators(normalizeVulgarFractions(text));
+  return normalizeGaugeSeparators(text);
 }
 
-// Mirrors extractProtectedNumbers in gemini.ts: plain numbers with optional
-// decimal part, optional dash range, optional fraction suffix.
-const NUMBER_TOKEN_SOURCE = '\\d+(?:[.,]\\d+)?(?:\\s*[‐‑‒–—-]\\s*\\d+(?:[.,]\\d+)?)?(?:\\/\\d+(?:[.,]\\d+)?)?';
+// Mirrors extractProtectedNumbers in gemini.ts: one decimal/integer/fraction
+// atom, including unicode vulgar fractions so restore can copy 2⅜ rather than
+// 2.375. Hyphens in DROPS-style size runs (`23-23-24-24-25-25`) and two-number
+// ranges (`5-7`) are separators, not part of the token — pairing them as
+// `23–23` / `5–7` false-positives when the translation keeps every value but
+// respells the join as commas, spaces, or a different dash.
+const NUMBER_TOKEN_SOURCE =
+  '(?:\\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\\d+(?:[.,]\\d+)?(?:\\/\\d+(?:[.,]\\d+)?)?)';
 
 interface TokenMatch {
   start: number;
@@ -246,10 +251,12 @@ function numberMatches(text: string): TokenMatch[] {
 /**
  * Canonical form of one numeric token: decimal commas become dots, every dash
  * variant becomes an en dash, and trailing zeros are dropped so legitimate
- * locale reformatting ("2.5" → "2,50", "5-7" → "5–7") never counts as drift.
+ * locale reformatting ("2.5" → "2,50") never counts as drift. Dash-joined
+ * size runs and ranges are flattened to their individual values, so
+ * "5-7" ↔ "5–7" ↔ "5, 7" agree when the numbers match.
  */
 function canonicalNumberToken(token: string): string {
-  return token
+  return normalizeVulgarFractions(token)
     .replace(/,/g, '.')
     .replace(/\s*[‐‑‒–—-]\s*/g, '–')
     .replace(/\d+(?:\.\d+)?/g, (value) => String(Number.parseFloat(value)));
@@ -305,6 +312,7 @@ const UNIT_CANONICAL: Record<string, string> = {
   pouces: 'in',
   '"': 'in',
   '″': 'in',
+  us: 'us',
   g: 'g',
   gr: 'g',
   grs: 'g',
@@ -408,7 +416,8 @@ function hasMassContextAfter(text: string, index: number): boolean {
  * prose (M1/M1L/M1R, "lifting …") — see BARE_GRAM_TOKENS above.
  */
 function unitMatches(text: string): UnitMatch[] {
-  const pattern = new RegExp(`(?<=\\d)\\s*(${UNIT_ALTERNATIVES})(?![\\p{L}\\p{N}])`, 'giu');
+  // Vulgar fractions are not `\d`, so `9½"` must still see the inch mark.
+  const pattern = new RegExp(`(?<=[\\d½¼¾⅛⅜⅝⅞])\\s*(${UNIT_ALTERNATIVES})(?![\\p{L}\\p{N}])`, 'giu');
   const matches: UnitMatch[] = [];
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(text)) !== null) {
@@ -426,12 +435,38 @@ function unitMatches(text: string): UnitMatch[] {
     const start = match.index + match[0].length - raw.length;
     matches.push({ start, end: pattern.lastIndex, raw, canonical: UNIT_CANONICAL[lowered] ?? lowered });
   }
+  const usPattern = /(?<![\p{L}\p{N}])US(?=\s*\d)/giu;
+  let usMatch: RegExpExecArray | null;
+  while ((usMatch = usPattern.exec(text)) !== null) {
+    matches.push({
+      start: usMatch.index,
+      end: usPattern.lastIndex,
+      raw: usMatch[0],
+      canonical: 'us',
+    });
+  }
+  matches.sort((a, b) => a.start - b.start || a.end - b.end);
   return matches;
 }
 
 /** Canonical measurement-unit sequence of a text. */
 export function canonicalUnitTokens(text: string): string[] {
   return unitMatches(normalizeTokenText(text)).map((match) => match.canonical);
+}
+
+const INCH_RUN_RE =
+  /(?:\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\d+(?:[.,]\d+)?)(?:\s*[‐‑‒–—-]\s*(?:\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\d+(?:[.,]\d+)?))*\s*(?:["″]|in\b|inch(?:es)?\b|pulgadas?\b|pulg\b)/giu;
+
+/** Number atoms that belong to an inch / imperial run (`9-9-9½"` / `4 in`). */
+export function imperialNumberTokens(text: string): string[] {
+  return [...normalizeTokenText(text).matchAll(INCH_RUN_RE)]
+    .flatMap((match) => canonicalNumberTokens(match[0]));
+}
+
+/** Number atoms that belong to a US needle-size equivalence (`US 2.5`). */
+export function usSizeNumberTokens(text: string): string[] {
+  return [...text.matchAll(/\bUS\s*(\d+(?:[.,]\d+)?)/gi)]
+    .map((match) => canonicalNumberToken(match[1]));
 }
 
 function displaySequence(tokens: string[]): string {
@@ -469,13 +504,211 @@ function hasDrift(prints: SegmentFingerprints): boolean {
     || prints.sourceUnits.join('|') !== prints.translatedUnits.join('|');
 }
 
+function hasDroppedEquivalence(sourceText: string, translatedText: string): boolean {
+  // Only dual `cm / "` runs and `US n` needle equivalences — a standalone
+  // `4 in` → `4 tommer` is a localized unit, not a dropped conversion.
+  if (extractDualMeasurementClauses(sourceText).some((clause) => clause.metricUnit === 'cm')) {
+    const sourceImperial = imperialNumberTokens(sourceText);
+    const translatedImperial = imperialNumberTokens(translatedText);
+    if (sourceImperial.length > 0 && translatedImperial.join('|') !== sourceImperial.join('|')) {
+      return true;
+    }
+  }
+  const sourceUs = usSizeNumberTokens(sourceText);
+  const translatedUs = usSizeNumberTokens(translatedText);
+  return sourceUs.length > 0 && translatedUs.join('|') !== sourceUs.join('|');
+}
+
 /**
  * Token-surgical restore: splice the source numeric/unit tokens over the
  * drifted ones inside the translated inner HTML, leaving every surrounding
  * target-language word and inline tag untouched. Returns null when a safe
  * 1:1 token mapping does not exist.
  */
-function restoreSegmentInnerHtml(segment: PositionedSegment, prints: SegmentFingerprints): string | null {
+interface DualMeasurementClause {
+  metricUnit: 'cm' | 'mm';
+  /** Exact source substring after the metric unit, including joiner and spacing. */
+  tail: string;
+  extraNumbers: string[];
+  /** Index among every number+unit run in the source, not only conversion clauses. */
+  anchorIndex: number;
+  /** Canonical numbers of the metric run this conversion belongs to (`23-23-24`). */
+  metricValues: string[];
+}
+
+const INCH_ATOM = '(?:\\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\\d+(?:[.,]\\d+)?)';
+const METRIC_NUMBER = '\\d[\\d.,½¼¾⅛⅜⅝⅞]*';
+const METRIC_RUN_RE = new RegExp(
+  `((?:${METRIC_NUMBER})(?:\\s*[‐‑‒–—-]\\s*${METRIC_NUMBER})*)\\s*(cm|mm)(?!\\p{L})`,
+  'giu',
+);
+const CM_CONVERSION_TAIL =
+  `\\s*(?:=|/)\\s*(?:${INCH_ATOM}["″](?:\\s*[‐‑‒–—-]\\s*${INCH_ATOM}["″])+|${INCH_ATOM}(?:\\s*[‐‑‒–—-]\\s*${INCH_ATOM})*\\s*["″])`;
+const MM_CONVERSION_TAIL_RE = /^\s*=\s*US\s*\d+(?:[.,]\d+)?/i;
+
+interface MetricAnchor {
+  unit: 'cm' | 'mm';
+  values: string[];
+  start: number;
+  unitEnd: number;
+}
+
+function conversionTailAfter(text: string, unitEnd: number, unit: 'cm' | 'mm'): string | null {
+  const rest = text.slice(unitEnd);
+  if (unit === 'cm') {
+    const match = rest.match(new RegExp(`^${CM_CONVERSION_TAIL}`, 'iu'));
+    return match?.[0] ?? null;
+  }
+  return rest.match(MM_CONVERSION_TAIL_RE)?.[0] ?? null;
+}
+
+function findMetricAnchorsInText(text: string): MetricAnchor[] {
+  const anchors: MetricAnchor[] = [];
+  const runRe = new RegExp(METRIC_RUN_RE.source, 'giu');
+  let match: RegExpExecArray | null;
+  while ((match = runRe.exec(text)) !== null) {
+    anchors.push({
+      unit: match[2].toLocaleLowerCase() as 'cm' | 'mm',
+      values: canonicalNumberTokens(match[1]),
+      start: match.index,
+      unitEnd: match.index + match[0].length,
+    });
+  }
+  return anchors;
+}
+
+function extractDualMeasurementClauses(sourceText: string): DualMeasurementClause[] {
+  const clauses: DualMeasurementClause[] = [];
+  findMetricAnchorsInText(sourceText).forEach((anchor, anchorIndex) => {
+    const tail = conversionTailAfter(sourceText, anchor.unitEnd, anchor.unit);
+    if (tail == null) return;
+    clauses.push({
+      metricUnit: anchor.unit,
+      tail,
+      extraNumbers: anchor.unit === 'cm' ? canonicalNumberTokens(tail) : usSizeNumberTokens(tail),
+      anchorIndex,
+      metricValues: anchor.values,
+    });
+  });
+  return clauses;
+}
+
+interface HtmlMetricAnchor extends MetricAnchor {
+  part: number;
+  afterNear: string;
+}
+
+function findMetricAnchorsInHtml(innerHtml: string): HtmlMetricAnchor[] {
+  const parts = innerHtml.split(/(<[^>]*>)/);
+  const anchors: HtmlMetricAnchor[] = [];
+  parts.forEach((part, partIndex) => {
+    if (part.startsWith('<')) return;
+    const runRe = new RegExp(METRIC_RUN_RE.source, 'giu');
+    let match: RegExpExecArray | null;
+    while ((match = runRe.exec(part)) !== null) {
+      const unitEnd = match.index + match[0].length;
+      anchors.push({
+        unit: match[2].toLocaleLowerCase() as 'cm' | 'mm',
+        values: canonicalNumberTokens(match[1]),
+        start: match.index,
+        unitEnd,
+        part: partIndex,
+        afterNear: '',
+      });
+    }
+  });
+  anchors.forEach((anchor, index) => {
+    const next = anchors[index + 1];
+    let after = '';
+    const first = parts[anchor.part];
+    after = first.slice(anchor.unitEnd);
+    for (let partIndex = anchor.part + 1; partIndex < parts.length; partIndex += 1) {
+      if (next && partIndex > next.part) break;
+      if (next && partIndex === next.part) {
+        if (!parts[partIndex].startsWith('<')) after += parts[partIndex].slice(0, next.start);
+        break;
+      }
+      if (parts[partIndex].startsWith('<')) continue;
+      after += parts[partIndex];
+    }
+    if (next && next.part === anchor.part) {
+      after = first.slice(anchor.unitEnd, next.start);
+    }
+    anchor.afterNear = after;
+  });
+  return anchors;
+}
+
+function valuesEqual(left: string[], right: string[]): boolean {
+  return left.join('|') === right.join('|');
+}
+
+function matchTranslatedAnchor(
+  translated: HtmlMetricAnchor[],
+  clause: DualMeasurementClause,
+): HtmlMetricAnchor | null {
+  const sameValues = translated.filter(
+    (anchor) => anchor.unit === clause.metricUnit && valuesEqual(anchor.values, clause.metricValues),
+  );
+  if (sameValues.length === 1) return sameValues[0];
+  if (sameValues.length > 1) {
+    const atIndex = translated[clause.anchorIndex];
+    if (atIndex && sameValues.includes(atIndex)) return atIndex;
+    return sameValues[0];
+  }
+  return null;
+}
+
+function clauseConversionPresent(afterNear: string, clause: DualMeasurementClause): boolean {
+  const folded = afterNear.replace(/\s+/g, '').toLocaleLowerCase();
+  const tailFolded = clause.tail.replace(/\s+/g, '').toLocaleLowerCase();
+  if (folded.startsWith(tailFolded)) return true;
+  if (clause.metricUnit === 'cm') {
+    return imperialNumberTokens(afterNear).length > 0;
+  }
+  return usSizeNumberTokens(afterNear).length > 0;
+}
+
+function insertTailAtAnchor(innerHtml: string, anchor: HtmlMetricAnchor, tail: string): string {
+  const parts = innerHtml.split(/(<[^>]*>)/);
+  const part = parts[anchor.part];
+  if (part == null || part.startsWith('<')) return innerHtml;
+  parts[anchor.part] = `${part.slice(0, anchor.unitEnd)}${tail}${part.slice(anchor.unitEnd)}`;
+  return parts.join('');
+}
+
+/**
+ * When the translation kept the metric side but dropped the inch run or
+ * "= US n" needle equivalence, splice the source's own conversion tail
+ * back in — never a synthesized ` / 9-9-9½"` form.
+ */
+function restoreMissingEquivalenceClauses(segment: PositionedSegment): string | null {
+  const clauses = extractDualMeasurementClauses(segment.sourceText);
+  if (clauses.length === 0) return null;
+  let next = segment.innerHtml;
+  let changed = false;
+  const jobs = clauses
+    .map((clause) => {
+      const target = matchTranslatedAnchor(findMetricAnchorsInHtml(next), clause);
+      return target ? { clause, target } : null;
+    })
+    .filter((job): job is { clause: DualMeasurementClause; target: HtmlMetricAnchor } => job !== null)
+    .sort((left, right) => right.target.part - left.target.part || right.target.unitEnd - left.target.unitEnd);
+
+  for (const job of jobs) {
+    const target = matchTranslatedAnchor(findMetricAnchorsInHtml(next), job.clause);
+    if (target == null) continue;
+    if (clauseConversionPresent(target.afterNear, job.clause)) continue;
+    const inserted = insertTailAtAnchor(next, target, job.clause.tail);
+    if (inserted !== next) {
+      next = inserted;
+      changed = true;
+    }
+  }
+  return changed ? next : null;
+}
+
+function restoreDriftedTokensInSegment(segment: PositionedSegment, prints: SegmentFingerprints): string | null {
   const sourceNumberTokens = numberMatches(normalizeTokenText(segment.sourceText));
 
   // Split into text/tag parts so replacements can never touch markup.
@@ -545,6 +778,20 @@ function restoreSegmentInnerHtml(segment: PositionedSegment, prints: SegmentFing
   return rebuiltParts.join('');
 }
 
+function restoreSegmentInnerHtml(segment: PositionedSegment, prints: SegmentFingerprints): string | null {
+  const equivalenceRestore = restoreMissingEquivalenceClauses(segment);
+  const working = equivalenceRestore === null
+    ? segment
+    : {
+        ...segment,
+        innerHtml: equivalenceRestore,
+        translatedText: plainTextFromHtml(equivalenceRestore),
+      };
+  const tokenPrints = equivalenceRestore === null ? prints : fingerprintSegment(working);
+  const tokenRestore = restoreDriftedTokensInSegment(working, tokenPrints);
+  return tokenRestore ?? equivalenceRestore;
+}
+
 interface DriftedSegment {
   segment: PositionedSegment;
   prints: SegmentFingerprints;
@@ -561,7 +808,9 @@ function findFirstDriftedSegment(html: string, skipKeys?: ReadonlySet<string>): 
     const key = segment.sourceId ?? `cell:${occurrence}:${segment.sourceText}`;
     if (skipKeys?.has(key)) continue;
     const prints = fingerprintSegment(segment);
-    if (!hasDrift(prints)) continue;
+    if (!hasDrift(prints) && !hasDroppedEquivalence(segment.sourceText, segment.translatedText)) {
+      continue;
+    }
     return { segment, prints, key };
   }
   return null;
@@ -581,6 +830,9 @@ function restoredWarning(drift: DriftedSegment): TranslationTopologyWarning {
   }
   if (prints.sourceUnits.join('|') !== prints.translatedUnits.join('|')) {
     details.push(`units [${displaySequence(prints.translatedUnits)}] → [${displaySequence(prints.sourceUnits)}]`);
+  }
+  if (details.length === 0) {
+    details.push('dropped inch or US-size equivalence');
   }
   return {
     code: 'NUMBER_RESTORED',
@@ -603,7 +855,7 @@ export interface UnrestorableNumberDrift {
   sourceText: string;
   /** Current translated plain text of the block. */
   translatedText: string;
-  /** Locked source number tokens (vulgar fractions normalized), in order. */
+  /** Locked source number tokens (original vulgar fractions), in order. */
   lockedNumbers: string[];
   /** Locked canonical source unit tokens, in order. */
   lockedUnits: string[];
@@ -626,7 +878,8 @@ export function sourceNumberSkeleton(sourceText: string): { numbers: string[]; u
  */
 export function textMatchesNumberSkeleton(sourceText: string, candidateText: string): boolean {
   return canonicalNumberTokens(sourceText).join('|') === canonicalNumberTokens(candidateText).join('|')
-    && canonicalUnitTokens(sourceText).join('|') === canonicalUnitTokens(candidateText).join('|');
+    && canonicalUnitTokens(sourceText).join('|') === canonicalUnitTokens(candidateText).join('|')
+    && !hasDroppedEquivalence(sourceText, candidateText);
 }
 
 function segmentKey(segment: PositionedSegment, occurrence: number): string {

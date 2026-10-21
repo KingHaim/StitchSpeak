@@ -69,6 +69,7 @@ describe('warningKindLabel', () => {
     expect(warningKindLabel('UNAUDITED_NUMBERS')).toBe('Numbers');
     expect(warningKindLabel('GLOSSARY_TERM_UNTRANSLATED')).toBe('Glossary');
     expect(warningKindLabel('GLOSSARY_VARIANT_MIX')).toBe('Glossary');
+    expect(warningKindLabel('YARN_COLOUR_UNRESTORABLE')).toBe('Yarn');
     expect(warningKindLabel('SOMETHING_ELSE')).toBe('Review');
   });
 });

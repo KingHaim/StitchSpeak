@@ -86,7 +86,7 @@ export interface SegmentVerifyRequest {
   sourceText: string;
   /** The delivered translated plain text of the block. */
   translatedText: string;
-  /** Locked source number tokens (vulgar fractions normalized), in order. */
+  /** Locked source number tokens (original vulgar fractions), in order. */
   lockedNumbers: string[];
   /** Locked canonical source unit tokens, in order. */
   lockedUnits: string[];
@@ -209,7 +209,7 @@ export function createNumberVerifySystemInstruction(
 You receive JSON segments an automated audit flagged because the translated numbers may not match the source. Each has: "id", "sourceText" (the original), "translatedText" (the delivered ${targetLanguage} text), "lockedNumbers" and "lockedUnits" (the numeric skeleton extracted from the source).
 
 For every segment return {"id", "verdict"} and, only for FIX verdicts, "fixedText". Verdict rules:
-1. "CLEAR" ONLY when every stitch count, size, gauge, needle size, repeat, and measurement in "translatedText" provably matches the source skeleton — same values, same order, same unit systems. Locale formatting counts as matching: a decimal comma for the same value (2.5 → 2,5), a localized unit spelling ("pulgadas" for inches), or a number legitimately written out as a word. In ANY doubt, never answer CLEAR.
+1. "CLEAR" ONLY when every stitch count, size, gauge, needle size, repeat, and measurement in "translatedText" provably matches the source skeleton — same values, same order, same unit systems. Locale formatting counts as matching: a decimal comma for the same value (2.5 → 2,5), a localized unit spelling ("pulgadas" for inches), or a number legitimately written out as a word. Hyphen-joined size runs (23-23-24-24-25-25) are per-size lists, including repeated values — the same numbers with commas, spaces, or a different dash are CLEAR. "3 MM = US 2.5" matches "3 mm = US 2,5": uppercase MM is millimeters and the US size is an equivalence, not a second unit system. In ANY doubt, never answer CLEAR.
 2. "FIX" ONLY when the ${targetLanguage} prose is correct but specific number/unit tokens drifted and you can surgically put the source tokens back. "fixedText" is the full corrected segment as plain text (no HTML, no Markdown), changing ONLY the drifted number/unit tokens; every number must come from "lockedNumbers"/"sourceText". NEVER invent, convert, merge, or recalculate a number, and never switch a unit system.
 3. "KEEP" for everything else: ambiguous multi-number lines, chart keys or repeats that look drifted, source alignment that looks wrong or incomplete, or any verdict you cannot prove. KEEP is always the safe answer.`;
 }

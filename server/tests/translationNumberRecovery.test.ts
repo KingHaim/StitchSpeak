@@ -283,11 +283,12 @@ describe('locked-skeleton verification', () => {
     expect(textMatchesNumberSkeleton(source, 'Agujas: 2,5 mm, teje 5–7 vueltas.')).toBe(false);
   });
 
-  it('extracts the locked skeleton with vulgar fractions normalized', () => {
+  it('extracts the locked skeleton with original vulgar fractions', () => {
     // "cm" after the closing parenthesis is not digit-adjacent, so it is not a
-    // locked unit token — same rule the #18 audit applies.
+    // locked unit token — same rule the #18 audit applies. Vulgar fractions
+    // stay as written so restore copies 1½ rather than 1.5.
     expect(sourceNumberSkeleton('Border: 1½ in, then 84 (92) cm.')).toEqual({
-      numbers: ['1.5', '84', '92'],
+      numbers: ['1½', '84', '92'],
       units: ['in'],
     });
   });

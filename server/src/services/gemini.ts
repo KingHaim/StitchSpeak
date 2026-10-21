@@ -16,11 +16,15 @@ import {
   type TranslationTopologyWarning,
 } from './translationTopology.js';
 import {
+  collapseStrayBreakAfterHeading,
+  expandSpanishK2togAbbreviation,
   findMarkdownArtifacts,
   normalizeSpanishMeasurementsInHtml,
   restoreFrenchRepeatAsterisksInHtml,
+  restoreSourceInchStringsInHtml,
   sanitizeMarkdownArtifactsInHtml,
 } from './translationSanitizers.js';
+import { restoreYarnColourNamesInHtml, yarnColourPromptRule } from './yarnColours.js';
 import {
   collectUnrestorableNumberDrift,
   enforceTranslatedNumberFidelity,
@@ -176,7 +180,7 @@ function getHandcraftedLanguageRules(language: string): string {
     - purl front and back (pfb) -> Rft (reves por el frente y por detras)
     - slip (sl) -> desl (deslizar) — NEVER use "des"
     - slip slip knit (SSK / ssk) -> ddD (deslizar, deslizar, derecho)
-    - knit 2 together (k2tog) -> 2pjD (2 puntos juntos derecho)
+    - knit 2 together (k2tog) -> teje 2 puntos juntos del derecho (NEVER the abbreviation 2pjD)
     - yarn over (yo / "yarn over") -> H (hebra / lazada)
     - knit (K / "knit") -> D (derecho) — NEVER leave the English word "knit"
     - centered double decrease (CDD / s2kp / sk2p) -> DDC (disminución doble centrada)
@@ -200,16 +204,22 @@ function getHandcraftedLanguageRules(language: string): string {
     - In sections worked flat, row/rows -> fila/filas. Reserve round/rounds -> vuelta/vueltas exclusively for work in the round. Never translate both as vuelta.
     - BOR -> CV (comienzo de vuelta) everywhere, including instructions, glossary, and chart labels
     - slip marker (sm) -> dm; place marker (pm) -> pm. Never merge, swap, or conflate dm and pm.
-    - Approved Spanish knitting abbreviations include LD, LR, CV, pts, A1D, A1I, 2pjD, dm, and pm; use them consistently in prose, glossary, and charts.
+    - Approved Spanish knitting abbreviations include LD, LR, CV, pts, A1D, A1I, dm, and pm; use them consistently in prose, glossary, and charts. For k2tog, write out "teje 2 puntos juntos del derecho" — never 2pjD.
     - larger/smaller needles -> agujas de mayor grosor / agujas de menor grosor (NEVER "agujas más grandes/pequeñas")
     - "as indicated above" -> como se indica arriba, using present-tense instructional wording
     - "the short tail of the yarn" -> el cabo suelto del hilo (NEVER "un trozo de la misma lana")
     - Replace vague "trabaja el gráfico como se ha establecido" with the specific chart name and size from the source.
-    - Spanish measurements use decimal commas, a space before units (170 m, 50 g, 10 cm, 2 pts), and en dashes for ranges (8–10 cm, 1–3 meses). Keep the source values, unit system, and number of sizes unchanged.
+    - Spanish measurements use decimal commas and a space before units (170 m, 50 g, 10 cm, 2 pts). Keep source hyphens exactly — size runs stay 23-23-24 and pattern IDs such as DROPS 272-48 are never rewritten as en dashes. Keep the source values, unit system, and number of sizes unchanged.
+    - A hyphen-joined size run such as 23-23-24-24-25-25 cm is a list of sizes, not a set of ranges. Keep every value, including repeats, in the same order. Do not collapse duplicates.
+    - Needle equivalences such as "3 MM = US 2.5" keep both numbers and the "=". Uppercase MM is millimeters, not a different unit. Do not drop the US size or convert either side. Always keep "= US n" next to the metric needle size.
+    - Dual measurements keep BOTH sides. DROPS form is 23-23-24 cm = 9"-9"-9½" (every inch value has its own " and "=" is the conversion). A slash form such as 23-23-24 cm / 9-9-9½" also keeps both sides. Never drop the inch equivalents. Copy the source separators, brackets, fractions, and " marks.
+    - Copy inch strings exactly from the source: unicode vulgar fractions (½ ¼ ¾ ⅛ ⅜ ⅝ ⅞) and the " mark. Never convert 2⅜" to 2.375, 2,375, or 2⅜ in, and never switch to "in" when the source uses ".
+    - When a size run uses the inch symbol ("), keep " on every value in that run. Never mix " and in (never 36¼"-45 in). Follow the source's unit notation.
+    - Yarn colour / product names from the materials list (the name next to a colour number, e.g. Coffee, Cherry Jam, Rust, Moss Green, Olive Oil) are product names. Keep the source spelling in the yarn list, the instructions, and the chart key. Never translate them.
     - Preserve the intentional yarn-weight terms "fingering", "DK", and "light worsted" consistently.
 
     ### CHART-LEGEND EXAMPLES (Spanish) — never leave these English forms:
-    - k2tog -> 2pjD (2 puntos juntos derecho)
+    - k2tog -> teje 2 puntos juntos del derecho
     - ssk -> ddD (deslizar, deslizar, derecho)
     - CDD -> DDC (disminución doble centrada)
     - knit -> D (derecho)
@@ -310,7 +320,13 @@ function getHandcraftedLanguageRules(language: string): string {
 const createSizeFormatPreservationRules = (sectionNumber: number) => `
 ### ${sectionNumber}. SIZE FORMAT PRESERVATION (CRITICAL):
 - Multi-size instructions must preserve the source pattern's exact size structure across the whole translated pattern.
-- Keep the same punctuation and grouping used by the source for each size list: parentheses, brackets, commas, slashes, spacing, and the position of every bold/plain size marker.
+- Keep the same punctuation and grouping used by the source for each size list: parentheses, brackets, commas, slashes, hyphens, spacing, and the position of every bold/plain size marker.
+- A hyphen-joined size run such as 23-23-24-24-25-25 or 192-208-224-240 is a list of per-size values, including repeated values. Keep every number in order. Do not treat the hyphens as ranges and do not drop a duplicate.
+- Keep the source's unit notation consistently across each size run (cm, mm, in, or "). If the source writes 36¼"-39⅜"-45", keep the " symbol on every size; never mix " and in (never 36¼"-45 in).
+- Dual measurements keep BOTH sides. DROPS form is 23-23-24 cm = 9"-9"-9½" (every inch value has its own "; "=" is the conversion). Slash form 23-23-24 cm / 9-9-9½" also keeps both sides. Copy the source separators, brackets, fractions, and " marks. Never drop the inch equivalents.
+- Copy inch strings exactly: unicode vulgar fractions and the " mark. Never convert 2⅜" to 2.375, 2,375, or "in" when the source uses ".
+- Needle lines such as "3 MM = US 2.5" keep both numbers, the "=", and the US size. Uppercase MM means millimeters. Never drop "= US n".
+${yarnColourPromptRule([])}
 - Never convert one sizing convention into another. For example, if the source has "18 (20, 23, 25, 27, 30)", keep that structure; if the source alternates "<strong>18</strong> (20, <strong>23</strong>, 25, <strong>27</strong>, 30)", keep those same bold slots and parentheses.
 - Apply the source's size-format convention consistently everywhere the same size sequence appears. Do not invent a global alternating rule and do not normalize all later sizes into parentheses unless the source does that.
 `;
@@ -868,16 +884,19 @@ export function extractDanishQaBlocks(html: string): DanishQaBlock[] {
 }
 
 function extractProtectedNumbers(text: string): string[] {
-  return text.match(/\d+(?:[.,]\d+)?(?:\s*[–—-]\s*\d+(?:[.,]\d+)?)?(?:\/\d+(?:[.,]\d+)?)?/g) ?? [];
+  // Individual atoms only — hyphens in size runs / ranges are separators.
+  // Must stay in lockstep with NUMBER_TOKEN_SOURCE in translationNumberAudit.ts.
+  return text.match(/(?:\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\d+(?:[.,]\d+)?(?:\/\d+(?:[.,]\d+)?)?)/g) ?? [];
 }
 
 function extractProtectedUnits(text: string): string[] {
   const units: string[] = [];
   // Bare `m` is intentionally excluded: in Danish knitting prose it is the
   // standard abbreviation for maske/masker and commonly follows a stitch count.
-  const measurementPattern = /\d+(?:[.,]\d+)?(?:\s*[–—-]\s*\d+(?:[.,]\d+)?)?\s*(cm|mm|in|g|kg|yd|yds)(?![\p{L}\p{N}])/gu;
+  // Case-insensitive so source "3 MM" (millimeters) matches translated "3 mm".
+  const measurementPattern = /\d+(?:[.,]\d+)?(?:\s*[–—-]\s*\d+(?:[.,]\d+)?)?\s*(cm|mm|in|g|kg|yd|yds)(?![\p{L}\p{N}])/giu;
   let match: RegExpExecArray | null;
-  while ((match = measurementPattern.exec(text)) !== null) units.push(match[1]);
+  while ((match = measurementPattern.exec(text)) !== null) units.push(match[1].toLocaleLowerCase());
   return units;
 }
 
@@ -984,7 +1003,6 @@ function isSafeSpanishQaRepair(block: DanishQaBlock, replacement: string): boole
     sts: 'pts',
     m1r: 'a1d',
     m1l: 'a1i',
-    k2tog: '2pjd',
   };
   const sourceTokens = extractSelectedTokens(block.originalText, Object.keys(mapping));
   if (sourceTokens.length === 0) return true;
@@ -992,8 +1010,10 @@ function isSafeSpanishQaRepair(block: DanishQaBlock, replacement: string): boole
   const targetTokens = extractSelectedTokens(replacement, [
     ...Object.keys(mapping),
     ...Object.values(mapping),
+    'k2tog',
+    '2pjd',
   ]);
-  const forbidden = new Set(['sm', 'bor', 'rs', 'ws', 'sts', 'm1r', 'm1l', 'k2tog']);
+  const forbidden = new Set(['sm', 'bor', 'rs', 'ws', 'sts', 'm1r', 'm1l', 'k2tog', '2pjd']);
   if (targetTokens.some((token) => forbidden.has(token))) return false;
   return sequenceContains(targetTokens, expected);
 }
@@ -1147,12 +1167,12 @@ Required terminology and context:
 - When worked flat, translate row/rows as fila/filas; when worked in the round, translate round/rounds as vuelta/vueltas. Compare every row and round against the source construction context.
 - In a vest armhole-edging section, "right sleeve" means sisa derecha; elsewhere sleeve means manga.
 - Use remate italiano for Italian/tubular bind-off, adding "en circular" when appropriate; puntos disminuidos; marcador con cierre; con el LD de la labor hacia ti; trabaja el gráfico según corresponda; bloqueo; bloqueo intermedio.
-- Keep BOR as CV (comienzo de vuelta), sm as dm, and pm as pm. Use LD, LR, CV, pts, A1D, A1I, 2pjD, dm, and pm consistently.
+- Keep BOR as CV (comienzo de vuelta), sm as dm, and pm as pm. Use LD, LR, CV, pts, A1D, A1I, dm, and pm consistently. Write k2tog as "teje 2 puntos juntos del derecho"; never 2pjD.
 - Use agujas de mayor grosor / agujas de menor grosor and el cabo suelto del hilo.
 - Replace vague chart references with the specific chart name and size from the source. Use present-tense "como se indica arriba".
 
 Required validation:
-- Preserve every value and unit system. Use decimal commas, spaces before units, and en dashes, and confirm every sequence retains the same number of sizes and measurements as the source.
+- Preserve every value and unit system. Use decimal commas and spaces before units. Keep source hyphens (23-23-24, DROPS 272-48) — never rewrite them as en dashes. Confirm every sequence retains the same number of sizes and measurements as the source.
 - Preserve paragraph meaning and do not add English explanations, translator notes, or editing instructions.
 - Detect merged fragments, repeated text, omitted phrases, inconsistent terms, and literal Markdown artefacts such as **, __, backticks, or Markdown heading markers.
 - Return complete corrected plain text per block, never HTML. Return only changed blocks and do not alter source identifiers.`;
@@ -1294,7 +1314,7 @@ For every segment return {"id", "text"}: a fresh ${language} translation of "sou
 
 NUMBERS ARE LOCKED. Hard rules:
 1. "text" must contain EXACTLY the tokens in "lockedNumbers", in the same order — never add, drop, merge, convert, or recalculate a number. A ${language} decimal comma for the same value is fine (2.5 → 2,5).
-2. Every unit in "lockedUnits" keeps its measurement system: cm stays cm, in stays in/inches, g stays g. Never convert units.
+2. Every unit in "lockedUnits" keeps its measurement system: cm stays cm, in stays in/inches, g stays g. Never convert units. Never drop an inch equivalent after a metric run, and never drop "= US n" beside a millimetre needle size. Copy source inch strings exactly (vulgar fractions and ").
 3. Translate only the prose around the numbers, with correct ${language} knitting terminology.
 4. If a segment cannot satisfy rules 1-3, omit it from "repairs" instead of guessing.`;
 }
@@ -1326,7 +1346,7 @@ Whenever you detect this pattern in the source — including any IMAGE CATALOG i
 HARD RULES for legend meanings:
 - Leaving English knitting abbreviations untranslated (k2tog, ssk, CDD, knit, yarn over, yo, K, P, etc.) is a hard failure.
 - Mixed-language sources are common (e.g. French written rounds + English legend). Translate the legend into ${language} anyway — English abbreviations are NOT "international" and MUST be localized.
-- Prefer the localized abbreviation plus a short full term when helpful (e.g. Spanish: "2pjD (2 puntos juntos derecho)").
+- Prefer the localized abbreviation plus a short full term when helpful (e.g. Spanish k2tog: "teje 2 puntos juntos del derecho").
 
 This legend table ALWAYS takes priority over IMAGE ROW GROUPS. Even if a legend symbol appears in a ROW group in the catalog, you MUST still place its bare \`[IMG_N]\` inside a legend \`<td>\` and you MUST NOT emit \`[ROW_N]\` for those legend-symbol members. Dumping the symbols as a photo strip / \`<p>[ROW_N]</p>\` / \`<p>[IMG_N]</p>\` blocks without a translated meaning column is a hard failure.
 
@@ -1348,7 +1368,7 @@ ${createTitleTranslationRules(3, language)}
 
 ### 4. LANGUAGE & TECHNICAL RULES:
 - **NO SOURCE LANGUAGE IN GLOSSARY**: Remove source-language abbreviations unless a language-specific rule explicitly requires preserving a token (for example Danish pm). The glossary must contain the approved ${language} abbreviation and its full definition.
-- **100% LOCALIZED**: Use the specific localized abbreviations for ${language} (e.g., MO, Rem, H, 2pjD, ddD, DDC), subject to explicit language-specific token-preservation rules. Never leave English chart/glossary forms such as k2tog, ssk, CDD, knit, or yarn over when the target is not English.
+- **100% LOCALIZED**: Use the specific localized abbreviations for ${language} (e.g., MO, Rem, H, ddD, DDC), subject to explicit language-specific token-preservation rules. In Spanish, write k2tog as "teje 2 puntos juntos del derecho" — never 2pjD. Never leave English chart/glossary forms such as k2tog, ssk, CDD, knit, or yarn over when the target is not English.
 - **PUNCTUATION**: Maintain the exact punctuation (brackets, colons, slashes) used in the original for sizing.
 - **INLINE BOLD IS SOURCE DATA**: Preserve every source bold fragment with <strong> in the translated equivalent. In glossary entries, keep the abbreviation/prefix bold when it is bold in the source. In size lists, keep exactly the same size slots bold and do not invent a new alternating pattern.
 
@@ -1720,7 +1740,7 @@ function reviewedLanguage(language: string): 'spanish' | 'french' | null {
   return null;
 }
 
-function finalizeTranslatedHtml(
+export function finalizeTranslatedHtml(
   html: string,
   language: string,
 ): { html: string; reviewWarnings: TranslationTopologyWarning[] } {
@@ -1736,8 +1756,14 @@ function finalizeTranslatedHtml(
   // canonicalization already tolerates locale formatting. Zero model cost.
   const numberFidelity = enforceTranslatedNumberFidelity(finalized);
   finalized = numberFidelity.html;
+  finalized = restoreSourceInchStringsInHtml(finalized);
+  const colourRestore = restoreYarnColourNamesInHtml(finalized);
+  finalized = colourRestore.html;
+  finalized = collapseStrayBreakAfterHeading(finalized);
   if (reviewedLanguage(language) === 'spanish') {
     finalized = normalizeSpanishMeasurementsInHtml(finalized);
+    finalized = restoreSourceInchStringsInHtml(finalized);
+    finalized = expandSpanishK2togAbbreviation(finalized);
   }
   if (reviewedLanguage(language) === 'french') {
     finalized = restoreFrenchRepeatAsterisksInHtml(finalized);
@@ -1756,6 +1782,7 @@ function finalizeTranslatedHtml(
         message: `A Markdown artifact (${artifact}) remains and needs manual review.`,
       })),
       ...numberFidelity.reviewWarnings,
+      ...colourRestore.reviewWarnings,
       ...glossaryWarnings,
     ],
   };
