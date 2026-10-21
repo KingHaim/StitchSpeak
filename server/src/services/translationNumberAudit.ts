@@ -755,7 +755,7 @@ export interface UnrestorableNumberDrift {
   sourceText: string;
   /** Current translated plain text of the block. */
   translatedText: string;
-  /** Locked source number tokens (vulgar fractions normalized), in order. */
+  /** Locked source number tokens (original vulgar fractions), in order. */
   lockedNumbers: string[];
   /** Locked canonical source unit tokens, in order. */
   lockedUnits: string[];

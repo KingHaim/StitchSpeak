@@ -92,7 +92,7 @@ export function restoreYarnColourNamesInHtml(html: string): string {
   const aliases = new Map<string, string>();
   html.replace(
     /<(p|h[1-6]|li|th|td|blockquote)(\s[^>]*)?>([\s\S]*?)<\/\1>/gi,
-    (_full, _tag: string, attrs = '', inner: string) => {
+    (_full, _tag: string, _attrs = '', inner: string) => {
       const visible = decodeEntities(inner.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ');
       for (const colour of colours) {
         const translated = translatedNameForNumber(visible, colour.number);
