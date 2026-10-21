@@ -557,7 +557,7 @@ function extractDualMeasurementClauses(sourceText: string): DualMeasurementClaus
   return clauses;
 }
 
-const METRIC_UNIT_ANCHOR_RE = /\d[\d.,½¼¾⅛⅜⅝⅞]*\s*(cm|mm)\b/giu;
+const METRIC_UNIT_ANCHOR_RE = /\d[\d.,½¼¾⅛⅜⅝⅞]*\s*(cm|mm)(?!\p{L})/giu;
 
 function insertAfterMetricUnit(
   innerHtml: string,

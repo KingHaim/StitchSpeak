@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   extractYarnColourNames,
   restoreYarnColourNamesInHtml,
+  translatedNameForNumber,
   yarnColourPromptRule,
 } from '../src/services/yarnColours';
 
@@ -63,15 +64,36 @@ describe('yarn colour product names', () => {
     const html = `
       <p data-o="${source}">${translated}</p>
       <p data-o="Work Coffee to the marker.">Teje mezcla café hasta el marcador.</p>
-      <p data-o="Yarn B: Coffee (colour 23)">Hilo DROPS Air Café (color 23)</p>
     `;
     const restored = restoreYarnColourNamesInHtml(html);
 
     expect(restored).toContain('DROPS AIR de Garnstudio (pertenece al grupo de hilos C)');
     expect(restored).toContain('150-150-200 g color 23, Coffee');
     expect(restored).toContain('Teje Coffee hasta el marcador.');
-    expect(restored).toMatch(/Hilo DROPS/);
-    expect(restored).not.toMatch(/<(p)[^>]*>Coffee \(color 23\)<\/\1>/);
     expect(restored).not.toContain('mezcla café');
+  });
+
+  it('aliases only café in “color 08, café para el cuerpo”', () => {
+    expect(translatedNameForNumber('color 08, café para el cuerpo', '08')).toBe('café');
+
+    const html = `
+      <p data-o="Yarn A: Coffee (colour 08)">150 g color 08, café para el cuerpo</p>
+      <p data-o="Work Coffee for the body.">Teje café para el cuerpo.</p>
+    `;
+    const restored = restoreYarnColourNamesInHtml(html);
+    expect(restored).toContain('color 08, Coffee para el cuerpo');
+    expect(restored).toContain('Teje Coffee para el cuerpo.');
+    expect(restored).toContain('para el cuerpo');
+    expect(restored).not.toContain('café para el cuerpo');
+  });
+
+  it('aliases only Café in “hilo DROPS Air Café (color 08)”', () => {
+    expect(translatedNameForNumber('hilo DROPS Air Café (color 08)', '08')).toBe('Café');
+
+    const html = '<p data-o="Yarn A: Coffee (colour 08)">hilo DROPS Air Café (color 08)</p>';
+    const restored = restoreYarnColourNamesInHtml(html);
+    expect(restored).toContain('hilo DROPS Air Coffee (color 08)');
+    expect(restored).toContain('hilo DROPS Air');
+    expect(restored).not.toMatch(/<(p)[^>]*>Coffee \(color 08\)<\/\1>/);
   });
 });

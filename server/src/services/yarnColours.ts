@@ -56,41 +56,69 @@ function collectSourceText(html: string): string {
 }
 
 const COLOUR_LABEL = '(?:colou?r|col(?:or)?\\.?|n[úu]m(?:ero)?)';
-const COLOUR_NAME_STOP = /^(drops|hilo|hilos|yarn)$/iu;
+const COLOUR_CLAUSE_SPLIT = /[,;:.()]+/;
+const COLOUR_HARD_STOP = /^(para|el|la|los|las|en|y|con|hilo|hilos|yarn|un|una|al|a|o|u|the|for|of|and|with|to)$/iu;
+const COLOUR_LINKER = /^(de|del)$/iu;
+const COLOUR_BRAND = /^(drops|yarn)$/iu;
 
 function colourNameWords(region: string): string[] {
   return region
-    .split(/[\s,:–—-]+/u)
-    .map((word) => word.trim())
+    .split(/\s+/u)
+    .map((word) => word.replace(/^[\s,:;–—.-]+|[\s,:;–—.-]+$/gu, '').trim())
     .filter(Boolean);
 }
 
-function takeColourTokens(words: string[], fromEnd: boolean): string | null {
+function firstColourClause(region: string): string {
+  return region.replace(/^[\s,;:.()]+/, '').split(COLOUR_CLAUSE_SPLIT)[0]?.trim() ?? '';
+}
+
+function lastColourClause(region: string): string {
+  const trimmed = region.replace(/[\s,;:.()]+$/, '');
+  const parts = trimmed.split(COLOUR_CLAUSE_SPLIT);
+  return parts[parts.length - 1]?.trim() ?? '';
+}
+
+function collectAdjacentColourNames(words: string[], direction: 'forward' | 'backward'): string | null {
+  const brandInClause = words.some((word) => COLOUR_BRAND.test(word) || COLOUR_HARD_STOP.test(word));
   const taken: string[] = [];
-  const sequence = fromEnd ? [...words].reverse() : words;
-  for (const word of sequence) {
-    if (COLOUR_NAME_STOP.test(word)) break;
-    if (fromEnd) taken.unshift(word);
-    else taken.push(word);
-    if (taken.length >= 3) break;
+  const step = direction === 'forward' ? 1 : -1;
+  for (
+    let index = direction === 'forward' ? 0 : words.length - 1;
+    index >= 0 && index < words.length && taken.length < 3;
+    index += step
+  ) {
+    const word = words[index];
+    if (COLOUR_HARD_STOP.test(word) || COLOUR_BRAND.test(word)) break;
+    if (COLOUR_LINKER.test(word)) {
+      const next = words[index + step];
+      if (!next || COLOUR_HARD_STOP.test(next) || COLOUR_BRAND.test(next)) break;
+      if (direction === 'forward') taken.push(word);
+      else taken.unshift(word);
+      continue;
+    }
+    if (direction === 'forward') taken.push(word);
+    else taken.unshift(word);
+    // Yarn/brand prefix on the same clause (`hilo DROPS Air Café`): only the
+    // word touching `(color N)` is the colour name.
+    if (direction === 'backward' && brandInClause) break;
   }
   return taken.length > 0 ? taken.join(' ') : null;
 }
 
-function translatedNameForNumber(visible: string, number: string): string | null {
+/** Visible colour-name tokens paired with a colour number — for tests and restore. */
+export function translatedNameForNumber(visible: string, number: string): string | null {
   const escaped = escapeRegExp(number);
   const before = visible.match(
-    new RegExp(
-      `(?:^|[\\s,:–—-])((?:[\\p{L}]+[\\s]*){1,8})\\(\\s*${COLOUR_LABEL}\\s*#?\\s*${escaped}\\s*\\)`,
-      'iu',
-    ),
+    new RegExp(`([\\s\\S]*?)\\(\\s*${COLOUR_LABEL}\\s*#?\\s*${escaped}\\s*\\)`, 'iu'),
   );
-  const beforeName = before?.[1] ? takeColourTokens(colourNameWords(before[1]), true) : null;
+  const beforeName = before?.[1]
+    ? collectAdjacentColourNames(colourNameWords(lastColourClause(before[1])), 'backward')
+    : null;
   if (beforeName) return beforeName;
-  const after = visible.match(
-    new RegExp(`${COLOUR_LABEL}\\s*#?\\s*${escaped}\\s*[,:]?\\s*((?:[\\p{L}]+[\\s]*){1,3})`, 'iu'),
-  );
-  return after?.[1] ? takeColourTokens(colourNameWords(after[1]), false) : null;
+  const after = visible.match(new RegExp(`${COLOUR_LABEL}\\s*#?\\s*${escaped}([\\s\\S]*)`, 'iu'));
+  return after?.[1]
+    ? collectAdjacentColourNames(colourNameWords(firstColourClause(after[1])), 'forward')
+    : null;
 }
 
 export function yarnColourPromptRule(names: YarnColourName[]): string {
