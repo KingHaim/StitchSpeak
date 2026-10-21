@@ -370,7 +370,7 @@ function snapToSafeBoundary(segments: PreviewSegment[], end: number): number {
 
 /** Exclusive end just before the last unclosed repeat opener (never mid-repeat). */
 function cutBeforeOpenRepeat(segments: PreviewSegment[], end: number): number {
-  let next = Math.max(0, Math.min(end, segments.length));
+  const next = Math.max(0, Math.min(end, segments.length));
   let openRepeats = 0;
   let lastOpener = -1;
   for (let i = 0; i < next; i += 1) {

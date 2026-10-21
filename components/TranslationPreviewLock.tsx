@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useModalA11y } from '../hooks/useModalA11y';
+import { formatUnlockConfirm } from '../utils/unlockConfirm';
 
 interface TranslationPreviewLockProps {
   remainingCost?: number;
@@ -11,11 +12,6 @@ interface TranslationPreviewLockProps {
 }
 
 export const UNLOCK_TRANSLATION_LINE = 'Unlock the full translation and export';
-
-/** Exact confirm copy: quoted cost and the balance after the charge. */
-export function formatUnlockConfirm(cost: number, balance: number): string {
-  return `Unlock full translation for ${cost.toFixed(1)} credits? Balance ${balance.toFixed(1)} → ${(balance - cost).toFixed(1)}`;
-}
 
 function quotedUnlockCost(fullCost?: number, remainingCost?: number): number | undefined {
   return typeof fullCost === 'number' ? fullCost : remainingCost;
