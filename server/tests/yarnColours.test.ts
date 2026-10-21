@@ -50,4 +50,28 @@ describe('yarn colour product names', () => {
     expect(yarnColourPromptRule([])).toMatch(/Coffee, Cherry Jam, Rust, Moss Green, Olive Oil/);
     expect(yarnColourPromptRule([])).toMatch(/Never translate them/);
   });
+
+  it('does not treat DROPS yarn-list wording as the colour name', () => {
+    const source = [
+      'Yarn A: DROPS Air from Garnstudio (belongs to yarn group C)',
+      '150-150-200 g colour 23, Coffee',
+    ].join('\n');
+    const translated = [
+      'DROPS AIR de Garnstudio (pertenece al grupo de hilos C)',
+      '150-150-200 g color 23, mezcla café',
+    ].join('\n');
+    const html = `
+      <p data-o="${source}">${translated}</p>
+      <p data-o="Work Coffee to the marker.">Teje mezcla café hasta el marcador.</p>
+      <p data-o="Yarn B: Coffee (colour 23)">Hilo DROPS Air Café (color 23)</p>
+    `;
+    const restored = restoreYarnColourNamesInHtml(html);
+
+    expect(restored).toContain('DROPS AIR de Garnstudio (pertenece al grupo de hilos C)');
+    expect(restored).toContain('150-150-200 g color 23, Coffee');
+    expect(restored).toContain('Teje Coffee hasta el marcador.');
+    expect(restored).toMatch(/Hilo DROPS/);
+    expect(restored).not.toMatch(/<(p)[^>]*>Coffee \(color 23\)<\/\1>/);
+    expect(restored).not.toContain('mezcla café');
+  });
 });

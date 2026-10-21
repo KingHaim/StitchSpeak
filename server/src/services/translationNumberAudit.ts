@@ -557,32 +557,38 @@ function extractDualMeasurementClauses(sourceText: string): DualMeasurementClaus
   return clauses;
 }
 
+const METRIC_UNIT_ANCHOR_RE = /\d[\d.,½¼¾⅛⅜⅝⅞]*\s*(cm|mm)\b/giu;
+
 function insertAfterMetricUnit(
   innerHtml: string,
   metricUnit: 'cm' | 'mm',
   tail: string,
+  occurrence = 0,
 ): string {
   const parts = innerHtml.split(/(<[^>]*>)/);
   const tailFolded = tail.replace(/\s+/g, '').toLocaleLowerCase();
+  let seen = 0;
   for (let index = 0; index < parts.length; index += 1) {
     const part = parts[index];
     if (part.startsWith('<')) continue;
-    const lower = part.toLocaleLowerCase();
-    let searchFrom = 0;
-    while (searchFrom < lower.length) {
-      const found = lower.indexOf(metricUnit, searchFrom);
-      if (found < 0) break;
-      const end = found + metricUnit.length;
+    const anchorRe = new RegExp(METRIC_UNIT_ANCHOR_RE.source, 'giu');
+    let match: RegExpExecArray | null;
+    while ((match = anchorRe.exec(part)) !== null) {
+      if (match[1].toLocaleLowerCase() !== metricUnit) continue;
+      if (seen !== occurrence) {
+        seen += 1;
+        continue;
+      }
+      const end = match.index + match[0].length;
       const afterFolded = part.slice(end).replace(/\s+/g, '').toLocaleLowerCase();
       if (afterFolded.startsWith(tailFolded) || afterFolded.startsWith('/') || afterFolded.startsWith('=')) {
-        searchFrom = end;
-        continue;
+        return innerHtml;
       }
       parts[index] = `${part.slice(0, end)}${tail}${part.slice(end)}`;
       return parts.join('');
     }
   }
-  return `${innerHtml}${tail}`;
+  return innerHtml;
 }
 
 /**
@@ -593,19 +599,17 @@ function insertAfterMetricUnit(
 function restoreMissingEquivalenceClauses(segment: PositionedSegment): string | null {
   const clauses = extractDualMeasurementClauses(segment.sourceText);
   if (clauses.length === 0) return null;
+  const jobs: Array<{ clause: DualMeasurementClause; occurrence: number }> = [];
+  const seen = { cm: 0, mm: 0 };
+  for (const clause of clauses) {
+    jobs.push({ clause, occurrence: seen[clause.metricUnit] });
+    seen[clause.metricUnit] += 1;
+  }
   let next = segment.innerHtml;
   let changed = false;
-  for (const clause of clauses) {
-    const visible = plainTextFromHtml(next);
-    const extraBare = clause.tail.replace(/["″]|(?:^|\s)US\s*/gi, '').replace(/\s+/g, '');
-    const existingExtra = clause.metricUnit === 'cm'
-      ? imperialNumberTokens(visible)
-      : usSizeNumberTokens(visible);
-    const haveExtra = existingExtra.length > 0
-      || (extraBare.length > 0 && visible.replace(/\s+/g, '').includes(extraBare));
-    if (haveExtra) continue;
-    if (!new RegExp(`${clause.metricUnit}\\b`, 'i').test(visible)) continue;
-    const inserted = insertAfterMetricUnit(next, clause.metricUnit, clause.tail);
+  // Last occurrence first so earlier number+unit offsets stay valid.
+  for (const job of jobs.reverse()) {
+    const inserted = insertAfterMetricUnit(next, job.clause.metricUnit, job.clause.tail, job.occurrence);
     if (inserted !== next) {
       next = inserted;
       changed = true;
@@ -614,10 +618,7 @@ function restoreMissingEquivalenceClauses(segment: PositionedSegment): string | 
   return changed ? next : null;
 }
 
-function restoreSegmentInnerHtml(segment: PositionedSegment, prints: SegmentFingerprints): string | null {
-  const equivalenceRestore = restoreMissingEquivalenceClauses(segment);
-  if (equivalenceRestore !== null) return equivalenceRestore;
-
+function restoreDriftedTokensInSegment(segment: PositionedSegment, prints: SegmentFingerprints): string | null {
   const sourceNumberTokens = numberMatches(normalizeTokenText(segment.sourceText));
 
   // Split into text/tag parts so replacements can never touch markup.
@@ -685,6 +686,20 @@ function restoreSegmentInnerHtml(segment: PositionedSegment, prints: SegmentFing
     rebuiltParts[part] = escapeHtmlText(text);
   }
   return rebuiltParts.join('');
+}
+
+function restoreSegmentInnerHtml(segment: PositionedSegment, prints: SegmentFingerprints): string | null {
+  const equivalenceRestore = restoreMissingEquivalenceClauses(segment);
+  const working = equivalenceRestore === null
+    ? segment
+    : {
+        ...segment,
+        innerHtml: equivalenceRestore,
+        translatedText: plainTextFromHtml(equivalenceRestore),
+      };
+  const tokenPrints = equivalenceRestore === null ? prints : fingerprintSegment(working);
+  const tokenRestore = restoreDriftedTokensInSegment(working, tokenPrints);
+  return tokenRestore ?? equivalenceRestore;
 }
 
 interface DriftedSegment {

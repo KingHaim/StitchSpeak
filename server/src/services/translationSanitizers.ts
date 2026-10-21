@@ -103,45 +103,99 @@ export function normalizeSpanishMeasurementsInHtml(html: string): string {
   );
 }
 
-const VULGAR_TO_DECIMALS: Record<string, string[]> = {
-  '½': ['0.5', '0,5', '.5', ',5'],
-  '¼': ['0.25', '0,25', '.25', ',25'],
-  '¾': ['0.75', '0,75', '.75', ',75'],
-  '⅛': ['0.125', '0,125', '.125', ',125'],
-  '⅜': ['0.375', '0,375', '.375', ',375'],
-  '⅝': ['0.625', '0,625', '.625', ',625'],
-  '⅞': ['0.875', '0,875', '.875', ',875'],
+const VULGAR_INCH_VALUE: Record<string, number> = {
+  '½': 0.5,
+  '¼': 0.25,
+  '¾': 0.75,
+  '⅛': 0.125,
+  '⅜': 0.375,
+  '⅝': 0.625,
+  '⅞': 0.875,
 };
 
-const SOURCE_INCH_RUN_RE =
-  /(?:\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\d+(?:[.,]\d+)?)(?:\s*[‐‑‒–—-]\s*(?:\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\d+(?:[.,]\d+)?))*\s*["″]/gu;
+const INCH_ATOM_CORE = '(?:\\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\\d+(?:[.,]\\d+)?)';
+const INCH_DASH_CLASS = '[\\s‐‑‒–—-]+';
+const SOURCE_INCH_RUN_RE = new RegExp(
+  `${INCH_ATOM_CORE}["″](?:${INCH_DASH_CLASS}${INCH_ATOM_CORE}["″])+|${INCH_ATOM_CORE}(?:${INCH_DASH_CLASS}${INCH_ATOM_CORE})*\\s*["″]`,
+  'gu',
+);
+const TRANSLATED_INCH_ATOM_RE = new RegExp(
+  `${INCH_ATOM_CORE}(?:\\s*(?:["″]|in\\b|inch(?:es)?\\b))?`,
+  'giu',
+);
 
-function decimalVariantsForInchAtom(atom: string): string[] {
-  const variants = new Set<string>([atom]);
-  const mixed = atom.match(/^(\d+)([½¼¾⅛⅜⅝⅞])$/);
-  const bare = atom.match(/^([½¼¾⅛⅜⅝⅞])$/);
-  const fraction = mixed?.[2] ?? bare?.[1];
-  if (fraction && VULGAR_TO_DECIMALS[fraction]) {
-    for (const decimal of VULGAR_TO_DECIMALS[fraction]) {
-      variants.add(mixed ? `${mixed[1]}${decimal.replace(/^0/, '')}` : decimal);
-      variants.add(mixed ? `${mixed[1]}${decimal}` : decimal);
-    }
+function parseInchAtom(raw: string): number | null {
+  const core = raw.replace(/\s*(?:["″]|in(?:ch(?:es)?)?)\s*$/i, '').trim();
+  if (!core) return null;
+  const mixed = core.match(/^(\d+)([½¼¾⅛⅜⅝⅞])$/);
+  if (mixed) return Number(mixed[1]) + VULGAR_INCH_VALUE[mixed[2]];
+  if (VULGAR_INCH_VALUE[core] != null) return VULGAR_INCH_VALUE[core];
+  const value = Number.parseFloat(core.replace(',', '.'));
+  return Number.isFinite(value) ? value : null;
+}
+
+function inchValuesEqual(left: number, right: number): boolean {
+  return Math.abs(left - right) < 1e-6;
+}
+
+function sourceInchAtomValues(run: string): number[] {
+  const values: number[] = [];
+  const atomRe = new RegExp(`${INCH_ATOM_CORE}["″]?`, 'gu');
+  for (const match of run.matchAll(atomRe)) {
+    const value = parseInchAtom(match[0]);
+    if (value != null) values.push(value);
   }
-  return [...variants];
+  return values;
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+interface TranslatedInchAtom {
+  start: number;
+  end: number;
+  value: number;
 }
 
-/** Any dash mix / decimal respelling of a source inch run, including leftover `in`. */
-function inchRunCorruptionPattern(sourceRun: string): RegExp {
-  const body = sourceRun.replace(/["″]\s*$/, '').trim();
-  const atoms = body.split(/\s*[‐‑‒–—-]\s*/);
-  const atomPattern = atoms
-    .map((atom) => `(?:${decimalVariantsForInchAtom(atom).map(escapeRegExp).join('|')})`)
-    .join('\\s*[‐‑‒–—-]\\s*');
-  return new RegExp(`${atomPattern}\\s*(?:["″]|in\\b|inch(?:es)?\\b)`, 'gi');
+function collectTranslatedInchAtoms(text: string): TranslatedInchAtom[] {
+  const atoms: TranslatedInchAtom[] = [];
+  const atomRe = new RegExp(TRANSLATED_INCH_ATOM_RE.source, 'giu');
+  let match: RegExpExecArray | null;
+  while ((match = atomRe.exec(text)) !== null) {
+    const value = parseInchAtom(match[0]);
+    if (value == null) continue;
+    atoms.push({ start: match.index, end: match.index + match[0].length, value });
+  }
+  return atoms;
+}
+
+function dashOnlyBetween(text: string, from: number, to: number): boolean {
+  return /^[\s‐‑‒–—-]*$/.test(text.slice(from, to));
+}
+
+/**
+ * Walk a translated text run atom by atom. When each parsed value matches the
+ * source run, splice the exact source substring back — no combinatorial
+ * decimal spellings, no split/join over the block.
+ */
+function restoreSourceInchRunInText(text: string, exact: string): string {
+  const sourceValues = sourceInchAtomValues(exact);
+  if (sourceValues.length === 0) return text;
+  const atoms = collectTranslatedInchAtoms(text);
+  for (let start = 0; start <= atoms.length - sourceValues.length; start += 1) {
+    const window = atoms.slice(start, start + sourceValues.length);
+    let contiguous = true;
+    for (let index = 1; index < window.length; index += 1) {
+      if (!dashOnlyBetween(text, window[index - 1].end, window[index].start)) {
+        contiguous = false;
+        break;
+      }
+    }
+    if (!contiguous) continue;
+    if (!window.every((atom, index) => inchValuesEqual(atom.value, sourceValues[index]))) continue;
+    const from = window[0].start;
+    const to = window[window.length - 1].end;
+    if (text.slice(from, to) === exact) continue;
+    return `${text.slice(0, from)}${exact}${text.slice(to)}`;
+  }
+  return text;
 }
 
 /**
@@ -155,14 +209,18 @@ export function restoreSourceInchStringsInHtml(html: string): string {
       const dataO = readAttribute(attrs, 'data-o');
       if (dataO == null) return full;
       const source = decodeEntities(dataO);
-      const runs = source.match(SOURCE_INCH_RUN_RE);
-      if (!runs || runs.length === 0) return full;
-      let next = inner;
-      for (const run of runs) {
-        const exact = run.replace(/\s+/g, '');
-        next = next.replace(inchRunCorruptionPattern(exact), exact);
+      const runs = [...source.matchAll(new RegExp(SOURCE_INCH_RUN_RE.source, 'gu'))].map((match) => match[0]);
+      if (runs.length === 0) return full;
+      const parts = inner.split(/(<[^>]*>)/);
+      for (let index = 0; index < parts.length; index += 1) {
+        if (parts[index].startsWith('<')) continue;
+        let text = parts[index];
+        for (const run of runs) {
+          text = restoreSourceInchRunInText(text, run.replace(/\s+/g, ''));
+        }
+        parts[index] = text;
       }
-      return `<${tag}${attrs}>${next}</${tag}>`;
+      return `<${tag}${attrs}>${parts.join('')}</${tag}>`;
     },
   );
 }

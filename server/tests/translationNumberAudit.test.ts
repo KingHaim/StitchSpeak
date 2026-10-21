@@ -301,6 +301,33 @@ describe('translation number fidelity enforcement', () => {
         expect(textMatchesNumberSkeleton('3 mm = US 2.5', '3 mm')).toBe(false);
       });
 
+      it('restores only the dropped US size when two needles share a line', () => {
+        const source = 'Rib 3 mm = US 2.5 and DPN 4 mm = US 6';
+        const html = `<p data-seg="19" data-o="${source}">Elástico 3 mm = US 2.5 y DPN 4 mm</p>`;
+        const result = enforceTranslatedNumberFidelity(html);
+        expect(result.html).toContain('3 mm = US 2.5');
+        expect(result.html).toContain('4 mm = US 6');
+        expect(result.html).not.toMatch(/3 mm = US 2\.5 = US/);
+        expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_RESTORED']);
+      });
+
+      it('does not insert a US size inside the word comment', () => {
+        const html = '<p data-seg="20" data-o="See the comment. Use 3 mm = US 2.5">'
+          + 'Lee el comment. Usa 3 mm</p>';
+        const result = enforceTranslatedNumberFidelity(html);
+        expect(result.html).toContain('Lee el comment. Usa 3 mm = US 2.5');
+        expect(result.html).not.toMatch(/co\s*=\s*US/i);
+      });
+
+      it('still restores other number drift in the same block as an equivalence restore', () => {
+        const html = '<p data-seg="21" data-o="Cast on 48 sts with 3 mm = US 2.5">'
+          + 'Monta 40 pts con 3 mm</p>';
+        const result = enforceTranslatedNumberFidelity(html);
+        expect(result.html).toContain('Monta 48 pts con 3 mm = US 2.5');
+        expect(result.html).not.toContain('Monta 40');
+        expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_RESTORED']);
+      });
+
       it('compares imperial and US-size atoms separately from the metric run', () => {
         expect(imperialNumberTokens('23-23-24 cm / 9-9-9½"')).toEqual(['9', '9', '9.5']);
         expect(usSizeNumberTokens('3 mm = US 2.5')).toEqual(['2.5']);

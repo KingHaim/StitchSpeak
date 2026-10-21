@@ -41,12 +41,6 @@ function decodeEntities(value: string): string {
     .replace(/&amp;/gi, '&');
 }
 
-function readAttribute(tag: string, name: string): string | null {
-  const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i'));
-  if (!match) return null;
-  return match[1] ?? match[2] ?? '';
-}
-
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -61,15 +55,42 @@ function collectSourceText(html: string): string {
   return chunks.join('\n');
 }
 
+const COLOUR_LABEL = '(?:colou?r|col(?:or)?\\.?|n[úu]m(?:ero)?)';
+const COLOUR_NAME_STOP = /^(drops|hilo|hilos|yarn)$/iu;
+
+function colourNameWords(region: string): string[] {
+  return region
+    .split(/[\s,:–—-]+/u)
+    .map((word) => word.trim())
+    .filter(Boolean);
+}
+
+function takeColourTokens(words: string[], fromEnd: boolean): string | null {
+  const taken: string[] = [];
+  const sequence = fromEnd ? [...words].reverse() : words;
+  for (const word of sequence) {
+    if (COLOUR_NAME_STOP.test(word)) break;
+    if (fromEnd) taken.unshift(word);
+    else taken.push(word);
+    if (taken.length >= 3) break;
+  }
+  return taken.length > 0 ? taken.join(' ') : null;
+}
+
 function translatedNameForNumber(visible: string, number: string): string | null {
+  const escaped = escapeRegExp(number);
   const before = visible.match(
-    new RegExp(`([\\p{L}][\\p{L}\\s]{0,40}?)\\s*\\(\\s*(?:colou?r|col(?:or)?\\.?|n[úu]m(?:ero)?)\\s*#?\\s*${escapeRegExp(number)}\\s*\\)`, 'iu'),
+    new RegExp(
+      `(?:^|[\\s,:–—-])((?:[\\p{L}]+[\\s]*){1,8})\\(\\s*${COLOUR_LABEL}\\s*#?\\s*${escaped}\\s*\\)`,
+      'iu',
+    ),
   );
-  if (before?.[1]) return before[1].replace(/\s+/g, ' ').trim();
+  const beforeName = before?.[1] ? takeColourTokens(colourNameWords(before[1]), true) : null;
+  if (beforeName) return beforeName;
   const after = visible.match(
-    new RegExp(`(?:colou?r|col(?:or)?\\.?|n[úu]m(?:ero)?)\\s*#?\\s*${escapeRegExp(number)}\\s*,?\\s*([\\p{L}][\\p{L}\\s]{0,40})`, 'iu'),
+    new RegExp(`${COLOUR_LABEL}\\s*#?\\s*${escaped}\\s*[,:]?\\s*((?:[\\p{L}]+[\\s]*){1,3})`, 'iu'),
   );
-  return after?.[1]?.replace(/\s+/g, ' ').trim() ?? null;
+  return after?.[1] ? takeColourTokens(colourNameWords(after[1]), false) : null;
 }
 
 export function yarnColourPromptRule(names: YarnColourName[]): string {
@@ -109,14 +130,9 @@ export function restoreYarnColourNamesInHtml(html: string): string {
   return html.replace(
     /<(p|h[1-6]|li|th|td|blockquote)(\s[^>]*)?>([\s\S]*?)<\/\1>/gi,
     (full, tag: string, attrs = '', inner: string) => {
-      const dataO = readAttribute(attrs, 'data-o');
       let next = inner;
       for (const [translated, sourceName] of aliases) {
         const pattern = new RegExp(`(?<![\\p{L}])${escapeRegExp(translated)}(?![\\p{L}])`, 'gu');
-        if (dataO && decodeEntities(dataO).includes(sourceName)) {
-          next = next.replace(pattern, sourceName);
-          continue;
-        }
         next = next.replace(pattern, sourceName);
       }
       return next === inner ? full : `<${tag}${attrs}>${next}</${tag}>`;

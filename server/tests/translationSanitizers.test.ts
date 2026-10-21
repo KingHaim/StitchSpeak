@@ -97,6 +97,21 @@ describe('translation output sanitizers', () => {
     expect(restored).not.toMatch(/9\.5|9,5|9\.75|9,75|\bin\b/);
   });
 
+  it('restores a 7-size all-fraction inch run in a large block in well under 100 ms', () => {
+    const exact = '9½-9¾-10⅛-10⅜-11⅝-12⅞-13¼"';
+    const corrupted = '9.5-9.75-10.125-10.375-11.625-12.875-13.25 in';
+    const filler = `${'word '.repeat(4000)}48-52-56-60-64-68-72 pts ${'más '.repeat(4000)}`;
+    const html = `<p data-o="Yoke: 23-23-24-24-25-26-27 cm / ${exact.replace(/"/g, '&quot;')}">${filler} ${corrupted} ${filler}</p>`;
+    const started = performance.now();
+    const restored = restoreSourceInchStringsInHtml(html);
+    const elapsed = performance.now() - started;
+    const visible = restored.replace(/<[^>]+>/g, ' ');
+    expect(visible).toContain(exact);
+    expect(visible).not.toMatch(/9\.5|10\.125|12\.875|13\.25/);
+    expect(visible).not.toContain(corrupted);
+    expect(elapsed).toBeLessThan(100);
+  });
+
   it('collapses a stray blank after a CUERPO: heading before the stitch-count run', () => {
     const html = '<p>CUERPO:</p><p></p><p>192-208-224-240-256-272 pts</p>';
     expect(collapseStrayBreakAfterHeading(html)).toBe(
