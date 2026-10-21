@@ -349,6 +349,18 @@ describe('translation number fidelity enforcement', () => {
         expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_RESTORED']);
       });
 
+      it('does not guess an insert position when the dual-cm run is missing or altered', () => {
+        const source = 'Work 5 cm, then 23-23-24 cm = 9&quot;-9&quot;-9½&quot;';
+        const html = `<p data-seg="24" data-o="${source}">Teje 5 cm, luego 20-20-21 cm</p>`;
+        const result = enforceTranslatedNumberFidelity(html);
+        expect(result.html).toContain('Teje 5 cm, luego 20-20-21 cm');
+        expect(result.html).not.toMatch(/5 cm\s*=/);
+        expect(result.html).not.toMatch(/20-20-21 cm\s*=/);
+        expect(result.html).not.toContain('9"-9"-9½"');
+        expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_UNRESTORABLE']);
+        expect(result.reviewWarnings[0].message).toMatch(/could not be restored automatically/i);
+      });
+
       it('compares imperial and US-size atoms separately from the metric run', () => {
         expect(imperialNumberTokens('23-23-24 cm / 9-9-9½"')).toEqual(['9', '9', '9.5']);
         expect(usSizeNumberTokens('3 mm = US 2.5')).toEqual(['2.5']);

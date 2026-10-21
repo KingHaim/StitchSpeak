@@ -656,8 +656,6 @@ function matchTranslatedAnchor(
     if (atIndex && sameValues.includes(atIndex)) return atIndex;
     return sameValues[0];
   }
-  const atIndex = translated[clause.anchorIndex];
-  if (atIndex && atIndex.unit === clause.metricUnit) return atIndex;
   return null;
 }
 
