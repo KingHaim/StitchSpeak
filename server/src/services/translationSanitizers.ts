@@ -131,26 +131,18 @@ function decimalVariantsForInchAtom(atom: string): string[] {
   return [...variants];
 }
 
-function inchRunCorruptions(sourceRun: string): string[] {
-  const mark = sourceRun.trim().endsWith('″') ? '″' : '"';
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Any dash mix / decimal respelling of a source inch run, including leftover `in`. */
+function inchRunCorruptionPattern(sourceRun: string): RegExp {
   const body = sourceRun.replace(/["″]\s*$/, '').trim();
   const atoms = body.split(/\s*[‐‑‒–—-]\s*/);
-  const atomVariants = atoms.map(decimalVariantsForInchAtom);
-  const joiners = ['-', '–', '-'];
-  const corruptions = new Set<string>();
-  for (const joiner of joiners) {
-    const combos = atomVariants.reduce<string[][]>((acc, options) => {
-      if (acc.length === 0) return options.map((option) => [option]);
-      return acc.flatMap((prefix) => options.map((option) => [...prefix, option]));
-    }, []);
-    for (const combo of combos) {
-      const joined = combo.join(joiner);
-      corruptions.add(`${joined}${mark}`);
-      corruptions.add(`${joined} in`);
-      corruptions.add(`${joined}in`);
-    }
-  }
-  return [...corruptions].filter((value) => value !== sourceRun);
+  const atomPattern = atoms
+    .map((atom) => `(?:${decimalVariantsForInchAtom(atom).map(escapeRegExp).join('|')})`)
+    .join('\\s*[‐‑‒–—-]\\s*');
+  return new RegExp(`${atomPattern}\\s*(?:["″]|in\\b|inch(?:es)?\\b)`, 'gi');
 }
 
 /**
@@ -169,16 +161,7 @@ export function restoreSourceInchStringsInHtml(html: string): string {
       let next = inner;
       for (const run of runs) {
         const exact = run.replace(/\s+/g, '');
-        for (const corruption of inchRunCorruptions(exact)) {
-          next = next.split(corruption).join(exact);
-        }
-        next = next.replace(
-          new RegExp(
-            `${exact.replace(/["″]$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*(?:in|inch|inches)\\b`,
-            'gi',
-          ),
-          exact,
-        );
+        next = next.replace(inchRunCorruptionPattern(exact), exact);
       }
       return `<${tag}${attrs}>${next}</${tag}>`;
     },

@@ -1740,7 +1740,7 @@ function reviewedLanguage(language: string): 'spanish' | 'french' | null {
   return null;
 }
 
-function finalizeTranslatedHtml(
+export function finalizeTranslatedHtml(
   html: string,
   language: string,
 ): { html: string; reviewWarnings: TranslationTopologyWarning[] } {
