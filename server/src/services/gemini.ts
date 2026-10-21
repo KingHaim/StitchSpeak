@@ -1757,7 +1757,8 @@ export function finalizeTranslatedHtml(
   const numberFidelity = enforceTranslatedNumberFidelity(finalized);
   finalized = numberFidelity.html;
   finalized = restoreSourceInchStringsInHtml(finalized);
-  finalized = restoreYarnColourNamesInHtml(finalized);
+  const colourRestore = restoreYarnColourNamesInHtml(finalized);
+  finalized = colourRestore.html;
   finalized = collapseStrayBreakAfterHeading(finalized);
   if (reviewedLanguage(language) === 'spanish') {
     finalized = normalizeSpanishMeasurementsInHtml(finalized);
@@ -1781,6 +1782,7 @@ export function finalizeTranslatedHtml(
         message: `A Markdown artifact (${artifact}) remains and needs manual review.`,
       })),
       ...numberFidelity.reviewWarnings,
+      ...colourRestore.reviewWarnings,
       ...glossaryWarnings,
     ],
   };

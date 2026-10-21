@@ -13,7 +13,8 @@ export type TranslationTopologyWarningCode =
   | 'NUMBER_UNRESTORABLE'
   | 'UNAUDITED_NUMBERS'
   | 'GLOSSARY_TERM_UNTRANSLATED'
-  | 'GLOSSARY_VARIANT_MIX';
+  | 'GLOSSARY_VARIANT_MIX'
+  | 'YARN_COLOUR_UNRESTORABLE';
 
 export interface TranslationTopologyWarning {
   code: TranslationTopologyWarningCode;

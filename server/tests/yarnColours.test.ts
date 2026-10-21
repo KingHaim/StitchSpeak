@@ -35,7 +35,7 @@ describe('yarn colour product names', () => {
       <p data-o="Yarn D: Moss Green (colour 7238)">Hilo D: Verde musgo (color 7238)</p>
       <p data-o="Yarn E: Olive Oil (colour 7230)">Hilo E: Aceite de oliva (color 7230)</p>
     `;
-    const restored = restoreYarnColourNamesInHtml(html);
+    const { html: restored, reviewWarnings } = restoreYarnColourNamesInHtml(html);
 
     expect(restored).toContain('Coffee (color 8903)');
     expect(restored).toContain('Cherry Jam (color 3608)');
@@ -45,6 +45,7 @@ describe('yarn colour product names', () => {
     expect(restored).toContain('Moss Green (color 7238)');
     expect(restored).toContain('Olive Oil (color 7230)');
     expect(restored).not.toMatch(/Café|Mermelada|Óxido|Verde musgo|Aceite de oliva/);
+    expect(reviewWarnings).toEqual([]);
   });
 
   it('tells the model to keep source colour product names', () => {
@@ -65,46 +66,58 @@ describe('yarn colour product names', () => {
       <p data-o="${source}">${translated}</p>
       <p data-o="Work Coffee to the marker.">Teje mezcla café hasta el marcador.</p>
     `;
-    const restored = restoreYarnColourNamesInHtml(html);
+    const { html: restored, reviewWarnings } = restoreYarnColourNamesInHtml(html);
 
     expect(restored).toContain('DROPS AIR de Garnstudio (pertenece al grupo de hilos C)');
     expect(restored).toContain('150-150-200 g color 23, Coffee');
     expect(restored).toContain('Teje Coffee hasta el marcador.');
     expect(restored).not.toContain('mezcla café');
+    expect(reviewWarnings).toEqual([]);
   });
 
-  it('aliases only café in “color 08, café para el cuerpo”', () => {
-    expect(translatedNameForNumber('color 08, café para el cuerpo', '08', 'Coffee')).toBe('café');
+  it('replaces only the yarn-list name café inside instruction text', () => {
+    expect(translatedNameForNumber('color 08, café', '08')).toBe('café');
 
     const html = `
-      <p data-o="Yarn A: Coffee (colour 08)">150 g color 08, café para el cuerpo</p>
+      <p data-o="Yarn A: Coffee (colour 08)">color 08, café</p>
+      <p data-o="Work Coffee for the body.">color 08, café para el cuerpo</p>
       <p data-o="Work Coffee for the body.">Teje café para el cuerpo.</p>
     `;
-    const restored = restoreYarnColourNamesInHtml(html);
+    const { html: restored, reviewWarnings } = restoreYarnColourNamesInHtml(html);
+    expect(restored).toContain('color 08, Coffee');
     expect(restored).toContain('color 08, Coffee para el cuerpo');
     expect(restored).toContain('Teje Coffee para el cuerpo.');
     expect(restored).toContain('para el cuerpo');
     expect(restored).not.toContain('café para el cuerpo');
+    expect(reviewWarnings).toEqual([]);
   });
 
-  it('aliases only Café in “hilo DROPS Air Café (color 08)”', () => {
-    expect(translatedNameForNumber('hilo DROPS Air Café (color 08)', '08', 'Coffee')).toBe('Café');
+  it('leaves an ambiguous yarn-list colour name unchanged and warns', () => {
+    expect(translatedNameForNumber('hilo DROPS Air Café (color 08)', '08')).toBe('hilo DROPS Air Café');
 
-    const html = '<p data-o="Yarn A: Coffee (colour 08)">hilo DROPS Air Café (color 08)</p>';
-    const restored = restoreYarnColourNamesInHtml(html);
-    expect(restored).toContain('hilo DROPS Air Coffee (color 08)');
-    expect(restored).toContain('hilo DROPS Air');
-    expect(restored).not.toMatch(/<(p)[^>]*>Coffee \(color 08\)<\/\1>/);
+    const html = `
+      <p data-seg="4" data-o="Yarn A: Coffee (colour 08)">hilo DROPS Air Café (color 08)</p>
+      <p data-o="Work Coffee to the marker.">Teje Café hasta el marcador.</p>
+    `;
+    const { html: restored, reviewWarnings } = restoreYarnColourNamesInHtml(html);
+    expect(restored).toContain('hilo DROPS Air Café (color 08)');
+    expect(restored).toContain('Teje Café hasta el marcador.');
+    expect(restored).not.toContain('hilo DROPS Air Coffee');
+    expect(reviewWarnings).toHaveLength(1);
+    expect(reviewWarnings[0].code).toBe('YARN_COLOUR_UNRESTORABLE');
+    expect(reviewWarnings[0].sourceId).toBe('seg-4');
+    expect(reviewWarnings[0].message).toMatch(/colour name for 08 could not be restored automatically/i);
+    expect(reviewWarnings[0].message).not.toMatch(/\bAI\b/);
+    expect(reviewWarnings[0].message).toMatch(/original pattern/);
   });
 
-  it('keeps multi-word colour names with de / two-word calques', () => {
+  it('replaces whole multi-word colour names from the materials list', () => {
     expect(translatedNameForNumber(
       '50-50-50-50-50-100-100 g color 20, Mermelada de cereza',
       '20',
-      'Cherry Jam',
     )).toBe('Mermelada de cereza');
-    expect(translatedNameForNumber('color 7230, Aceite de oliva', '7230', 'Olive Oil')).toBe('Aceite de oliva');
-    expect(translatedNameForNumber('color 7238, Verde musgo', '7238', 'Moss Green')).toBe('Verde musgo');
+    expect(translatedNameForNumber('color 7230, Aceite de oliva', '7230')).toBe('Aceite de oliva');
+    expect(translatedNameForNumber('color 7238, Verde musgo', '7238')).toBe('Verde musgo');
 
     const html = `
       <p data-o="Yarn B: 50-50-50-50-50-100-100 g colour 20, Cherry Jam">
@@ -114,7 +127,7 @@ describe('yarn colour product names', () => {
       <p data-o="Yarn D: Moss Green (colour 7238)">Hilo D: Verde musgo (color 7238)</p>
       <p data-o="Work Cherry Jam to the marker.">Teje Mermelada de cereza hasta el marcador.</p>
     `;
-    const restored = restoreYarnColourNamesInHtml(html);
+    const { html: restored, reviewWarnings } = restoreYarnColourNamesInHtml(html);
 
     expect(restored).toContain('50-50-50-50-50-100-100 g color 20, Cherry Jam');
     expect(restored).toContain('Olive Oil (color 7230)');
@@ -126,5 +139,6 @@ describe('yarn colour product names', () => {
     expect(restored).not.toContain('de oliva');
     expect(restored).not.toContain('Aceite de Olive Oil');
     expect(restored).not.toContain('Verde musgo');
+    expect(reviewWarnings).toEqual([]);
   });
 });
