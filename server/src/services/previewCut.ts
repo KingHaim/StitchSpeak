@@ -61,7 +61,7 @@ const BLOCK_RE = /<(p|h[1-6]|li|tr|table|blockquote|pre)(\s[^>]*)?>[\s\S]*?<\/\1
 
 const SIZE_ROW_RE = /\d[\d.,/]*\s*\(\s*\d/;
 const NUMBER_RE = /\d/;
-const REPEAT_OPEN_RE = /\brepeat\b|\brep\.?\s+from|\brep\.?\s+\*|\*\s*$/i;
+const REPEAT_OPEN_RE = /\brep(?:eat)?\.?\s+from|\brep\.?\s+\*|\*\s*$/i;
 const REPEAT_CLOSE_RE = /end of (?:the )?repeat|rep(?:eat)? from \* to (?:end|last)|hasta el final/i;
 const CAST_ON_RE =
   /\b(cast\s*on|\bco\b|montar(?:\s+puntos)?|anschlagen|monter les mailles|avviare|opzetten|l[aä]gga upp|legge opp|slå op|luoda silmukat)\b/i;
@@ -120,8 +120,14 @@ function readTag(html: string): string {
 }
 
 export function classifySegmentText(text: string, tag = 'p'): Omit<PreviewSegment, 'index' | 'html' | 'page'> {
+  // A line that *ends* with "rep from *" / "repeat from *" continues on the
+  // next line even when it also has a leading `*`. Only treat `*…*` as
+  // self-contained when the repeat is closed on the same line.
+  const opensOntoNextLine = /(?:rep(?:eat)?\.?\s+from\s+\*|repeat from \*)\s*$/i.test(text.trim());
   const isSelfContainedRepeat =
-    REPEAT_OPEN_RE.test(text) && (REPEAT_CLOSE_RE.test(text) || /\*.+\*/.test(text) || /to end/i.test(text));
+    REPEAT_OPEN_RE.test(text)
+    && !opensOntoNextLine
+    && (REPEAT_CLOSE_RE.test(text) || /\*.+\*/.test(text) || /to end/i.test(text));
   const isSizeRow = SIZE_ROW_RE.test(text);
   return {
     text,
@@ -264,6 +270,7 @@ export function castOnAndFirstRowsEnd(segments: PreviewSegment[]): number {
       }
       break;
     }
+    if (isLaterPartStart(segment)) break;
     if (segment.isRowOrRound || segment.isRepeatOpener) {
       end += 1;
       includedRows += 1;
@@ -308,7 +315,8 @@ export function firstWorkedSectionEnd(segments: PreviewSegment[]): number {
     if (segment.isHeading && !FIRST_WORKED_PART_RE.test(segment.text) && !segment.isCastOn && !segment.isTipOrNote) {
       break;
     }
-    const keep = segment.isRowOrRound
+    const instructionalRow = /^(row|round|rang|tour|vuelta|reihe|md)\s*\.?\s*\d/i.test(segment.text.trim());
+    const keep = instructionalRow
       || segment.isSizeRow
       || segment.isCastOn
       || segment.isBodyOrYoke

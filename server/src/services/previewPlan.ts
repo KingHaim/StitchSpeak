@@ -34,9 +34,18 @@ function pageAt(cut: PreviewCut, end: number): number | null {
   return last ? wholePage(last.page) : null;
 }
 
+function lastIndexOnOrBeforePage(segments: PreviewCut['segments'], page: number): number {
+  let end = 0;
+  for (let i = 0; i < segments.length; i += 1) {
+    if (wholePage(segments[i].page) <= page) end = i + 1;
+  }
+  return end;
+}
+
 function pdfCandidate(cut: PreviewCut, page: number): PreviewCut {
   return {
     ...cut,
+    end: lastIndexOnOrBeforePage(cut.segments, page),
     previewEndPage: page,
     previewHtml: htmlForPageRange(cut.segments, 1, page),
     remainingHtml: htmlForPageRange(cut.segments, page + 1, Number.POSITIVE_INFINITY),
