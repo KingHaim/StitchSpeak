@@ -530,65 +530,153 @@ interface DualMeasurementClause {
   /** Exact source substring after the metric unit, including joiner and spacing. */
   tail: string;
   extraNumbers: string[];
+  /** Index among every number+unit run in the source, not only conversion clauses. */
+  anchorIndex: number;
+  /** Canonical numbers of the metric run this conversion belongs to (`23-23-24`). */
+  metricValues: string[];
 }
 
 const INCH_ATOM = '(?:\\d+[½¼¾⅛⅜⅝⅞]|[½¼¾⅛⅜⅝⅞]|\\d+(?:[.,]\\d+)?)';
+const METRIC_NUMBER = '\\d[\\d.,½¼¾⅛⅜⅝⅞]*';
+const METRIC_RUN_RE = new RegExp(
+  `((?:${METRIC_NUMBER})(?:\\s*[‐‑‒–—-]\\s*${METRIC_NUMBER})*)\\s*(cm|mm)(?!\\p{L})`,
+  'giu',
+);
 const CM_CONVERSION_TAIL =
   `\\s*(?:=|/)\\s*(?:${INCH_ATOM}["″](?:\\s*[‐‑‒–—-]\\s*${INCH_ATOM}["″])+|${INCH_ATOM}(?:\\s*[‐‑‒–—-]\\s*${INCH_ATOM})*\\s*["″])`;
-const CM_CONVERSION_RE = new RegExp(`(cm)(${CM_CONVERSION_TAIL})`, 'giu');
-const MM_CONVERSION_RE = /(mm)(\s*=\s*US\s*\d+(?:[.,]\d+)?)/gi;
+const MM_CONVERSION_TAIL_RE = /^\s*=\s*US\s*\d+(?:[.,]\d+)?/i;
+
+interface MetricAnchor {
+  unit: 'cm' | 'mm';
+  values: string[];
+  start: number;
+  unitEnd: number;
+}
+
+function conversionTailAfter(text: string, unitEnd: number, unit: 'cm' | 'mm'): string | null {
+  const rest = text.slice(unitEnd);
+  if (unit === 'cm') {
+    const match = rest.match(new RegExp(`^${CM_CONVERSION_TAIL}`, 'iu'));
+    return match?.[0] ?? null;
+  }
+  return rest.match(MM_CONVERSION_TAIL_RE)?.[0] ?? null;
+}
+
+function findMetricAnchorsInText(text: string): MetricAnchor[] {
+  const anchors: MetricAnchor[] = [];
+  const runRe = new RegExp(METRIC_RUN_RE.source, 'giu');
+  let match: RegExpExecArray | null;
+  while ((match = runRe.exec(text)) !== null) {
+    anchors.push({
+      unit: match[2].toLocaleLowerCase() as 'cm' | 'mm',
+      values: canonicalNumberTokens(match[1]),
+      start: match.index,
+      unitEnd: match.index + match[0].length,
+    });
+  }
+  return anchors;
+}
 
 function extractDualMeasurementClauses(sourceText: string): DualMeasurementClause[] {
   const clauses: DualMeasurementClause[] = [];
-  for (const match of sourceText.matchAll(CM_CONVERSION_RE)) {
+  findMetricAnchorsInText(sourceText).forEach((anchor, anchorIndex) => {
+    const tail = conversionTailAfter(sourceText, anchor.unitEnd, anchor.unit);
+    if (tail == null) return;
     clauses.push({
-      metricUnit: 'cm',
-      tail: match[2],
-      extraNumbers: canonicalNumberTokens(match[2]),
+      metricUnit: anchor.unit,
+      tail,
+      extraNumbers: anchor.unit === 'cm' ? canonicalNumberTokens(tail) : usSizeNumberTokens(tail),
+      anchorIndex,
+      metricValues: anchor.values,
     });
-  }
-  for (const match of sourceText.matchAll(MM_CONVERSION_RE)) {
-    clauses.push({
-      metricUnit: 'mm',
-      tail: match[2],
-      extraNumbers: usSizeNumberTokens(match[2]),
-    });
-  }
+  });
   return clauses;
 }
 
-const METRIC_UNIT_ANCHOR_RE = /\d[\d.,½¼¾⅛⅜⅝⅞]*\s*(cm|mm)(?!\p{L})/giu;
+interface HtmlMetricAnchor extends MetricAnchor {
+  part: number;
+  afterNear: string;
+}
 
-function insertAfterMetricUnit(
-  innerHtml: string,
-  metricUnit: 'cm' | 'mm',
-  tail: string,
-  occurrence = 0,
-): string {
+function findMetricAnchorsInHtml(innerHtml: string): HtmlMetricAnchor[] {
   const parts = innerHtml.split(/(<[^>]*>)/);
-  const tailFolded = tail.replace(/\s+/g, '').toLocaleLowerCase();
-  let seen = 0;
-  for (let index = 0; index < parts.length; index += 1) {
-    const part = parts[index];
-    if (part.startsWith('<')) continue;
-    const anchorRe = new RegExp(METRIC_UNIT_ANCHOR_RE.source, 'giu');
+  const anchors: HtmlMetricAnchor[] = [];
+  parts.forEach((part, partIndex) => {
+    if (part.startsWith('<')) return;
+    const runRe = new RegExp(METRIC_RUN_RE.source, 'giu');
     let match: RegExpExecArray | null;
-    while ((match = anchorRe.exec(part)) !== null) {
-      if (match[1].toLocaleLowerCase() !== metricUnit) continue;
-      if (seen !== occurrence) {
-        seen += 1;
-        continue;
-      }
-      const end = match.index + match[0].length;
-      const afterFolded = part.slice(end).replace(/\s+/g, '').toLocaleLowerCase();
-      if (afterFolded.startsWith(tailFolded) || afterFolded.startsWith('/') || afterFolded.startsWith('=')) {
-        return innerHtml;
-      }
-      parts[index] = `${part.slice(0, end)}${tail}${part.slice(end)}`;
-      return parts.join('');
+    while ((match = runRe.exec(part)) !== null) {
+      const unitEnd = match.index + match[0].length;
+      anchors.push({
+        unit: match[2].toLocaleLowerCase() as 'cm' | 'mm',
+        values: canonicalNumberTokens(match[1]),
+        start: match.index,
+        unitEnd,
+        part: partIndex,
+        afterNear: '',
+      });
     }
+  });
+  anchors.forEach((anchor, index) => {
+    const next = anchors[index + 1];
+    let after = '';
+    const first = parts[anchor.part];
+    after = first.slice(anchor.unitEnd);
+    for (let partIndex = anchor.part + 1; partIndex < parts.length; partIndex += 1) {
+      if (next && partIndex > next.part) break;
+      if (next && partIndex === next.part) {
+        if (!parts[partIndex].startsWith('<')) after += parts[partIndex].slice(0, next.start);
+        break;
+      }
+      if (parts[partIndex].startsWith('<')) continue;
+      after += parts[partIndex];
+    }
+    if (next && next.part === anchor.part) {
+      after = first.slice(anchor.unitEnd, next.start);
+    }
+    anchor.afterNear = after;
+  });
+  return anchors;
+}
+
+function valuesEqual(left: string[], right: string[]): boolean {
+  return left.join('|') === right.join('|');
+}
+
+function matchTranslatedAnchor(
+  translated: HtmlMetricAnchor[],
+  clause: DualMeasurementClause,
+): HtmlMetricAnchor | null {
+  const sameValues = translated.filter(
+    (anchor) => anchor.unit === clause.metricUnit && valuesEqual(anchor.values, clause.metricValues),
+  );
+  if (sameValues.length === 1) return sameValues[0];
+  if (sameValues.length > 1) {
+    const atIndex = translated[clause.anchorIndex];
+    if (atIndex && sameValues.includes(atIndex)) return atIndex;
+    return sameValues[0];
   }
-  return innerHtml;
+  const atIndex = translated[clause.anchorIndex];
+  if (atIndex && atIndex.unit === clause.metricUnit) return atIndex;
+  return null;
+}
+
+function clauseConversionPresent(afterNear: string, clause: DualMeasurementClause): boolean {
+  const folded = afterNear.replace(/\s+/g, '').toLocaleLowerCase();
+  const tailFolded = clause.tail.replace(/\s+/g, '').toLocaleLowerCase();
+  if (folded.startsWith(tailFolded)) return true;
+  if (clause.metricUnit === 'cm') {
+    return imperialNumberTokens(afterNear).length > 0;
+  }
+  return usSizeNumberTokens(afterNear).length > 0;
+}
+
+function insertTailAtAnchor(innerHtml: string, anchor: HtmlMetricAnchor, tail: string): string {
+  const parts = innerHtml.split(/(<[^>]*>)/);
+  const part = parts[anchor.part];
+  if (part == null || part.startsWith('<')) return innerHtml;
+  parts[anchor.part] = `${part.slice(0, anchor.unitEnd)}${tail}${part.slice(anchor.unitEnd)}`;
+  return parts.join('');
 }
 
 /**
@@ -599,17 +687,21 @@ function insertAfterMetricUnit(
 function restoreMissingEquivalenceClauses(segment: PositionedSegment): string | null {
   const clauses = extractDualMeasurementClauses(segment.sourceText);
   if (clauses.length === 0) return null;
-  const jobs: Array<{ clause: DualMeasurementClause; occurrence: number }> = [];
-  const seen = { cm: 0, mm: 0 };
-  for (const clause of clauses) {
-    jobs.push({ clause, occurrence: seen[clause.metricUnit] });
-    seen[clause.metricUnit] += 1;
-  }
   let next = segment.innerHtml;
   let changed = false;
-  // Last occurrence first so earlier number+unit offsets stay valid.
-  for (const job of jobs.reverse()) {
-    const inserted = insertAfterMetricUnit(next, job.clause.metricUnit, job.clause.tail, job.occurrence);
+  const jobs = clauses
+    .map((clause) => {
+      const target = matchTranslatedAnchor(findMetricAnchorsInHtml(next), clause);
+      return target ? { clause, target } : null;
+    })
+    .filter((job): job is { clause: DualMeasurementClause; target: HtmlMetricAnchor } => job !== null)
+    .sort((left, right) => right.target.part - left.target.part || right.target.unitEnd - left.target.unitEnd);
+
+  for (const job of jobs) {
+    const target = matchTranslatedAnchor(findMetricAnchorsInHtml(next), job.clause);
+    if (target == null) continue;
+    if (clauseConversionPresent(target.afterNear, job.clause)) continue;
+    const inserted = insertTailAtAnchor(next, target, job.clause.tail);
     if (inserted !== next) {
       next = inserted;
       changed = true;

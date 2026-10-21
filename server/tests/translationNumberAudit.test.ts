@@ -328,6 +328,27 @@ describe('translation number fidelity enforcement', () => {
         expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_RESTORED']);
       });
 
+      it('restores inches after the dual-cm run, not after a plain 5 cm', () => {
+        const source = 'Work 5 cm, then 23-23-24 cm = 9&quot;-9&quot;-9½&quot;';
+        const html = `<p data-seg="22" data-o="${source}">Teje 5 cm, luego 23-23-24 cm</p>`;
+        const result = enforceTranslatedNumberFidelity(html);
+        expect(result.html).toContain('5 cm, luego 23-23-24 cm = 9"-9"-9½"');
+        expect(result.html).not.toMatch(/5 cm\s*=/);
+        expect(result.html).not.toContain('5 cm = 9"');
+        expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_RESTORED']);
+      });
+
+      it('does not insert an equivalence when the inches are already present', () => {
+        const source = 'Work 5 cm, then 23-23-24 cm = 9&quot;-9&quot;-9½&quot;';
+        const html = `<p data-seg="23" data-o="${source}">Teje 6 cm, luego 23-23-24 cm = 9"-9"-9½"</p>`;
+        const result = enforceTranslatedNumberFidelity(html);
+        expect(result.html).toContain('5 cm, luego 23-23-24 cm = 9"-9"-9½"');
+        expect(result.html).not.toMatch(/5 cm\s*=/);
+        expect(result.html).not.toMatch(/6 cm\s*=/);
+        expect(result.html.match(/9"-9"-9½"/g)).toHaveLength(1);
+        expect(result.reviewWarnings.map((warning) => warning.code)).toEqual(['NUMBER_RESTORED']);
+      });
+
       it('compares imperial and US-size atoms separately from the metric run', () => {
         expect(imperialNumberTokens('23-23-24 cm / 9-9-9½"')).toEqual(['9', '9', '9.5']);
         expect(usSizeNumberTokens('3 mm = US 2.5')).toEqual(['2.5']);
