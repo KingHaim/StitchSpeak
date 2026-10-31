@@ -11,7 +11,10 @@ import { detectSourceKind, extractDocumentHtml } from './documentExtract.js';
 import { isProviderBillingExhausted, withExternalDeadline } from './externalDeadline.js';
 import {
   annotateSourceTopology,
+  applyInnerHtmlBySourceId,
   auditTranslatedTopology,
+  isUntranslatedSourceCopy,
+  projectTranslationOntoSource,
   sourceBlockTextById,
   type TranslationTopologyWarning,
 } from './translationTopology.js';
@@ -42,7 +45,7 @@ import {
   type NumberVerifierStatus,
   type SegmentVerifyFn,
 } from './translationNumberVerifier.js';
-import { auditTranslatedGlossary, buildGlossaryPromptSection } from './translationGlossary.js';
+import { auditTranslatedGlossary, buildGlossaryPromptSection, repairTranslatedGlossary } from './translationGlossary.js';
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -280,6 +283,7 @@ function getHandcraftedLanguageRules(language: string): string {
     - slip 1, knit 1, pass slipped stitch over / SKP is never "glisser, glisser, tricoter". That GGT wording is only for ssk.
     - Never write "côtes doubles" for 1×1 rib. "Côtes doubles" only if the source is actually 2×2 / double rib.
     - Never write "fil lace" for lace-weight yarn. Bare "dentelle" stays the stitch/fabric, not the yarn weight.
+    - English "Continue in/until…" is an instruction. Already-French "on continue" / "continuez" is not English leftover.
     - Never leave a bare inch unit as "in"; use the locked glossary form.
     - set-up row worked flat uses rang de préparation; when the same set-up is in the round, use tour de préparation. Never "rang de montage" for set-up (that is cast on).
     - half fisherman’s rib is never "côtes anglaises perlées" and never plain "côtes anglaises" (that is full fisherman’s rib).
@@ -1368,7 +1372,7 @@ ${createTitleTranslationRules(3, language)}
 
 ### 4. LANGUAGE & TECHNICAL RULES:
 - **NO SOURCE LANGUAGE IN GLOSSARY**: Remove source-language abbreviations unless a language-specific rule explicitly requires preserving a token (for example Danish pm). The glossary must contain the approved ${language} abbreviation and its full definition.
-- **100% LOCALIZED**: Use the specific localized abbreviations for ${language} (e.g., MO, Rem, H, ddD, DDC), subject to explicit language-specific token-preservation rules. In Spanish, write k2tog as "teje 2 puntos juntos del derecho" — never 2pjD. Never leave English chart/glossary forms such as k2tog, ssk, CDD, knit, or yarn over when the target is not English.
+- **100% LOCALIZED**: Use the specific localized abbreviations for ${language} (e.g., MO, Rem, H, ddD, DDC), subject to explicit language-specific token-preservation rules. In Spanish, write k2tog as "teje 2 puntos juntos del derecho" — never 2pjD. Never leave English chart/glossary forms such as k2tog, ssk, CDD, knit, or yarn over when the target is not English. "lace" the stitch/fabric is not a yarn weight; English "Continue in/until…" is an instruction to localize, while already-local "on continue" / "continuez" is not English leakage.
 - **PUNCTUATION**: Maintain the exact punctuation (brackets, colons, slashes) used in the original for sizing.
 - **INLINE BOLD IS SOURCE DATA**: Preserve every source bold fragment with <strong> in the translated equivalent. In glossary entries, keep the abbreviation/prefix bold when it is bold in the source. In size lists, keep exactly the same size slots bold and do not invent a new alternating pattern.
 
@@ -1380,8 +1384,8 @@ ${createTitleTranslationRules(3, language)}
 - Every TYPOGRAPHY HINT that represents a real heading must have one equivalent translated heading in the output. Before responding, compare every visible section boundary in the PDF against the emitted <h2>/<h3>/<h4> sequence and restore anything missing.
 ### 5. OUTPUT FORMAT:
 - Output raw semantic HTML5 wrapped in a single <div>.
-- Use real semantic headings: <h1> for the pattern title, <h2> for major sections (Materials, Gauge, Abbreviations, Pattern, Finishing, etc.), <h3> for sub-sections, and <h4> for sub-sub-sections.
-- THERE MUST BE EXACTLY ONE <h1> IN THE ENTIRE DOCUMENT: the cover/pattern title. Every major section heading (e.g. Sizes, Materials, Gauge, Glossary, Body, Neck, Finishing, Charts) MUST be <h2> — never <h1> — even if it appears large in the source. Do not promote section headings to <h1> just because their font is big.
+- When a TYPOGRAPHY HINT gives a heading tag, use that exact tag. Never promote or demote a hinted heading.
+- When no hint applies, use <h1> for the pattern title, <h2> for major sections (Materials, Gauge, Abbreviations, Pattern, Finishing, etc.), <h3> for sub-sections, and <h4> for sub-sub-sections. Do not invent extra <h1> elements.
 - Use <strong> ONLY where the source uses bold for inline emphasis or size markers, and for true inline emphasis in translated text. NEVER use <strong> as a section header.
 - For tables, use <table> with styles: "width: 100%; border-collapse: collapse; margin: 10px 0; border: 1px solid #ccc;".
 - For table cells, use padding and center-alignment where appropriate.
@@ -1769,10 +1773,10 @@ export function finalizeTranslatedHtml(
     finalized = restoreFrenchRepeatAsterisksInHtml(finalized);
   }
   const artifacts = findMarkdownArtifacts(finalized);
-  // Locked-glossary post-check (US2): warn when English craft terms with a
-  // locked equivalent survive into the translation, or when an English target
-  // freestyle-mixes US/UK variants. Warn-only by design — see
-  // translationGlossary.ts for why this never hard-fails like number drift.
+  // Locked-glossary repair then audit (US2): replace leftover English craft
+  // terms with the locked target form before QA, so only residual issues
+  // reach the review panel.
+  finalized = repairTranslatedGlossary(finalized, language).html;
   const glossaryWarnings = auditTranslatedGlossary(finalized, language);
   return {
     html: finalized,
@@ -2185,6 +2189,155 @@ async function verifyAndRepairInlineEmphasis(
   }
 }
 
+export type MissingSegmentRetryFn = (
+  segments: Array<{ id: string; sourceText: string }>,
+  signal?: AbortSignal,
+) => Promise<ReadonlyMap<string, string>>;
+
+/**
+ * Near-deadline guard for the omitted-segment re-translate. Starting the
+ * retry with less budget than this would abort mid-call and risk a 504;
+ * skip and warn UNTRANSLATED_ELEMENT instead so forceAlignment + finalize
+ * can still settle the job.
+ */
+export const OMITTED_SEGMENT_MIN_DEADLINE_MS = 20_000;
+
+/**
+ * Tail margin the omitted-segment retry's own abort signal leaves before
+ * the translation deadline, so an over-long retry is cut short with enough
+ * time for forceAlignment and finalize to deliver `done`.
+ */
+export const OMITTED_SEGMENT_DEADLINE_TAIL_MS = 10_000;
+
+const omittedSegmentRepairSchema = {
+  type: Type.OBJECT,
+  properties: {
+    repairs: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          id: { type: Type.STRING },
+          text: { type: Type.STRING },
+        },
+        required: ['id', 'text'],
+      },
+    },
+  },
+  required: ['repairs'],
+};
+
+function createOmittedSegmentRetry(
+  language: string,
+  sourceLanguage: string | undefined,
+  signal: AbortSignal | undefined,
+): MissingSegmentRetryFn {
+  return async (segments, callSignal) => {
+    const abortSignal = callSignal ?? signal;
+    const response = await withRetry(() =>
+      getAI().models.generateContent({
+        model: TITLE_REPAIR_MODEL,
+        config: {
+          abortSignal,
+          temperature: 0,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          responseMimeType: 'application/json',
+          responseSchema: omittedSegmentRepairSchema,
+        },
+        contents: [{
+          parts: [{
+            text: `Translate each knitting-pattern segment into ${language}. Return one repair per id. Keep numbers, punctuation, and size lists exactly. Use locked ${language} craft terms. Do not add HTML.\n${JSON.stringify({
+              ...(sourceLanguage ? { sourceLanguage } : {}),
+              targetLanguage: language,
+              segments,
+            })}`,
+          }],
+        }],
+      }),
+    );
+    const parsed = JSON.parse(response.text || '{}') as {
+      repairs?: Array<{ id?: unknown; text?: unknown }>;
+    };
+    const valid = new Set(segments.map((segment) => segment.id));
+    const translated = new Map<string, string>();
+    for (const item of Array.isArray(parsed.repairs) ? parsed.repairs : []) {
+      if (typeof item?.id !== 'string' || typeof item.text !== 'string' || !valid.has(item.id)) continue;
+      const text = item.text.trim();
+      if (text) translated.set(item.id, text);
+    }
+    return translated;
+  };
+}
+
+function untranslatedElementWarning(id: string, sourceText: string): TranslationTopologyWarning {
+  return {
+    code: 'UNTRANSLATED_ELEMENT',
+    sourceId: id,
+    message: `${id} was not translated; source text remains: "${sourceText}".`,
+  };
+}
+
+/**
+ * Re-translate source blocks the model omitted. Runs under its own abort
+ * signal bounded by the remaining deadline minus a tail margin so
+ * forceAlignment and finalize still have time to settle the job. An abort,
+ * timeout, skip, or partial retry never fails the job — leftover ids raise
+ * UNTRANSLATED_ELEMENT review warnings instead.
+ */
+export async function runOmittedSegmentRetry(options: {
+  html: string;
+  annotatedSourceHtml: string;
+  omittedIds: readonly string[];
+  remainingMs: number;
+  language: string;
+  sourceLanguage?: string;
+  signal?: AbortSignal;
+  missingSegmentRetry?: MissingSegmentRetryFn;
+}): Promise<{ html: string; warnings: TranslationTopologyWarning[] }> {
+  const sourceById = sourceBlockTextById(options.annotatedSourceHtml);
+  const omittedNodes = options.omittedIds
+    .map((id) => ({ id, sourceText: sourceById.get(id) ?? '' }))
+    .filter((segment) => segment.sourceText);
+  const leftoverIds = () => omittedNodes.map((segment) => segment.id);
+  const warningsFor = (ids: readonly string[]): TranslationTopologyWarning[] =>
+    ids.map((id) => untranslatedElementWarning(id, sourceById.get(id) ?? ''));
+
+  if (omittedNodes.length === 0) return { html: options.html, warnings: [] };
+
+  if (options.remainingMs < OMITTED_SEGMENT_MIN_DEADLINE_MS) {
+    console.warn(
+      `[gemini] skipping omitted-segment repair: ~${Math.max(0, Math.round(options.remainingMs / 1000))}s of deadline budget left.`,
+    );
+    return { html: options.html, warnings: warningsFor(leftoverIds()) };
+  }
+
+  const retrySignal = Number.isFinite(options.remainingMs)
+    ? AbortSignal.any([
+        ...(options.signal ? [options.signal] : []),
+        AbortSignal.timeout(options.remainingMs - OMITTED_SEGMENT_DEADLINE_TAIL_MS),
+      ])
+    : options.signal;
+
+  try {
+    const retry = options.missingSegmentRetry
+      ?? createOmittedSegmentRetry(options.language, options.sourceLanguage, retrySignal);
+    const translations = await retry(omittedNodes, retrySignal);
+    const accepted = new Map<string, string>();
+    for (const segment of omittedNodes) {
+      const text = translations.get(segment.id)?.trim() ?? '';
+      if (!text || isUntranslatedSourceCopy(segment.sourceText, text)) continue;
+      accepted.set(segment.id, text);
+    }
+    return {
+      html: applyInnerHtmlBySourceId(options.html, accepted, options.annotatedSourceHtml),
+      warnings: warningsFor(omittedNodes.filter((segment) => !accepted.has(segment.id)).map((segment) => segment.id)),
+    };
+  } catch (err) {
+    console.warn('[gemini] omitted-segment repair skipped:', err);
+    return { html: options.html, warnings: warningsFor(leftoverIds()) };
+  }
+}
+
 export interface TranslatePatternOptions {
   /**
    * Called for every text delta received from Gemini's streaming response.
@@ -2220,6 +2373,11 @@ export interface TranslatePatternOptions {
    * call. Production callers never set this.
    */
   numberVerify?: SegmentVerifyFn;
+  /**
+   * Test seam: overrides the flash re-translate of source blocks the model
+   * omitted. Production callers never set this.
+   */
+  missingSegmentRetry?: MissingSegmentRetryFn;
   /**
    * Epoch-ms timestamp when the external translation deadline aborts the
    * job. Set by translatePattern; late best-effort phases (the US7 number
@@ -2428,8 +2586,9 @@ export const createDocumentSystemInstruction = (language: string, sourceLanguage
 
 ### 1. STRUCTURE PRESERVATION (CRITICAL):
 - Preserve ALL existing structure: headings, paragraphs, ordered/unordered lists, and especially <table> elements. Keep every row and column of every table intact.
-- Do NOT drop, summarize, merge, or skip any content. Every instruction, note, table, and chart that exists in the source must exist in your output.
+- Do NOT drop, summarize, merge, or skip any content. Every instruction, note, table, and chart that exists in the source must exist in your output. Never merge two source elements into one and never skip an element.
 - Every incoming data-source-id is immutable. Return exactly one element with the same tag and id for every source element, in the same order. Translate only the text inside it; never create, delete, merge, split, reorder, or retag elements.
+- Keep every heading at the exact source level. An <h1> stays <h1>, an <h2> stays <h2>, and so on. If the source has several <h1> elements, keep them all as <h1>. Do not rewrite the source heading outline.
 - Preserve intentional empty paragraphs, every manual <br>, explicit page-break style, list type and nesting level, and each table-cell boundary exactly. If wording is difficult, keep the element and translate conservatively rather than restructuring it.
 - If the source uses tables for measurement/stitch-count data or stitch charts, keep them as HTML <table> structures.
 - Translate every human-language <th> and <td>, including table headings, garment-part labels, and written size/age labels such as "Size", "Chest circumference", "Newborn", "months", and "years". Table text is not international terminology.
@@ -2444,15 +2603,15 @@ ${createSizeFormatPreservationRules(3)}
 ${createTitleTranslationRules(4, language)}
 
 ### 5. LANGUAGE & TECHNICAL RULES:
-- **NO SOURCE LANGUAGE**: Remove source-language text and abbreviations except tokens explicitly preserved by the language-specific rules. The output must be fully ${language}.
-- **100% LOCALIZED**: Use the specific localized abbreviations for ${language}, including any explicit preserve/rename exceptions in the language-specific rules.
+- **NO SOURCE LANGUAGE**: Remove source-language text and abbreviations except tokens explicitly preserved by the language-specific rules. The output must be fully ${language}. Do not leave English craft words in ${language} sentences.
+- **100% LOCALIZED**: Use the specific localized abbreviations for ${language}, including any explicit preserve/rename exceptions in the language-specific rules. Apply every locked glossary mapping. "lace" the stitch/fabric is not a yarn weight: "lace weight" / "lace-weight yarn" stays a yarn weight, and a yarn's proper name is not a stitch name. English "Continue in/until…" is an instruction to localize; already-French "on continue" / "continuez" is not English leakage.
 - **PUNCTUATION**: Maintain the exact punctuation (brackets, colons, slashes) used in the original for sizing.
 - **INLINE BOLD IS SOURCE DATA**: Preserve every source <strong>/<b> fragment in its translated equivalent. In glossary entries, keep the abbreviation/prefix bold when it is bold in the source. In size lists, keep exactly the same size slots bold and do not infer a different pattern.
 ### 6. OUTPUT FORMAT:
 - Output raw semantic HTML5 wrapped in a single <div>. DO NOT use markdown code blocks (\`\`\`html).
 - Never emit literal Markdown emphasis or heading syntax such as **, __, backticks, or # headings. Use native <strong>/<em> only for the equivalent source text range.
-- Use real semantic headings: <h1> for the pattern title, <h2> for major sections (Materials, Gauge, Abbreviations, Pattern, Finishing, etc.), <h3> for sub-sections, <h4> for sub-sub-sections.
-- THERE MUST BE EXACTLY ONE <h1> (the pattern title). Never promote ordinary section headings to <h1>; major sections are always <h2>.
+- Keep every heading at the exact source level. An <h1> stays <h1>, an <h2> stays <h2>, and so on. Never promote or demote a heading to invent a single-title outline.
+- If the source has several <h1> elements, keep them all as <h1>. Do not rewrite the source heading outline.
 - Use <strong> ONLY where the source uses bold for inline emphasis or size markers, and for true inline emphasis in translated text — never as a section header.
 - For tables, use <table style="width: 100%; border-collapse: collapse; margin: 1em 0; border: 1px solid #ccc;"> with padded cells.
 
@@ -2530,7 +2689,7 @@ async function translateDocumentHtml(
         {
           parts: [
             {
-              text: `${sourcePromptClause} and faithfully reconstruct the following knitting pattern into ${language}. The pattern is provided as HTML extracted from a word-processor document. Translate every title and subtitle descriptor into ${language}; preserve only genuine proper names or brand names. Preserve all structure and TABLES, keep every [IMG_n] marker exactly in place, preserve the source pattern's exact multi-size formatting including each size list's parentheses, commas, spacing, and bold/plain size markers, localize every technical term, and remove all source-language text. Every data-source-id is immutable: translate only inside its existing element and never create, delete, merge, split, reorder, or retag source elements. Preserve empty paragraphs, <br> tags, page-break styles, list nesting, and table-cell boundaries exactly. Return raw HTML.\n\n${translationMemoryInstruction ? `${translationMemoryInstruction}\n\n` : ''}--- SOURCE PATTERN (HTML) ---\n${annotatedSource}\n--- END SOURCE PATTERN ---`,
+              text: `${sourcePromptClause} and faithfully reconstruct the following knitting pattern into ${language}. The pattern is provided as HTML extracted from a word-processor document. Translate every title and subtitle descriptor into ${language}; preserve only genuine proper names or brand names. Preserve all structure and TABLES, keep every [IMG_n] marker exactly in place, preserve the source pattern's exact multi-size formatting including each size list's parentheses, commas, spacing, and bold/plain size markers, localize every technical term, and remove all source-language text. Every data-source-id is immutable: translate only inside its existing element, keep that element's exact tag (heading levels included), and never create, delete, merge, split, reorder, or retag source elements. Preserve empty paragraphs, <br> tags, page-break styles, list nesting, and table-cell boundaries exactly. Return raw HTML.\n\n${translationMemoryInstruction ? `${translationMemoryInstruction}\n\n` : ''}--- SOURCE PATTERN (HTML) ---\n${annotatedSource}\n--- END SOURCE PATTERN ---`,
             },
           ],
         },
@@ -2601,13 +2760,27 @@ async function translateDocumentHtml(
     sourceLanguage,
     signal,
   );
+  const projected = projectTranslationOntoSource(annotatedSource, repairedEmphasis.html);
+  const omittedRetry = await runOmittedSegmentRetry({
+    html: projected.html,
+    annotatedSourceHtml: annotatedSource,
+    omittedIds: projected.omittedIds,
+    remainingMs: options.deadlineAt === undefined
+      ? Number.POSITIVE_INFINITY
+      : options.deadlineAt - Date.now(),
+    language,
+    ...(sourceLanguage ? { sourceLanguage } : {}),
+    ...(signal ? { signal } : {}),
+    ...(options.missingSegmentRetry ? { missingSegmentRetry: options.missingSegmentRetry } : {}),
+  });
+  const structuredHtml = omittedRetry.html;
   // US6 force alignment: numeric blocks the model left without data-o get a
   // deterministic alignment derived from the annotated source (matched by
   // immutable data-source-id) so the number audit can cover them. Blocks with
   // no source match stay unaligned and surface UNAUDITED_NUMBERS review
   // warnings in finalize rather than shipping unaudited numbers silently.
   const alignmentForced = forceAlignmentFromSource(
-    reinsertImages(repairedEmphasis.html, srcs),
+    reinsertImages(structuredHtml, srcs),
     sourceBlockTextById(annotatedSource),
   );
   const finalized = await finalizeTranslatedHtmlWithRecovery(
@@ -2621,6 +2794,7 @@ async function translateDocumentHtml(
   return {
     html: finalized.html,
     reviewWarnings: [
+      ...omittedRetry.warnings,
       ...topologyWarnings,
       ...repairedReviewedLanguage.reviewWarnings,
       ...finalized.reviewWarnings,

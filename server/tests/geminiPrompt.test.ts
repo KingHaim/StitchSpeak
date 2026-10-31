@@ -97,6 +97,24 @@ describe('Gemini translation prompts', () => {
     expect(prompt).toMatch(/replace.*text-only heading graphic.*translated semantic heading/i);
     expect(prompt).toMatch(/every TYPOGRAPHY HINT.*must have.*translated heading/i);
   });
+
+  it('tells document translation to keep source heading levels and every source id', () => {
+    const prompt = createDocumentSystemInstruction('French', 'English');
+
+    expect(prompt).toMatch(/Keep every heading at the exact source level/);
+    expect(prompt).toMatch(/If the source has several <h1> elements, keep them all as <h1>/);
+    expect(prompt).not.toMatch(/THERE MUST BE EXACTLY ONE <h1>/);
+    expect(prompt).toMatch(/Never merge two source elements into one/);
+    expect(prompt).toMatch(/lace weight/);
+    expect(prompt).toMatch(/on continue/);
+  });
+
+  it('tells PDF translation to honour hinted heading tags instead of inventing a single h1', () => {
+    const prompt = createSystemInstruction('French', 'English');
+
+    expect(prompt).toMatch(/When a TYPOGRAPHY HINT gives a heading tag, use that exact tag/);
+    expect(prompt).not.toMatch(/THERE MUST BE EXACTLY ONE <h1> IN THE ENTIRE DOCUMENT/);
+  });
   it.each([
     ['PDF', createSystemInstruction('Danish')],
     ['document', createDocumentSystemInstruction('Danish')],
