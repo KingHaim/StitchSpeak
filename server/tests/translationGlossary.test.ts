@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   auditTranslatedGlossary,
   buildGlossaryPromptSection,
+  repairTranslatedGlossary,
   resolveGlossaryLanguage,
 } from '../src/services/translationGlossary';
 import {
@@ -223,6 +224,43 @@ describe('auditTranslatedGlossary — English term leakage', () => {
     </div>`;
 
     expect(auditTranslatedGlossary(html, 'French')).toEqual([]);
+  });
+
+  it('does not flag continuez or a leftover English continue after repair', () => {
+    const conjugated = `<div>
+      <p data-seg="1" data-o="The front left and right panels are knit separately until they meet. Continue in stockinette.">Les panneaux avant sont tricotés séparément. Continuez en jersey endroit.</p>
+    </div>`;
+    expect(auditTranslatedGlossary(conjugated, 'French')).toEqual([]);
+
+    const leftover = `<div>
+      <p data-seg="1" data-o="The front left and right panels are knit separately until they meet. Continue in stockinette.">Les panneaux avant sont tricotés séparément. Continue in stockinette.</p>
+    </div>`;
+    const repaired = repairTranslatedGlossary(leftover, 'French');
+    expect(repaired.html).toMatch(/Continuer in stockinette|continuer in stockinette/i);
+    expect(auditTranslatedGlossary(repaired.html, 'French').some((warning) => /"continue"/i.test(warning.message))).toBe(false);
+  });
+
+  it('does not treat lace weight or a yarn name as the stitch term dentelle', () => {
+    const html = `<div>
+      <p data-seg="1" data-o="About 500, 500, 500, (600, 600, 700) (800, 800, 1100, 1200) yards of lace weight">Environ 500, 500, 500, (600, 600, 700) (800, 800, 1100, 1200) yards of lace weight</p>
+      <p data-seg="2" data-o="Kidsilk Lace">Kidsilk Lace</p>
+    </div>`;
+
+    const warnings = auditTranslatedGlossary(html, 'French');
+    expect(warnings.some((warning) => /"lace"/i.test(warning.message))).toBe(false);
+    expect(repairTranslatedGlossary(html, 'French').html).toContain('lace weight');
+    expect(repairTranslatedGlossary(html, 'French').html).toContain('Kidsilk Lace');
+  });
+
+  it('repairs a leftover English lace stitch term to dentelle', () => {
+    const html = `<div>
+      <p data-seg="1" data-o="Work the lace panel.">Tricoter le lace panel.</p>
+    </div>`;
+
+    const repaired = repairTranslatedGlossary(html, 'French');
+    expect(repaired.html).toContain('>Tricoter le dentelle panel.<');
+    expect(repaired.html).not.toMatch(/>Tricoter le lace panel.</);
+    expect(auditTranslatedGlossary(repaired.html, 'French').some((warning) => /"lace"/i.test(warning.message))).toBe(false);
   });
 
   it('does not flag English tokens that are everyday words in the target language', () => {

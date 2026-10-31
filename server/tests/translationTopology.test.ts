@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   annotateSourceTopology,
+  applyInnerHtmlBySourceId,
   auditTranslatedTopology,
+  flattenRedundantInnerParagraphs,
+  projectTranslationOntoSource,
+  restoreSourceHeadingLevels,
 } from '../src/services/translationTopology';
 
 describe('translation topology', () => {
@@ -60,17 +64,66 @@ describe('translation topology', () => {
     expect(warnings.some((warning) => warning.code === 'ORDER_CHANGED')).toBe(true);
   });
 
-  it('audits nested paragraphs inside table cells and detects new elements without ids', () => {
+  it('unwraps a single mammoth paragraph inside a table cell and ids only the cell', () => {
     const source = annotateSourceTopology('<table><tr><td><p>Nested text</p></td></tr></table>');
-    const target = source.replace('Nested text', 'Texte traduit')
-      .replace('</td>', '<p>Injected paragraph</p></td>');
-    const warnings = auditTranslatedTopology(source, target);
 
-    expect(source).toContain('data-source-id="src-1"');
-    expect(source).toContain('data-source-id="src-2"');
-    expect(warnings.some((warning) => warning.code === 'EXTRA_ELEMENT')).toBe(true);
-    expect(warnings.some(
-      (warning) => warning.code === 'MISSING_ELEMENT' && warning.sourceId === 'src-2',
-    )).toBe(false);
+    expect(source).toContain('<td data-source-id="src-1">Nested text</td>');
+    expect(source).not.toContain('data-source-id="src-2"');
+    expect(source).not.toContain('<p>');
+  });
+
+  it('keeps two real paragraphs inside a cell as separate leaf ids', () => {
+    const annotated = annotateSourceTopology('<table><tr><td><p>First</p><p>Second</p></td></tr></table>');
+
+    expect(annotated).toContain('<p data-source-id="src-1">First</p>');
+    expect(annotated).toContain('<p data-source-id="src-2">Second</p>');
+    expect(annotated).not.toMatch(/<td data-source-id=/);
+  });
+
+  it('does not treat flattened cell text as missing when the model keeps only the td', () => {
+    const source = annotateSourceTopology(
+      '<table><tr><td><p>About 500, 500, 500 yards</p></td><td><p>Size S</p></td></tr></table>',
+    );
+    const translated = source
+      .replace('About 500, 500, 500 yards', 'Environ 500, 500, 500 mètres')
+      .replace('Size S', 'Taille S');
+
+    const warnings = auditTranslatedTopology(source, translated);
+    expect(warnings.some((warning) => warning.code === 'MISSING_ELEMENT')).toBe(false);
+  });
+
+  it('restores source heading tags when the translator demotes them', () => {
+    const source = annotateSourceTopology('<div><h1>Seaside Pullover</h1><h2>Materials</h2><h1>Body</h1></div>');
+    const demoted = '<div>'
+      + '<h2 data-source-id="src-1">Seaside Pullover</h2>'
+      + '<h2 data-source-id="src-2">Materials</h2>'
+      + '<h2 data-source-id="src-3">Body</h2>'
+      + '</div>';
+    const restored = restoreSourceHeadingLevels(source, demoted);
+
+    expect(restored).toContain('<h1 data-source-id="src-1">Seaside Pullover</h1>');
+    expect(restored).toContain('<h2 data-source-id="src-2">Materials</h2>');
+    expect(restored).toContain('<h1 data-source-id="src-3">Body</h1>');
+    expect(auditTranslatedTopology(source, restored).some((warning) => warning.code === 'TAG_CHANGED')).toBe(false);
+  });
+
+  it('projects translated inners onto the source skeleton so omitted ids are not lost', () => {
+    const source = annotateSourceTopology('<div><p>One</p><p>Two</p><p>Three</p></div>');
+    const translated = '<div><p data-source-id="src-1">Uno</p><p data-source-id="src-3">Tres</p></div>';
+    const projected = projectTranslationOntoSource(source, translated);
+
+    expect(projected.omittedIds).toEqual(['src-2']);
+    expect(projected.html).toContain('data-source-id="src-2"');
+    expect(projected.html).toContain('Uno');
+    expect(projected.html).toContain('Tres');
+
+    const repaired = applyInnerHtmlBySourceId(projected.html, new Map([['src-2', 'Dos']]), source);
+    expect(repaired).toContain('>Dos<');
+    expect(auditTranslatedTopology(source, repaired).some((warning) => warning.code === 'MISSING_ELEMENT')).toBe(false);
+  });
+
+  it('flattens only a lone inner paragraph', () => {
+    expect(flattenRedundantInnerParagraphs('<li><p>Work even</p></li>')).toBe('<li>Work even</li>');
+    expect(flattenRedundantInnerParagraphs('<li><p>A</p><p>B</p></li>')).toBe('<li><p>A</p><p>B</p></li>');
   });
 });

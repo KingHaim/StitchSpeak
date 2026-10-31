@@ -35,12 +35,78 @@ interface TopologyNode {
 }
 
 const TOPOLOGY_TAGS = 'h1|h2|h3|h4|p|li|th|td';
+const TOPOLOGY_TAG_RE = new RegExp(`<(${TOPOLOGY_TAGS})\\b`, 'i');
+
+/**
+ * Word/RTF extractors (mammoth, etc.) wrap every table cell and list item in
+ * a single <p>. Annotating both the wrapper and the inner paragraph produces
+ * paired src-N / src-N+1 ids; the translator then emits only the wrapper and
+ * QA reports every other id as "missing" even though the text is present.
+ * Unwrap those redundant single paragraphs before ids are assigned.
+ */
+export function flattenRedundantInnerParagraphs(html: string): string {
+  const parentPattern = /<(td|th|li)\b([^>]*)>([\s\S]*?)<\/\1\s*>/gi;
+  return html.replace(parentPattern, (full, tagName: string, attributes: string, inner: string) => {
+    const trimmed = inner.trim();
+    const paragraph = trimmed.match(/^<p\b([^>]*)>([\s\S]*)<\/p\s*>$/i);
+    if (!paragraph) return full;
+    const paragraphInner = paragraph[2];
+    if (TOPOLOGY_TAG_RE.test(paragraphInner)) return full;
+    return `<${tagName}${attributes}>${paragraphInner}</${tagName}>`;
+  });
+}
+
+function ownTextOutsideChildBlocks(innerHtml: string): string {
+  const withoutChildren = innerHtml.replace(
+    new RegExp(`<(${TOPOLOGY_TAGS})\\b[^>]*>[\\s\\S]*?<\\/\\1\\s*>`, 'gi'),
+    ' ',
+  );
+  return decodePlainText(withoutChildren);
+}
+
+function wrapperOpeningIndexes(html: string): Set<number> {
+  const wrappers = new Set<number>();
+  const stack: Array<{
+    tagName: string;
+    openingIndex: number;
+    contentStart: number;
+    hasChild: boolean;
+  }> = [];
+  const pattern = new RegExp(`<\\/?(${TOPOLOGY_TAGS})\\b[^>]*>`, 'gi');
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(html)) !== null) {
+    const tagName = match[1].toLowerCase();
+    if (!match[0].startsWith('</')) {
+      if (stack.length > 0) stack[stack.length - 1].hasChild = true;
+      stack.push({
+        tagName,
+        openingIndex: match.index,
+        contentStart: pattern.lastIndex,
+        hasChild: false,
+      });
+      continue;
+    }
+    for (let index = stack.length - 1; index >= 0; index -= 1) {
+      if (stack[index].tagName !== tagName) continue;
+      const frame = stack[index];
+      const ownText = ownTextOutsideChildBlocks(html.slice(frame.contentStart, match.index));
+      if (frame.hasChild && !ownText) wrappers.add(frame.openingIndex);
+      stack.splice(index);
+      break;
+    }
+  }
+  return wrappers;
+}
 
 export function annotateSourceTopology(html: string): string {
+  const flattened = flattenRedundantInnerParagraphs(html);
+  const wrappers = wrapperOpeningIndexes(flattened);
   let nextId = 1;
   const openingPattern = new RegExp(`<(${TOPOLOGY_TAGS})\\b([^>]*)>`, 'gi');
-  return html.replace(openingPattern, (opening, tagName: string, attributes: string) => {
+  return flattened.replace(openingPattern, (opening, tagName: string, attributes: string, offset: number) => {
     if (/\bdata-source-id\s*=/i.test(attributes)) return opening;
+    if (wrappers.has(offset)) return opening;
     return `<${tagName} data-source-id="src-${nextId++}"${attributes}>`;
   });
 }
@@ -154,6 +220,290 @@ export function sourceBlockTextById(annotatedSourceHtml: string): Map<string, st
   return texts;
 }
 
+function isAnnotatedId(id: string): boolean {
+  return !id.startsWith('__anonymous-');
+}
+
+function readAttribute(tag: string, name: string): string | null {
+  const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i'));
+  if (!match) return null;
+  return match[1] ?? match[2] ?? '';
+}
+
+function escapeAttributeValue(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function elementCloseStart(node: TopologyNode): number {
+  return node.openingIndex + node.openingTag.length + node.innerHtml.length;
+}
+
+function findClosingTag(html: string, closeStart: number, tagName: string): string {
+  const match = html.slice(closeStart).match(/^<\/[a-z0-9]+\s*>/i);
+  return match?.[0] ?? `</${tagName}>`;
+}
+
+function upsertAttribute(openingTag: string, name: string, value: string): string {
+  const escaped = escapeAttributeValue(value);
+  if (new RegExp(`\\b${name}\\s*=`, 'i').test(openingTag)) {
+    return openingTag.replace(
+      new RegExp(`\\b${name}\\s*=\\s*(?:"[^"]*"|'[^']*')`, 'i'),
+      `${name}="${escaped}"`,
+    );
+  }
+  return `${openingTag.slice(0, -1)} ${name}="${escaped}">`;
+}
+
+function indexTranslatedNodes(nodes: TopologyNode[]): {
+  byId: Map<string, TopologyNode>;
+  byDataO: Map<string, TopologyNode[]>;
+} {
+  const byId = new Map<string, TopologyNode>();
+  const byDataO = new Map<string, TopologyNode[]>();
+  for (const node of nodes) {
+    if (isAnnotatedId(node.id)) byId.set(node.id, node);
+    const dataO = decodePlainText(readAttribute(node.openingTag, 'data-o') ?? '');
+    if (!dataO) continue;
+    const existing = byDataO.get(dataO) ?? [];
+    existing.push(node);
+    byDataO.set(dataO, existing);
+  }
+  return { byId, byDataO };
+}
+
+function claimTranslatedNode(
+  sourceNode: TopologyNode,
+  indexes: ReturnType<typeof indexTranslatedNodes>,
+  used: Set<TopologyNode>,
+): TopologyNode | undefined {
+  const byId = indexes.byId.get(sourceNode.id);
+  if (byId && !used.has(byId)) {
+    used.add(byId);
+    return byId;
+  }
+  const sourceText = decodePlainText(sourceNode.innerHtml);
+  if (!sourceText) return undefined;
+  const byDataO = (indexes.byDataO.get(sourceText) ?? []).find((node) => !used.has(node));
+  if (!byDataO) return undefined;
+  used.add(byDataO);
+  return byDataO;
+}
+
+/**
+ * Source heading tags win. The translator is also told to invent a single-h1
+ * outline, so it routinely demotes extra <h1>s; this pass puts the source
+ * level back on the matching id before QA runs.
+ */
+export function restoreSourceHeadingLevels(
+  annotatedSourceHtml: string,
+  translatedHtml: string,
+): string {
+  const sourceHeadings = parseTopology(annotatedSourceHtml).nodes.filter(
+    (node) => isAnnotatedId(node.id) && /^h[1-4]$/.test(node.tagName),
+  );
+  const translatedById = new Map(
+    parseTopology(translatedHtml).nodes.map((node) => [node.id, node]),
+  );
+
+  const changes = sourceHeadings.flatMap((sourceNode) => {
+    const targetNode = translatedById.get(sourceNode.id);
+    if (!targetNode || targetNode.tagName === sourceNode.tagName) return [];
+    return [{ sourceNode, targetNode }];
+  }).sort((a, b) => b.targetNode.openingIndex - a.targetNode.openingIndex);
+
+  let html = translatedHtml;
+  for (const { sourceNode, targetNode } of changes) {
+    const closeStart = elementCloseStart(targetNode);
+    const close = findClosingTag(html, closeStart, targetNode.tagName);
+    const newOpen = targetNode.openingTag.replace(
+      new RegExp(`^<${targetNode.tagName}\\b`, 'i'),
+      `<${sourceNode.tagName}`,
+    );
+    html = `${html.slice(0, targetNode.openingIndex)}${newOpen}${targetNode.innerHtml}</${sourceNode.tagName}>${html.slice(closeStart + close.length)}`;
+  }
+  return html;
+}
+
+function openingWithAlignment(
+  sourceOpening: string,
+  translated: TopologyNode | undefined,
+  sourceText: string,
+): string {
+  let opening = sourceOpening;
+  const translatedDataO = translated
+    ? decodePlainText(readAttribute(translated.openingTag, 'data-o') ?? '')
+    : '';
+  const translatedSeg = translated ? readAttribute(translated.openingTag, 'data-seg') : null;
+  if (!/\bdata-o\s*=/i.test(opening) && (translatedDataO || sourceText)) {
+    opening = upsertAttribute(opening, 'data-o', translatedDataO || sourceText);
+  }
+  if (translatedSeg && !/\bdata-seg\s*=/i.test(opening)) {
+    opening = upsertAttribute(opening, 'data-seg', translatedSeg);
+  }
+  return opening;
+}
+
+export interface DocumentProjectionResult {
+  html: string;
+  matchedIds: string[];
+  omittedIds: string[];
+}
+
+/**
+ * Rebuild the translation on the annotated source skeleton: every source id
+ * and heading tag is kept, and translated inner HTML is copied on when we can
+ * match by data-source-id or by data-o text. Unmatched content blocks stay as
+ * source text so they can be re-translated instead of silently dropped.
+ */
+export function projectTranslationOntoSource(
+  annotatedSourceHtml: string,
+  translatedHtml: string,
+): DocumentProjectionResult {
+  const source = parseTopology(annotatedSourceHtml);
+  const translated = parseTopology(translatedHtml);
+  const annotatedSource = source.nodes.filter((node) => isAnnotatedId(node.id));
+  if (annotatedSource.length === 0) {
+    return { html: translatedHtml, matchedIds: [], omittedIds: [] };
+  }
+
+  const indexes = indexTranslatedNodes(translated.nodes);
+  const used = new Set<TopologyNode>();
+  const replacements = annotatedSource.map((sourceNode) => ({
+    sourceNode,
+    translated: claimTranslatedNode(sourceNode, indexes, used),
+  }));
+  const matchedIds = replacements
+    .filter(({ translated }) => translated && decodePlainText(translated.innerHtml))
+    .map(({ sourceNode }) => sourceNode.id);
+  const hitRate = matchedIds.length / annotatedSource.length;
+  if (hitRate < 0.5) {
+    return {
+      html: restoreSourceHeadingLevels(annotatedSourceHtml, translatedHtml),
+      matchedIds,
+      omittedIds: annotatedSource
+        .filter((node) => !matchedIds.includes(node.id) && !node.isEmpty)
+        .map((node) => node.id),
+    };
+  }
+
+  let html = annotatedSourceHtml;
+  for (const { sourceNode, translated } of [...replacements].sort(
+    (a, b) => b.sourceNode.openingIndex - a.sourceNode.openingIndex,
+  )) {
+    const sourceText = decodePlainText(sourceNode.innerHtml);
+    const translatedText = translated ? decodePlainText(translated.innerHtml) : '';
+    const newInner = translated && translatedText ? translated.innerHtml : sourceNode.innerHtml;
+    const newOpen = openingWithAlignment(sourceNode.openingTag, translated, sourceText);
+    const closeStart = elementCloseStart(sourceNode);
+    html = `${html.slice(0, sourceNode.openingIndex)}${newOpen}${newInner}${html.slice(closeStart)}`;
+  }
+
+  const omittedIds = replacements
+    .filter(({ sourceNode, translated }) => {
+      if (sourceNode.isEmpty) return false;
+      return !translated || !decodePlainText(translated.innerHtml);
+    })
+    .map(({ sourceNode }) => sourceNode.id);
+
+  return { html, matchedIds, omittedIds };
+}
+
+export function findOmittedContentNodes(
+  annotatedSourceHtml: string,
+  translatedHtml: string,
+): TopologyNode[] {
+  const translatedIds = new Set(
+    parseTopology(translatedHtml).nodes.filter((node) => isAnnotatedId(node.id)).map((node) => node.id),
+  );
+  return parseTopology(annotatedSourceHtml).nodes.filter((node) => (
+    isAnnotatedId(node.id) && !node.isEmpty && !translatedIds.has(node.id)
+  ));
+}
+
+export function applyInnerHtmlBySourceId(
+  html: string,
+  innerHtmlById: ReadonlyMap<string, string>,
+  annotatedSourceHtml?: string,
+): string {
+  if (innerHtmlById.size === 0) return html;
+  const present = parseTopology(html).nodes
+    .filter((node) => innerHtmlById.has(node.id))
+    .sort((a, b) => b.openingIndex - a.openingIndex);
+  let working = html;
+  for (const node of present) {
+    const inner = innerHtmlById.get(node.id);
+    if (inner === undefined) continue;
+    const closeStart = elementCloseStart(node);
+    working = `${working.slice(0, node.openingIndex + node.openingTag.length)}${inner}${working.slice(closeStart)}`;
+  }
+  if (!annotatedSourceHtml) return working;
+
+  const presentIds = new Set(parseTopology(working).nodes.map((node) => node.id));
+  const sourceNodes = parseTopology(annotatedSourceHtml).nodes.filter((node) => isAnnotatedId(node.id));
+  const insertions: Array<{ at: number; markup: string }> = [];
+  for (let index = 0; index < sourceNodes.length; index += 1) {
+    const sourceNode = sourceNodes[index];
+    const inner = innerHtmlById.get(sourceNode.id);
+    if (inner === undefined || presentIds.has(sourceNode.id)) continue;
+    const markup = `${openingWithAlignment(sourceNode.openingTag, undefined, decodePlainText(sourceNode.innerHtml))}${inner}</${sourceNode.tagName}>`;
+    let at = -1;
+    for (let previous = index - 1; previous >= 0; previous -= 1) {
+      const previousTranslated = parseTopology(working).nodes.find((node) => node.id === sourceNodes[previous].id);
+      if (!previousTranslated) continue;
+      at = elementCloseStart(previousTranslated) + findClosingTag(working, elementCloseStart(previousTranslated), previousTranslated.tagName).length;
+      break;
+    }
+    if (at < 0) {
+      const first = parseTopology(working).nodes[0];
+      at = first ? first.openingIndex : working.length;
+    }
+    insertions.push({ at, markup });
+  }
+  for (const insertion of insertions.sort((a, b) => b.at - a.at)) {
+    working = `${working.slice(0, insertion.at)}${insertion.markup}${working.slice(insertion.at)}`;
+  }
+  return working;
+}
+
+function sourceParentOf(sourceNodes: TopologyNode[], child: TopologyNode): TopologyNode | undefined {
+  return sourceNodes
+    .filter((node) => (
+      node.openingIndex < child.openingIndex
+      && elementCloseStart(node) >= elementCloseStart(child)
+      && node.id !== child.id
+    ))
+    .sort((a, b) => b.openingIndex - a.openingIndex)[0];
+}
+
+function translatedContainsSourceText(
+  sourceNode: TopologyNode,
+  translatedNodes: TopologyNode[],
+): boolean {
+  const sourceText = decodePlainText(sourceNode.innerHtml);
+  if (!sourceText) return true;
+  return translatedNodes.some((node) => decodePlainText(node.innerHtml) === sourceText
+    || decodePlainText(node.innerHtml).includes(sourceText));
+}
+
+function missingNodeIsMergedWrapperChild(
+  sourceNode: TopologyNode,
+  sourceNodes: TopologyNode[],
+  translatedById: Map<string, TopologyNode>,
+): boolean {
+  const parent = sourceParentOf(sourceNodes, sourceNode);
+  if (!parent || !isAnnotatedId(parent.id)) return false;
+  const translatedParent = translatedById.get(parent.id);
+  if (!translatedParent) return false;
+  const parentText = decodePlainText(parent.innerHtml);
+  const childText = decodePlainText(sourceNode.innerHtml);
+  if (!childText) return true;
+  return parentText === childText;
+}
+
 export function auditTranslatedTopology(
   annotatedSourceHtml: string,
   translatedHtml: string,
@@ -165,8 +515,12 @@ export function auditTranslatedTopology(
   const translatedById = new Map(translated.nodes.map((node) => [node.id, node]));
 
   for (const sourceNode of source.nodes) {
+    if (!isAnnotatedId(sourceNode.id)) continue;
     const targetNode = translatedById.get(sourceNode.id);
     if (!targetNode) {
+      if (sourceNode.isEmpty) continue;
+      if (missingNodeIsMergedWrapperChild(sourceNode, source.nodes, translatedById)) continue;
+      if (translatedContainsSourceText(sourceNode, translated.nodes)) continue;
       warnings.push({
         code: 'MISSING_ELEMENT',
         sourceId: sourceNode.id,
@@ -212,6 +566,7 @@ export function auditTranslatedTopology(
   }
 
   for (const targetNode of translated.nodes) {
+    if (!isAnnotatedId(targetNode.id)) continue;
     if (!sourceById.has(targetNode.id)) {
       warnings.push({
         code: 'EXTRA_ELEMENT',
