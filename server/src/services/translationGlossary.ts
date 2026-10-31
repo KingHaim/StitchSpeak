@@ -1,6 +1,6 @@
 import { GLOSSARY_LANGUAGES, GLOSSARY_TERMS } from './glossaryTerms.js';
 import { extractAlignedSegments, type AlignedNumberSegment } from './translationNumberAudit.js';
-import type { TranslationTopologyWarning } from './translationTopology.js';
+import { isUntranslatedSourceCopy, type TranslationTopologyWarning } from './translationTopology.js';
 
 /**
  * Locked-glossary enforcement (US2).
@@ -544,6 +544,9 @@ export function repairTranslatedGlossary(
   );
 
   const rewritten = rewriteAlignedInnerHtml(html, (innerHtml, sourceText, translatedText) => {
+    // Copied-through English is not a translation — leave it for the
+    // UNTRANSLATED_ELEMENT review warning instead of mixing locked terms in.
+    if (isUntranslatedSourceCopy(sourceText, translatedText)) return null;
     let next = innerHtml;
     let changed = false;
     let workingSource = sourceText;

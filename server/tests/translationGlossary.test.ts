@@ -252,6 +252,14 @@ describe('auditTranslatedGlossary — English term leakage', () => {
     expect(repairTranslatedGlossary(html, 'French').html).toContain('Kidsilk Lace');
   });
 
+  it('skips glossary repair on untranslated English copied through unchanged', () => {
+    const html = '<p data-seg="1" data-o="Work the lace panel.">Work the lace panel.</p>';
+    const repaired = repairTranslatedGlossary(html, 'French');
+    expect(repaired.html).toBe(html);
+    expect(repaired.repairedCount).toBe(0);
+    expect(repaired.html).not.toContain('dentelle');
+  });
+
   it('repairs a leftover English lace stitch term to dentelle', () => {
     const html = `<div>
       <p data-seg="1" data-o="Work the lace panel.">Tricoter le lace panel.</p>

@@ -14,7 +14,8 @@ export type TranslationTopologyWarningCode =
   | 'UNAUDITED_NUMBERS'
   | 'GLOSSARY_TERM_UNTRANSLATED'
   | 'GLOSSARY_VARIANT_MIX'
-  | 'YARN_COLOUR_UNRESTORABLE';
+  | 'YARN_COLOUR_UNRESTORABLE'
+  | 'UNTRANSLATED_ELEMENT';
 
 export interface TranslationTopologyWarning {
   code: TranslationTopologyWarningCode;
@@ -122,6 +123,20 @@ function decodePlainText(value: string): string {
     .replace(/&#39;|&apos;/gi, "'")
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function escapeHtmlText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/** True when the "translation" is the source English copied through unchanged. */
+export function isUntranslatedSourceCopy(sourceText: string, translatedText: string): boolean {
+  const source = decodePlainText(sourceText);
+  const translated = decodePlainText(translatedText);
+  return Boolean(source) && source === translated;
 }
 
 function extractListPaths(html: string): Map<string, string> {
@@ -438,7 +453,7 @@ export function applyInnerHtmlBySourceId(
     const inner = innerHtmlById.get(node.id);
     if (inner === undefined) continue;
     const closeStart = elementCloseStart(node);
-    working = `${working.slice(0, node.openingIndex + node.openingTag.length)}${inner}${working.slice(closeStart)}`;
+    working = `${working.slice(0, node.openingIndex + node.openingTag.length)}${escapeHtmlText(inner)}${working.slice(closeStart)}`;
   }
   if (!annotatedSourceHtml) return working;
 
@@ -449,7 +464,7 @@ export function applyInnerHtmlBySourceId(
     const sourceNode = sourceNodes[index];
     const inner = innerHtmlById.get(sourceNode.id);
     if (inner === undefined || presentIds.has(sourceNode.id)) continue;
-    const markup = `${openingWithAlignment(sourceNode.openingTag, undefined, decodePlainText(sourceNode.innerHtml))}${inner}</${sourceNode.tagName}>`;
+    const markup = `${openingWithAlignment(sourceNode.openingTag, undefined, decodePlainText(sourceNode.innerHtml))}${escapeHtmlText(inner)}</${sourceNode.tagName}>`;
     let at = -1;
     for (let previous = index - 1; previous >= 0; previous -= 1) {
       const previousTranslated = parseTopology(working).nodes.find((node) => node.id === sourceNodes[previous].id);
@@ -479,14 +494,18 @@ function sourceParentOf(sourceNodes: TopologyNode[], child: TopologyNode): Topol
     .sort((a, b) => b.openingIndex - a.openingIndex)[0];
 }
 
-function translatedContainsSourceText(
-  sourceNode: TopologyNode,
-  translatedNodes: TopologyNode[],
+export function translatedContainsSourceText(
+  sourceNode: Pick<TopologyNode, 'innerHtml'>,
+  translatedNodes: Array<Pick<TopologyNode, 'innerHtml'>>,
 ): boolean {
   const sourceText = decodePlainText(sourceNode.innerHtml);
   if (!sourceText) return true;
-  return translatedNodes.some((node) => decodePlainText(node.innerHtml) === sourceText
-    || decodePlainText(node.innerHtml).includes(sourceText));
+  return translatedNodes.some((node) => {
+    const translatedText = decodePlainText(node.innerHtml);
+    // Identical English copied through is not a translation of this block.
+    if (!translatedText || isUntranslatedSourceCopy(sourceText, translatedText)) return false;
+    return translatedText.includes(sourceText);
+  });
 }
 
 function missingNodeIsMergedWrapperChild(

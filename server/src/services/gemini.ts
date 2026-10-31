@@ -13,6 +13,7 @@ import {
   annotateSourceTopology,
   applyInnerHtmlBySourceId,
   auditTranslatedTopology,
+  isUntranslatedSourceCopy,
   projectTranslationOntoSource,
   sourceBlockTextById,
   type TranslationTopologyWarning,
@@ -2190,9 +2191,23 @@ async function verifyAndRepairInlineEmphasis(
 
 export type MissingSegmentRetryFn = (
   segments: Array<{ id: string; sourceText: string }>,
+  signal?: AbortSignal,
 ) => Promise<ReadonlyMap<string, string>>;
 
-const OMITTED_SEGMENT_MIN_DEADLINE_MS = 20_000;
+/**
+ * Near-deadline guard for the omitted-segment re-translate. Starting the
+ * retry with less budget than this would abort mid-call and risk a 504;
+ * skip and warn UNTRANSLATED_ELEMENT instead so forceAlignment + finalize
+ * can still settle the job.
+ */
+export const OMITTED_SEGMENT_MIN_DEADLINE_MS = 20_000;
+
+/**
+ * Tail margin the omitted-segment retry's own abort signal leaves before
+ * the translation deadline, so an over-long retry is cut short with enough
+ * time for forceAlignment and finalize to deliver `done`.
+ */
+export const OMITTED_SEGMENT_DEADLINE_TAIL_MS = 10_000;
 
 const omittedSegmentRepairSchema = {
   type: Type.OBJECT,
@@ -2217,12 +2232,13 @@ function createOmittedSegmentRetry(
   sourceLanguage: string | undefined,
   signal: AbortSignal | undefined,
 ): MissingSegmentRetryFn {
-  return async (segments) => {
+  return async (segments, callSignal) => {
+    const abortSignal = callSignal ?? signal;
     const response = await withRetry(() =>
       getAI().models.generateContent({
         model: TITLE_REPAIR_MODEL,
         config: {
-          abortSignal: signal,
+          abortSignal,
           temperature: 0,
           thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
           responseMimeType: 'application/json',
@@ -2251,6 +2267,75 @@ function createOmittedSegmentRetry(
     }
     return translated;
   };
+}
+
+function untranslatedElementWarning(id: string, sourceText: string): TranslationTopologyWarning {
+  return {
+    code: 'UNTRANSLATED_ELEMENT',
+    sourceId: id,
+    message: `${id} was not translated; source text remains: "${sourceText}".`,
+  };
+}
+
+/**
+ * Re-translate source blocks the model omitted. Runs under its own abort
+ * signal bounded by the remaining deadline minus a tail margin so
+ * forceAlignment and finalize still have time to settle the job. An abort,
+ * timeout, skip, or partial retry never fails the job — leftover ids raise
+ * UNTRANSLATED_ELEMENT review warnings instead.
+ */
+export async function runOmittedSegmentRetry(options: {
+  html: string;
+  annotatedSourceHtml: string;
+  omittedIds: readonly string[];
+  remainingMs: number;
+  language: string;
+  sourceLanguage?: string;
+  signal?: AbortSignal;
+  missingSegmentRetry?: MissingSegmentRetryFn;
+}): Promise<{ html: string; warnings: TranslationTopologyWarning[] }> {
+  const sourceById = sourceBlockTextById(options.annotatedSourceHtml);
+  const omittedNodes = options.omittedIds
+    .map((id) => ({ id, sourceText: sourceById.get(id) ?? '' }))
+    .filter((segment) => segment.sourceText);
+  const leftoverIds = () => omittedNodes.map((segment) => segment.id);
+  const warningsFor = (ids: readonly string[]): TranslationTopologyWarning[] =>
+    ids.map((id) => untranslatedElementWarning(id, sourceById.get(id) ?? ''));
+
+  if (omittedNodes.length === 0) return { html: options.html, warnings: [] };
+
+  if (options.remainingMs < OMITTED_SEGMENT_MIN_DEADLINE_MS) {
+    console.warn(
+      `[gemini] skipping omitted-segment repair: ~${Math.max(0, Math.round(options.remainingMs / 1000))}s of deadline budget left.`,
+    );
+    return { html: options.html, warnings: warningsFor(leftoverIds()) };
+  }
+
+  const retrySignal = Number.isFinite(options.remainingMs)
+    ? AbortSignal.any([
+        ...(options.signal ? [options.signal] : []),
+        AbortSignal.timeout(options.remainingMs - OMITTED_SEGMENT_DEADLINE_TAIL_MS),
+      ])
+    : options.signal;
+
+  try {
+    const retry = options.missingSegmentRetry
+      ?? createOmittedSegmentRetry(options.language, options.sourceLanguage, retrySignal);
+    const translations = await retry(omittedNodes, retrySignal);
+    const accepted = new Map<string, string>();
+    for (const segment of omittedNodes) {
+      const text = translations.get(segment.id)?.trim() ?? '';
+      if (!text || isUntranslatedSourceCopy(segment.sourceText, text)) continue;
+      accepted.set(segment.id, text);
+    }
+    return {
+      html: applyInnerHtmlBySourceId(options.html, accepted, options.annotatedSourceHtml),
+      warnings: warningsFor(omittedNodes.filter((segment) => !accepted.has(segment.id)).map((segment) => segment.id)),
+    };
+  } catch (err) {
+    console.warn('[gemini] omitted-segment repair skipped:', err);
+    return { html: options.html, warnings: warningsFor(leftoverIds()) };
+  }
 }
 
 export interface TranslatePatternOptions {
@@ -2676,30 +2761,19 @@ async function translateDocumentHtml(
     signal,
   );
   const projected = projectTranslationOntoSource(annotatedSource, repairedEmphasis.html);
-  let structuredHtml = projected.html;
-  if (projected.omittedIds.length > 0) {
-    const remainingMs = options.deadlineAt === undefined
+  const omittedRetry = await runOmittedSegmentRetry({
+    html: projected.html,
+    annotatedSourceHtml: annotatedSource,
+    omittedIds: projected.omittedIds,
+    remainingMs: options.deadlineAt === undefined
       ? Number.POSITIVE_INFINITY
-      : options.deadlineAt - Date.now();
-    if (remainingMs >= OMITTED_SEGMENT_MIN_DEADLINE_MS) {
-      try {
-        const omittedNodes = projected.omittedIds.map((id) => ({
-          id,
-          sourceText: sourceBlockTextById(annotatedSource).get(id) ?? '',
-        })).filter((segment) => segment.sourceText);
-        const retry = options.missingSegmentRetry
-          ?? createOmittedSegmentRetry(language, sourceLanguage, signal);
-        const translations = await retry(omittedNodes);
-        structuredHtml = applyInnerHtmlBySourceId(structuredHtml, translations, annotatedSource);
-      } catch (err) {
-        console.warn('[gemini] omitted-segment repair skipped:', err);
-      }
-    } else {
-      console.warn(
-        `[gemini] skipping omitted-segment repair: ~${Math.max(0, Math.round(remainingMs / 1000))}s of deadline budget left.`,
-      );
-    }
-  }
+      : options.deadlineAt - Date.now(),
+    language,
+    ...(sourceLanguage ? { sourceLanguage } : {}),
+    ...(signal ? { signal } : {}),
+    ...(options.missingSegmentRetry ? { missingSegmentRetry: options.missingSegmentRetry } : {}),
+  });
+  const structuredHtml = omittedRetry.html;
   // US6 force alignment: numeric blocks the model left without data-o get a
   // deterministic alignment derived from the annotated source (matched by
   // immutable data-source-id) so the number audit can cover them. Blocks with
@@ -2720,6 +2794,7 @@ async function translateDocumentHtml(
   return {
     html: finalized.html,
     reviewWarnings: [
+      ...omittedRetry.warnings,
       ...topologyWarnings,
       ...repairedReviewedLanguage.reviewWarnings,
       ...finalized.reviewWarnings,

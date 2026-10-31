@@ -6,6 +6,7 @@ import {
   flattenRedundantInnerParagraphs,
   projectTranslationOntoSource,
   restoreSourceHeadingLevels,
+  translatedContainsSourceText,
 } from '../src/services/translationTopology';
 
 describe('translation topology', () => {
@@ -120,6 +121,37 @@ describe('translation topology', () => {
     const repaired = applyInnerHtmlBySourceId(projected.html, new Map([['src-2', 'Dos']]), source);
     expect(repaired).toContain('>Dos<');
     expect(auditTranslatedTopology(source, repaired).some((warning) => warning.code === 'MISSING_ELEMENT')).toBe(false);
+  });
+
+  it('does not treat identical English copy-through as a present translation', () => {
+    expect(translatedContainsSourceText(
+      { innerHtml: 'Work the lace panel.' },
+      [{ innerHtml: 'Work the lace panel.' }],
+    )).toBe(false);
+    expect(translatedContainsSourceText(
+      { innerHtml: 'Work the lace panel.' },
+      [{ innerHtml: 'Tricoter le panneau. Work the lace panel.' }],
+    )).toBe(true);
+
+    const source = annotateSourceTopology('<div><p>One</p><p>Work the lace panel.</p></div>');
+    const copied = '<div><p data-source-id="src-1">Work the lace panel.</p></div>';
+    const warnings = auditTranslatedTopology(source, copied);
+    expect(warnings.some((warning) => warning.code === 'MISSING_ELEMENT' && warning.sourceId === 'src-2')).toBe(true);
+  });
+
+  it('escapes plain-text omitted-segment repairs before inserting them', () => {
+    const source = annotateSourceTopology('<div><p>One</p><p>Two</p></div>');
+    const projected = projectTranslationOntoSource(
+      source,
+      '<div><p data-source-id="src-1">Uno</p></div>',
+    );
+    const repaired = applyInnerHtmlBySourceId(
+      projected.html,
+      new Map([['src-2', 'Cast on 3 < 5 sts & knit']]),
+      source,
+    );
+    expect(repaired).toContain('Cast on 3 &lt; 5 sts &amp; knit');
+    expect(repaired).not.toContain('3 < 5');
   });
 
   it('flattens only a lone inner paragraph', () => {

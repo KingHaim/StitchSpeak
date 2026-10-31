@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest';
-import { finalizeTranslatedHtml } from '../src/services/gemini';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  finalizeTranslatedHtml,
+  OMITTED_SEGMENT_DEADLINE_TAIL_MS,
+  OMITTED_SEGMENT_MIN_DEADLINE_MS,
+  runOmittedSegmentRetry,
+  type MissingSegmentRetryFn,
+} from '../src/services/gemini';
 import {
   auditTranslatedGlossary,
   repairTranslatedGlossary,
@@ -126,5 +132,129 @@ describe('translation quality repair — synthetic EN→FR fixture', () => {
     const html = '<p data-seg="1" data-o="About 500 yards of lace weight">Environ 500 yards of lace weight</p>';
     expect(repairTranslatedGlossary(html, 'French').html).toContain('lace weight');
     expect(auditTranslatedGlossary(html, 'French')).toEqual([]);
+  });
+});
+
+describe('omitted-segment retry deadline and review warnings', () => {
+  const source = annotateSourceTopology('<div><p>One</p><p>Work the lace panel.</p></div>');
+  const projected = projectTranslationOntoSource(
+    source,
+    '<div><p data-source-id="src-1">Uno</p></div>',
+  );
+
+  function hangUntilAbort(): MissingSegmentRetryFn {
+    return async (_segments, signal) => {
+      await new Promise<never>((_, reject) => {
+        const failSafe = setTimeout(
+          () => reject(new Error('omitted-segment retry ignored its abort budget')),
+          30_000,
+        );
+        const onAbort = (): void => {
+          clearTimeout(failSafe);
+          reject(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' }));
+        };
+        if (signal?.aborted) {
+          onAbort();
+          return;
+        }
+        signal?.addEventListener('abort', onAbort, { once: true });
+      });
+    };
+  }
+
+  it('locks the omitted-retry budget above the tail reserved for forceAlignment and finalize', () => {
+    expect(OMITTED_SEGMENT_MIN_DEADLINE_MS).toBeGreaterThanOrEqual(20_000);
+    expect(OMITTED_SEGMENT_MIN_DEADLINE_MS).toBeGreaterThan(OMITTED_SEGMENT_DEADLINE_TAIL_MS);
+  });
+
+  it('aborts a hanging omitted-segment retry inside its budget and still delivers', async () => {
+    const started = Date.now();
+    const result = await runOmittedSegmentRetry({
+      html: projected.html,
+      annotatedSourceHtml: source,
+      omittedIds: projected.omittedIds,
+      remainingMs: OMITTED_SEGMENT_DEADLINE_TAIL_MS + 250,
+      language: 'French',
+      missingSegmentRetry: hangUntilAbort(),
+    });
+    const elapsed = Date.now() - started;
+
+    expect(elapsed).toBeLessThan(5_000);
+    expect(result.html).toContain('Uno');
+    expect(result.warnings).toEqual([
+      expect.objectContaining({
+        code: 'UNTRANSLATED_ELEMENT',
+        sourceId: 'src-2',
+        message: expect.stringContaining('Work the lace panel.'),
+      }),
+    ]);
+  });
+
+  it('skips the omitted-segment retry near the deadline and warns UNTRANSLATED_ELEMENT', async () => {
+    const retry = vi.fn<MissingSegmentRetryFn>(async () => new Map([
+      ['src-2', 'Tricoter le panneau de dentelle.'],
+    ]));
+
+    const result = await runOmittedSegmentRetry({
+      html: projected.html,
+      annotatedSourceHtml: source,
+      omittedIds: projected.omittedIds,
+      remainingMs: OMITTED_SEGMENT_MIN_DEADLINE_MS - 1,
+      language: 'French',
+      missingSegmentRetry: retry,
+    });
+
+    expect(retry).not.toHaveBeenCalled();
+    expect(result.warnings).toEqual([
+      expect.objectContaining({
+        code: 'UNTRANSLATED_ELEMENT',
+        sourceId: 'src-2',
+        message: expect.stringContaining('Work the lace panel.'),
+      }),
+    ]);
+
+    const finalized = finalizeTranslatedHtml(result.html, 'French');
+    expect(finalized.html).toContain('Work the lace panel.');
+    expect(finalized.html).not.toContain('dentelle');
+  });
+
+  it('does not warn when every omitted id is successfully re-translated', async () => {
+    const retry = vi.fn<MissingSegmentRetryFn>(async (segments, signal) => {
+      expect(signal).toBeInstanceOf(AbortSignal);
+      expect(signal?.aborted).toBe(false);
+      return new Map(segments.map((segment) => [segment.id, 'Tricoter le panneau de dentelle.']));
+    });
+
+    const result = await runOmittedSegmentRetry({
+      html: projected.html,
+      annotatedSourceHtml: source,
+      omittedIds: projected.omittedIds,
+      remainingMs: 60_000,
+      language: 'French',
+      missingSegmentRetry: retry,
+    });
+
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(result.html).toContain('Tricoter le panneau de dentelle.');
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('treats an identical-English retry as unsuccessful and warns', async () => {
+    const result = await runOmittedSegmentRetry({
+      html: projected.html,
+      annotatedSourceHtml: source,
+      omittedIds: projected.omittedIds,
+      remainingMs: 60_000,
+      language: 'French',
+      missingSegmentRetry: async () => new Map([['src-2', 'Work the lace panel.']]),
+    });
+
+    expect(result.warnings).toEqual([
+      expect.objectContaining({
+        code: 'UNTRANSLATED_ELEMENT',
+        sourceId: 'src-2',
+        message: expect.stringContaining('Work the lace panel.'),
+      }),
+    ]);
   });
 });
